@@ -31,6 +31,7 @@ ports/
     original/           your disk images (not in git)
     extracted/          decoded game data (not in git)
   pcjr/                 the IBM PCjr port (in progress): crate kq1-pcjr
+    refemu/             crate kq1-pcjr-refemu: the reference PCjr (measuring only)
 .github/                CI, PR title check, release-please, Dependabot
 ```
 

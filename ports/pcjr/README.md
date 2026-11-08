@@ -6,7 +6,9 @@ published, from your own disk image, with no 8088 emulation. It follows
 [ports/apple2/](../apple2/README.md) as the worked example.
 
 **Status:** the disk, its copy protection and its layout are worked out. Every
-resource extracts and decodes: pictures, scripts and views. No engine or player yet.
+resource extracts and decodes: pictures, scripts, views, sounds and the vocabulary.
+[refemu/](refemu/README.md), the reference PCjr, boots the original and records it
+pass by pass. No engine or player yet.
 See [docs/port-plan.md](docs/port-plan.md).
 
 ## What you need

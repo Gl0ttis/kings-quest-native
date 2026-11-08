@@ -22,7 +22,7 @@ engine draws.
 | 1. Disk image | **Done.** The original as dumped (HxC `.mfm`: MFM decoded, CRCs checked) and the cracked 360K `.img`. The copy protection, 1 KB-sector tracks holding the engine, is worked out, and the two give the same engine and data (tested). |
 | 2. Disk layout | **Done** ([disk-layout.md](disk-layout.md)): boot chain, the engine's position, the resource table, its entry format, the read routine. |
 | 3. Static formats | **Done.** Pictures: all 79 draw cleanly (Apple decoder, IBM colours); the PCjr shows them in full, 160 × 168. Scripts: the PCjr operand table, read from the handlers; all 84 well-formed scripts parse. Rules: the Apple format, with the PCjr's word and variable numbers. Views: all 88 decode. Sounds: all 40 parse and render. Vocabulary: all 358 words decode. Colours: the default IBM palette. Left for the engine phase: a PCjr painter for the full picture, and room 64. |
-| 4. Measuring tool | Not started. An 8088 PCjr emulator, with the BIOS calls the game makes substituted. |
+| 4. Measuring tool | **Working** ([refemu/](../refemu/README.md)). An 8086 core with 8088 timing, on a PCjr with no IBM ROM. It boots the original from the `.mfm` (the 1 KB-sector engine included), plays the title, takes keys from a plan or a key log, and records a trace per pass and the screen. Still to do: calibrate its timing (PCjr video memory contention, the BIOS's own time), saves and the Play diskette, and a font for text in screenshots. |
 | 5–10. Engine onwards | Not started. |
 
 ## Findings so far
@@ -48,12 +48,23 @@ engine draws.
 - **Room 64** may show no picture on the PCjr: the engine starts the picture a byte
   early because of the script header defect (disk-layout.md). To confirm.
 - **More animation frames than the Apple version:** 722 cels to its 674.
+- **The game cycle is shaped differently.** One pass is one call of `$14F2`: the actors,
+  then the cycle rules (global, repeating while asked, then the room's). The input
+  wait calls it over and over while the player types. The parser rules run in the
+  main loop (`$D1C`) once a line is complete, not inside a pass as on the Apple. The
+  timer interrupt (`$808`) reads the keyboard and plays the music.
+- **The actor record is 30 bytes**, the Apple's 31: the direction is at `$0F` (the
+  Apple's `$10`), and x and y at `$18`/`$19` as on the Apple. The score is v19, as on
+  the Apple.
+- **First measurements** (provisional, timing uncalibrated): about 190,000 CPU cycles
+  a pass in room 1, 21 passes a second. The main loop is reached 3.6 s after the
+  engine starts.
 
 ## Next
 
-1. **The measuring tool**, before the engine: an 8088 PCjr that boots the original
-   from the `.mfm`, with the BIOS calls the game makes substituted, recording traces
-   and frames as refemu does.
+1. **Finish the measuring tool:** calibrate its timing, saves to the Play diskette,
+   and a reference route recorded from the original (a walk through the first rooms,
+   then longer routes).
 2. **A PCjr painter** for the full 160 × 168 picture, from the PCjr's 15 picture
    handlers (`$3534`), checked against the measuring tool's frames.
 3. **The variable renumbering** between the versions, so the Apple port's knowledge of

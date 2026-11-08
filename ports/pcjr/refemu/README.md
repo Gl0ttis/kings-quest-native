@@ -1,0 +1,79 @@
+# refemu-pcjr: reference IBM PCjr (measuring tool only)
+
+This crate is a minimal IBM PCjr used to **measure the original game**: what state each
+pass of the game cycle produces, how long it takes, and what is on screen. The port in
+the parent crate does not use it; like the Apple port's refemu, it only provides
+evidence for checking the port.
+
+## What it emulates
+
+- **CPU:** an 8086 core with 8088 cycle counts. The counts are approximate (the Intel
+  base counts, effective-address time, and 4 cycles per word on the 8-bit bus), and the
+  PCjr's video memory contention isn't modelled yet, so timings are provisional until
+  they are calibrated.
+- **Memory:** 128 KB, shared with the video as on the PCjr. The Video Gate Array's CRT
+  page (what is shown) and CPU page (the B800 window) are set through `INT 10h` AH=05h
+  or port 3DFh.
+- **The timer:** IRQ0 every 262,144 cycles (18.2 Hz), through `INT 08h` to the game's
+  `INT 1Ch` handler, which plays the music and reads the keyboard.
+- **The disk:** read from the user's image, sector by sector, with the size the
+  diskette-parameter table asks for. So the original's 1 KB-sector engine tracks load
+  as they do on hardware from an `.mfm` dump. The crack's `.img` works too.
+- **No IBM ROM.** The BIOS services the game calls are answered natively. Any other
+  call stops the run with a note naming it.
+  - `INT 10h`: AH=00h (mode), 01h, 02h, 03h, 05h (page registers), 06h (scroll),
+    09h, 0Eh (characters).
+  - `INT 13h`: read, write, format.
+  - `INT 16h`: AH=00h, 01h, 04h.
+  - `INT 1Ah`: AH=00h.
+- **Text:** characters are drawn by the BIOS from its ROM font, which isn't here. The
+  emulator records the character in each of the 25 × 40 cells instead, and leaves the
+  cell blank on screen. The frames carry those codes.
+- **Sound:** every write to the SN76496 (port C0h) is recorded with its cycle.
+- **Keyboard:** keys from a plan or a key log, returned by `INT 16h`. A game polling the
+  keyboard with no pass and no key for 3 million cycles gets RETURN, as refemu does for
+  the Apple.
+
+## The game cycle
+
+One pass is one call of `$14F2`. It moves and animates the actors, then runs the cycle
+rules: the global script's (repeating while asked), then the room's. The input wait
+(`$13CE`) calls it over and over while the player types. The main loop (`$D1C`) comes
+round only after a typed line, to run the parser rules. So, unlike the Apple version,
+the parser rules don't run inside a pass.
+
+## Usage
+
+```
+cargo run --release -p kq1-pcjr-refemu -- original/<disk>.mfm \
+    --plan "w30,R,w60,U,w40,>look,w40" --passes 300 --trace trace.csv --frames frames.bin
+```
+
+**The plan** runs in passes:
+
+| Item | Meaning |
+|---|---|
+| `wN` | wait N passes |
+| `U` `D` `L` `R` | an arrow key (scan code, no character) |
+| `>text` | type the text and RETURN |
+| `kHH` | a character, by its code |
+| `sHHHH` | a key as `INT 16h` returns it (scan code << 8 \| character) |
+
+**Other options:**
+- `--keys FILE`: a key log, lines of "PASS KEY-HEX", each pressed at the start of that
+  pass.
+- `--passes N`: stop after N passes (default 400).
+- `--ticks N`: stop after N timer ticks.
+- `--shot FILE.png`: the screen at the end.
+- `--profile`: where the CPU spent its time, and how often the main routines were
+  entered.
+- `REFEMU_DUMP=p,…`: print actor 0 and v0–v47 at those passes.
+
+**Output:**
+- **`--trace`:** a CSV per pass, in the Apple refemu's columns: pass, cycles, cycles
+  in the pass, room (v1), ego x, y and direction, score (v19), and a hash of v0–v222.
+- **`--frames`:** the screen at the start of each pass, written when it changes. Each
+  record is the pass (u32), then 200 rows of 320 4-bit colour numbers (one byte each),
+  then the 25 × 40 text cells.
+- **A summary:** cycles per pass, the BIOS calls made, ports nothing models, and the
+  text on screen.
