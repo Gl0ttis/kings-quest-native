@@ -64,6 +64,11 @@ window. That trace matches the original on every pass.
   the beanstalk is planted). Before leaving, the autopilot draws the destination room's
   picture and checks that Graham will land on open ground that can reach the next exit
   or the goal. That check applies even when he is already standing on the edge.
+- **Scripted entry positions.** About 40 rooms place Graham on entry according to the
+  room he came from ("when v18 == N -> position 0 X Y": the stairs, the beanstalk, the
+  underground rooms). When no ordinary landing below the edge works, the look-ahead
+  uses the scripted spot instead (read from the decoded scripts at start-up). It is a
+  fallback only, so routes that already worked are planned exactly as before.
 - **Deadly rectangles.** Cycle rules of the form "ego in [rect] → action" count as
   deadly when the action leads to the death flag `v32` or to water (`v4`). Flags are
   followed by value. For example, room 25's stream goes v112 = 1 → v110 = 1 →
@@ -189,3 +194,29 @@ passes. `REFEMU_RNG=1` logs each RNG call with the byte it reads, and
   room 10 until it reaches Graham (`v40 = 1`). The carrot needs `v142`, which is set by
   entering the garden from below. The troll appears when Graham steps onto room 25's
   bridge band (y 93–94). The goat charges from y 91–92.
+
+## Alternative routes
+
+Three more routes branch off the maximum-score route, each replayed into the original in
+refemu and compared on every pass (tests `gold_key_route`, `giant_sling_route` and
+`magic_ring_route` in tests/reference_trace.rs, against `extracted/reference/*.csv`):
+
+| Route | Branch | Ends | Passes compared |
+|---|---|---|---|
+| [gold_key.route](../routes/gold_key.route) | Three wrong guesses for the gnome (an unknown word counts as one); the gold key opens room 19's door; the stairs (rooms 66 to 68) lead into the clouds; room 56's west edge, with no beanstalk, drops Graham into room 64 | the fall and "Thank you for playing", 113 points | 14,400 |
+| [giant_sling.route](../routes/giant_sling.route) | The sling first, then the giant killed with it (+3, −1 for the pebble) and the chest taken from him | the coronation, 153 points | 16,692 |
+| [magic_ring.route](../routes/magic_ring.route) | After the golden egg, the ring put on and rubbed: invisible until the spell runs out, then the ring is gone (−3) | the coronation, 155 points | 18,451 |
+
+The gold-key route also crosses the thieving dwarf on the stairs, and it reached room
+64, whose script carries the original's data defect: the original prints its fall
+message without the first letter, and so now does the port (see
+[script-format.md](script-format.md#known-data-defect-script-064)).
+
+Writing a branch: copy the max-score route, change the section, and shift the later
+`expect score` lines. Some rooms need explicit steps where the planner's look-ahead
+can't see the way: the stairs' exits are diagonal from the top step (`key 27` for
+up-right, `key 3B` for up-left), and without the shield the giant in room 58 kills
+Graham, so the gold-key route takes the shield first. The `probe` example
+(`cargo run --release --example probe KEYS PASS`) replays a key log and tries each
+direction from that state, which shows where an exit is.
+

@@ -17,7 +17,7 @@ fn compare(trace_file: &str, plan: &[(u8, usize)]) {
     let Ok(trace) = fs::read_to_string(format!("{base}reference/{trace_file}")) else { return };
     let imgs: Option<Vec<Vec<u8>>> = (1..=3).map(|n| fs::read(format!("{base}disk{n}.do")).ok()).collect();
     let Some(imgs) = imgs else { return };
-    let mut w = World::new(Resources::load(&Disks::new(imgs), true).unwrap());
+    let mut w = World::new(Resources::load(&Disks::new(imgs), false).unwrap());
     w.io = Some(Box::new(Scripted::default()));
     w.boot();
 
@@ -74,7 +74,7 @@ fn restart_after_death() {
     let Ok(trace) = fs::read_to_string(format!("{base}reference/death_restart.csv")) else { return };
     let imgs: Option<Vec<Vec<u8>>> = (1..=3).map(|n| fs::read(format!("{base}disk{n}.do")).ok()).collect();
     let Some(imgs) = imgs else { return };
-    let mut w = World::new(Resources::load(&Disks::new(imgs), true).unwrap());
+    let mut w = World::new(Resources::load(&Disks::new(imgs), false).unwrap());
     w.io = Some(Box::new(Scripted::default()));
     w.boot();
     let lines: Vec<Vec<String>> = trace.lines().skip(1).map(|l| l.split(',').map(String::from).collect()).collect();
@@ -124,7 +124,7 @@ fn compare_keys(trace_file: &str, keys_file: &str) {
             Some((p.parse().ok()?, u8::from_str_radix(k.trim(), 16).ok()?))
         })
         .collect();
-    let mut w = World::new(Resources::load(&Disks::new(imgs), true).unwrap());
+    let mut w = World::new(Resources::load(&Disks::new(imgs), false).unwrap());
     w.io = Some(Box::new(Scripted::default()));
     w.boot();
     let lines: Vec<Vec<String>> = trace.lines().skip(1).map(|l| l.split(',').map(String::from).collect()).collect();
@@ -159,6 +159,26 @@ fn max_score_playthrough() {
     compare_keys("max_score.csv", "routes/max_score.keys");
 }
 
+/// The gnome's riddle failed (a gold key instead of the beans), room 19's door, the
+/// stairs into the clouds, and the fall from room 56's west edge into room 64, the room
+/// whose script carries the original's data defect; 200 passes past the death.
+#[test]
+fn gold_key_route() {
+    compare_keys("gold_key.csv", "routes/gold_key.keys");
+}
+
+/// The giant killed with the sling instead of left to fall asleep (153 points).
+#[test]
+fn giant_sling_route() {
+    compare_keys("giant_sling.csv", "routes/giant_sling.keys");
+}
+
+/// The magic ring put on and rubbed: invisibility, then the ring lost (155 points).
+#[test]
+fn magic_ring_route() {
+    compare_keys("magic_ring.csv", "routes/magic_ring.keys");
+}
+
 /// The speed model (engine::cost) against the original's measured cycles per pass over
 /// the whole maximum-score run. Passes where the original waited for a key (disk-swap and
 /// "more" prompts, answered by refemu after a delay) are left out.
@@ -176,7 +196,7 @@ fn speed_model_matches_original() {
             Some((p.parse().ok()?, u8::from_str_radix(k.trim(), 16).ok()?))
         })
         .collect();
-    let mut w = World::new(Resources::load(&Disks::new(imgs), true).unwrap());
+    let mut w = World::new(Resources::load(&Disks::new(imgs), false).unwrap());
     w.io = Some(Box::new(Scripted::default()));
     w.boot();
     let deltas: Vec<f64> = trace.lines().skip(1).map(|l| l.split(',').nth(2).unwrap().parse().unwrap()).collect();

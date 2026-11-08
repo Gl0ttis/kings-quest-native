@@ -50,7 +50,13 @@ struct Driver {
     keep_in: Option<(u8, Vec<[i32; 4]>)>,
     /// Set by `final`: walk into a rectangle that ends the game (deadly zones ignored).
     ignore_deadly: bool,
+    /// Where room scripts place the ego on entry, by (room entered, room left).
+    entries: HashMap<(u8, u8), Vec<Entry>>,
 }
+
+/// A room's entry rule "when v18 == FROM [&& ...] -> position 0 X Y": the other
+/// conditions (variable, equal?, value; v29, the restore flag, left out) and the spot.
+type Entry = (Vec<(usize, bool, u8)>, (i32, i32));
 
 const DIR_KEYS: [u8; 9] = [0, 0x0B, b'\'', 0x15, b'/', 0x0A, b'.', 0x08, b';'];
 const DIRS: [(i32, i32); 9] = [(0, 0), (0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)];
@@ -491,6 +497,14 @@ impl Driver {
                 n
             }
         };
+        // The destination's script may place the ego by the room he comes from.
+        let scripted = self.entries.get(&(dest, self.w.vars[1])).and_then(|list| {
+            list.iter().find(|(conds, _)| conds.iter().all(|&(v, eq, val)| (self.w.vars[v] == val) == eq)).map(|e| e.1)
+        });
+        // Where the script places him, if anywhere: the crossing is good if either that
+        // spot or the plain landing below works (the planner's water model can misjudge
+        // a scripted spot, as in the well).
+        let scripted_ok = scripted.is_some_and(|(sx, sy)| open_area(sx, sy) >= 1500);
         let landing = |x: i32, y: i32| -> (i32, i32) {
             match e {
                 1 => (149 - w, y),
@@ -521,20 +535,26 @@ impl Driver {
             return Err(format!("room {room}: pressing toward edge {e} did not change room"));
         }
         let mut best: Option<(u32, i32, i32)> = None;
-        for y in 0..170 {
-            for x in 0..160 {
-                let d = dist[(y as usize) * 160 + x as usize];
-                if d == u32::MAX || !at_edge(x, y) {
-                    continue;
-                }
-                let (lx, ly) = landing(x, y);
-                if open_area(lx, ly) < 1500 {
-                    continue;
-                }
-                let off_centre = if e <= 2 { (y - 110).abs() } else { (x - 80).abs() } as u32;
-                let cost = d + 3 * off_centre;
-                if best.is_none_or(|b| cost < b.0) {
-                    best = Some((cost, x, y));
+        // Plain landings first; only if none works, rely on the scripted spot.
+        for fallback in [false, true] {
+            if best.is_some() || (fallback && !scripted_ok) {
+                break;
+            }
+            for y in 0..170 {
+                for x in 0..160 {
+                    let d = dist[(y as usize) * 160 + x as usize];
+                    if d == u32::MAX || !at_edge(x, y) {
+                        continue;
+                    }
+                    let (lx, ly) = landing(x, y);
+                    if !fallback && open_area(lx, ly) < 1500 {
+                        continue;
+                    }
+                    let off_centre = if e <= 2 { (y - 110).abs() } else { (x - 80).abs() } as u32;
+                    let cost = d + 3 * off_centre;
+                    if best.is_none_or(|b| cost < b.0) {
+                        best = Some((cost, x, y));
+                    }
                 }
             }
         }
@@ -750,6 +770,68 @@ fn deadly_zones() -> HashMap<u8, Vec<Zone>> {
 }
 
 /// Rooms whose scripts test v4 == 1 (the ego on water).
+/// Entry rules that place the ego by the room he came from: "when v18 == FROM ... ->
+/// A" whose action starts with `position 0 X Y` (the stairs, the beanstalk, the
+/// underground rooms: about 40 rooms).
+fn entry_positions() -> HashMap<(u8, u8), Vec<Entry>> {
+    let mut out: HashMap<(u8, u8), Vec<Entry>> = HashMap::new();
+    for room in 1..=84u8 {
+        let Ok(text) = fs::read_to_string(format!("extracted/scripts/{room:03}.txt")) else { continue };
+        // The first instruction of each action, by label.
+        let mut first: HashMap<String, String> = HashMap::new();
+        let mut label: Option<String> = None;
+        let mut in_actions = false;
+        for l in text.lines() {
+            if let Some(name) = l.strip_prefix("== ") {
+                in_actions = name.starts_with("ACTIONS");
+                continue;
+            }
+            if !in_actions {
+                continue;
+            }
+            if let Some(rest) = l.strip_prefix("  A") {
+                label = Some(format!("A{}", rest.trim_end_matches(':')));
+            } else if let (Some(lb), Some((_, op))) = (&label, l.trim_start().split_once("  ")) {
+                first.entry(lb.clone()).or_insert_with(|| op.trim().to_string());
+            }
+        }
+        for l in text.lines() {
+            let Some((cond, target)) = l.split_once("-> ") else { continue };
+            let Some(cond) = cond.split_once("when ").map(|c| c.1) else { continue };
+            let Some(op) = first.get(target.trim()) else { continue };
+            let w: Vec<&str> = op.split_whitespace().collect();
+            if w.len() != 4 || w[0] != "position" || w[1] != "0" {
+                continue;
+            }
+            let (Ok(x), Ok(y)) = (w[2].parse::<i32>(), w[3].parse::<i32>()) else { continue };
+            let mut from = None;
+            let mut conds = Vec::new();
+            for c in cond.split("&&") {
+                let c = c.trim();
+                let (eq, (v, val)) = match c.split_once("!=") {
+                    Some(t) => (false, t),
+                    None => match c.split_once("==") {
+                        Some(t) => (true, t),
+                        None => continue,
+                    },
+                };
+                let (Ok(v), Ok(val)) = (v.trim_start_matches('v').parse::<usize>(), val.trim().parse::<u8>()) else {
+                    continue;
+                };
+                match (v, eq) {
+                    (18, true) => from = Some(val),
+                    (29, _) => {}
+                    _ => conds.push((v, eq, val)),
+                }
+            }
+            if let Some(f) = from {
+                out.entry((room, f)).or_default().push((conds, (x, y)));
+            }
+        }
+    }
+    out
+}
+
 fn water_rooms() -> Vec<u8> {
     (1..=84u8)
         .filter(|r| fs::read_to_string(format!("extracted/scripts/{r:03}.txt")).is_ok_and(|t| t.contains("v4==1")))
@@ -927,7 +1009,7 @@ fn snapshot(d: &Driver) -> Driver {
 /// changes the random encounters). If that fails, the previous line is retried with
 /// extra waiting too. The result is one ordinary playthrough.
 fn play(disks: &Disks, route: &str) -> (Driver, Option<(usize, String)>) {
-    let mut w = World::new(Resources::load(disks, true).expect("resources"));
+    let mut w = World::new(Resources::load(disks, false).expect("resources"));
     w.io = Some(Box::new(Scripted::default()));
     w.boot();
     let mut d = Driver {
@@ -946,6 +1028,7 @@ fn play(disks: &Disks, route: &str) -> (Driver, Option<(usize, String)>) {
         keep_in: None,
         ignore_deadly: false,
         varlog: std::env::var_os("KQ_VARLOG").map(|_| String::new()),
+        entries: entry_positions(),
     };
     d.log_seen = d.w.log.len();
     for _ in 0..20 {
