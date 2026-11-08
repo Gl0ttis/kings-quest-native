@@ -22,6 +22,7 @@ release, each behaving as that release did: same rules, same timing, same quirks
 
 ```
 Cargo.toml              workspace
+docs/porting-guide.md   how a port is built and checked; start here for a new one
 ports/
   apple2/               the Apple IIe port: crate kq1-apple2 (engine, kq, tools)
     refemu/             crate kq1-apple2-refemu: the reference emulator (measuring only)
@@ -32,7 +33,8 @@ ports/
 .github/                CI, PR title check, release-please, Dependabot
 ```
 
-Each port is self-contained in `ports/<platform>/`. Code shared between ports will go
+Each port is self-contained in `ports/<platform>/`. To start a new one, read
+[docs/porting-guide.md](docs/porting-guide.md). Code shared between ports will go
 into crates under `crates/` when a second port needs it.
 
 ## Playing (Apple IIe)
