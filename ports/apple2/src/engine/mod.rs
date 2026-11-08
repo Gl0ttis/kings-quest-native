@@ -60,6 +60,23 @@ pub struct SavedBg {
     pub data: Vec<u8>,
 }
 
+/// Write a saved block into a picture-sized buffer with its top left at (x, top),
+/// leaving out what falls outside the picture.
+fn put_block(buf: &mut [u8], b: &SavedBg, x: i32, top: i32) {
+    for r in 0..b.h as i32 {
+        let y = top + r;
+        if !(0..HEIGHT as i32).contains(&y) {
+            continue;
+        }
+        for c in 0..b.w as i32 {
+            let xx = x + c;
+            if (0..WIDTH as i32).contains(&xx) {
+                buf[y as usize * WIDTH + xx as usize] = b.data[(r * b.w as i32 + c) as usize];
+            }
+        }
+    }
+}
+
 /// Start-up times from power-on, in seconds (refemu, REFEMU_PCLOG): the engine's screen
 /// set-up ($452C), the title ($4015), initialisation ($4018) and the first pass ($4026).
 pub const BOOT_SCREEN_SETUP: f64 = 5.620;
@@ -328,6 +345,12 @@ impl World {
         let frame = self.render_frame();
         self.io_pause(&frame, BOOT_FIRST_PASS - BOOT_INIT, false);
         self.take_cost();
+        // The first pass starts with its prompt redraw ($4029-$4036), which `cycle` does
+        // at the end of the pass before; for the first pass, here. It is charged to it.
+        let chars = self.cost.chars;
+        self.refresh_prompt();
+        self.cost.next_chars += self.cost.chars - chars;
+        self.cost.chars = chars;
     }
 
     fn io_pause(&mut self, frame: &[u32], secs: f64, loading: bool) {
@@ -405,7 +428,10 @@ impl World {
             }
             self.base = p.buf;
             self.screen = self.base.clone();
+            // $5FA4 clears the whole screen, the text rows too: the copyright line printed
+            // under the logo is gone from the scroll.
             self.text.written = [[false; text::COLS]; text::ROWS];
+            self.text.hires = [[b' '; text::COLS]; text::ROWS];
             // The text is printed character by character; it shows when done.
             let frame = self.render_frame();
             self.io_pause(&frame, print, false);
@@ -458,10 +484,22 @@ impl World {
     }
 
     pub fn cel_dims(&self, slot: usize) -> Option<(u8, u8)> {
+        let c = self.actor_cel(slot)?;
+        Some((c.width, c.height))
+    }
+
+    /// The cel the engine draws for an actor. An animation can step the cel number one
+    /// past the end of its loop (the castle doors, view 9, go 4 -> 5 of 5 cels for a
+    /// pass). A lookup of that cel would read past the cel table (its entry is the first
+    /// cel's header), but the original still shows the last cel (refemu, pass 6571 of
+    /// the max-score route): the drawing pointer, actor field $16, set only by aux
+    /// $0A13/$0A25, stays on the cel last selected. So the last cel of the loop is used.
+    pub fn actor_cel(&self, slot: usize) -> Option<&crate::view::Cel> {
         let a = &self.actors[slot];
         let v = self.res.views.get(self.actor_view[slot]? as usize)?.as_ref()?;
-        let c = v.loops.get(a[f::LOOP] as usize)?.cels.get(a[f::CEL] as usize)?;
-        Some((c.width, c.height))
+        let l = v.loops.get(a[f::LOOP] as usize)?;
+        let c = a[f::CEL] as usize;
+        l.cels.get(c).or_else(|| if c == l.cels.len() { l.cels.last() } else { None })
     }
 
     /// aux $0AAE ($4A24): load $F2/$F3 with the current cel's size.
@@ -730,10 +768,56 @@ impl World {
     }
 
     /// $4DD7: erase every on-screen actor.
+    ///
+    /// aux $15F5 puts the saved block back at the actor's current position (`[$18]`,
+    /// `[$19]`), not where it was saved from (`[$1A]`, `[$1B]` at the time). The two are
+    /// the same unless a script moved the actor while it was on screen (the goat at the
+    /// troll's bridge, room 25). Then the original writes the background a little off,
+    /// and leaves the part of the sprite the block no longer covers in the picture, until
+    /// the room is drawn again. Its buffer holds the sprites, as the port's `screen`
+    /// does, so the restores are replayed on a copy of that, in slot order, and the
+    /// result is kept where an actor had moved.
     pub fn restore_all(&mut self) {
+        let mut live: Option<Vec<u8>> = None;
+        let mut moved: Vec<(usize, usize, usize, usize)> = Vec::new();
         for s in 0..(self.g.actor_count as usize).min(MAX_ACTORS) {
-            if self.participates(s) {
-                self.restore_bg(s);
+            if !self.participates(s) {
+                continue;
+            }
+            self.restore_bg(s);
+            let Some(b) = &self.saved_bg[s] else { continue };
+            let (x, y) = (self.actors[s][f::X] as i32 - 10, self.actors[s][f::Y] as i32 - 3);
+            let top = y - b.h as i32 + 1;
+            if (x, top) == (b.x as i32, b.top as i32) && live.is_none() {
+                continue;
+            }
+            let buf = live.get_or_insert_with(|| {
+                let mut l = if self.screen.len() == self.base.len() { self.screen.clone() } else { self.base.clone() };
+                // The restores so far, which the original made on this buffer too.
+                for t in 0..s {
+                    if self.participates(t) {
+                        if let Some(o) = &self.saved_bg[t] {
+                            let (tx, ty) = (self.actors[t][f::X] as i32 - 10, self.actors[t][f::Y] as i32 - 3);
+                            put_block(&mut l, o, tx, ty - o.h as i32 + 1);
+                        }
+                    }
+                }
+                l
+            });
+            put_block(buf, b, x, top);
+            if (x, top) != (b.x as i32, b.top as i32) {
+                moved.push((b.x, b.top, b.w, b.h));
+                if x >= 0 && top >= 0 {
+                    moved.push((x as usize, top as usize, b.w, b.h));
+                }
+            }
+        }
+        if let Some(l) = live {
+            for (x, top, w, h) in moved {
+                for r in top..(top + h).min(HEIGHT) {
+                    let (a, z) = (r * WIDTH + x.min(WIDTH), r * WIDTH + (x + w).min(WIDTH));
+                    self.base[a..z].copy_from_slice(&l[a..z]);
+                }
             }
         }
     }
@@ -947,11 +1031,7 @@ impl World {
     /// kept, except where a priority-15 pixel takes the priority found below it.
     /// Returns true if any pixel was drawn.
     pub fn draw_cel(&self, buf: &mut [u8], slot: usize, x: u8, y: u8, prio: u8, permanent: bool) -> bool {
-        let Some(v) = self.actor_view[slot].and_then(|v| self.res.views.get(v as usize).cloned().flatten()) else {
-            return false;
-        };
-        let a = &self.actors[slot];
-        let Some(c) = v.loops.get(a[f::LOOP] as usize).and_then(|l| l.cels.get(a[f::CEL] as usize)) else {
+        let Some(c) = self.actor_cel(slot) else {
             return false;
         };
         let top = y.wrapping_sub(c.height).wrapping_add(1);

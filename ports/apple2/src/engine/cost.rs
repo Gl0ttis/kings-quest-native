@@ -217,6 +217,9 @@ impl World {
         }
         self.note(format!("disk swap: {} -> {want}", self.drive));
         if self.swap_prompts {
+            // $6077: the disk number goes into $702C too, so the next pass redraws the
+            // prompt under the message.
+            self.text.need_prompt = true;
             let mut msg = Vec::new();
             if want == 10 {
                 msg.extend(self.engine_text(0x6D05));
@@ -233,9 +236,7 @@ impl World {
     }
 
     fn cel_ref(&self, s: usize) -> Option<&crate::view::Cel> {
-        let v = self.res.views.get(self.actor_view[s]? as usize)?.as_ref()?;
-        let a = &self.actors[s];
-        v.loops.get(a[f::LOOP] as usize)?.cels.get(a[f::CEL] as usize)
+        self.actor_cel(s)
     }
 }
 

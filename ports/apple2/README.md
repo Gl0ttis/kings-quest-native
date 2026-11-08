@@ -99,6 +99,25 @@ hold game data: `save_disk.rs` (`original/disk4.nib` and the original's save dis
 (`extracted/reference/textpage_speak_king.txt`, a dump of the original's text
 screen).
 
+## Comparing the screen with the original
+
+The traces compare the game's state; `framediff` compares what is on screen, dot by
+dot, on every pass. Record the original with refemu, then replay the same key log in
+the port:
+
+```
+cargo run --release -p kq1-apple2-refemu -- original/disk1.nib original/disk2.nib original/disk3.nib     --keys routes/max_score.keys --passes 17340 --frames orig.frames
+cargo run --release --example framediff -- routes/max_score.keys orig.frames 17339 framediff-out
+```
+
+It prints each run of differing passes and writes the worst frame of each as an image
+(the original, the port, and the differing dots in red). `FRAMEDIFF_DUMP=p,…` adds
+images and the port's actor table for those passes; `FRAMEDIFF_CROP=x0,y0,x1,y1`
+zooms the images into a region. `FRAMEDIFF_SWAP=1` shows the disk-swap prompts, as
+`kq --swap-prompts` does. With it, the screen matches the original on every pass of
+every recorded route; without it, only the passes where the original asks for another
+disk ("Please insert side B and press RETURN.") differ.
+
 ## Documentation
 
 - [docs/port-plan.md](docs/port-plan.md): goals, milestones, what was checked and how,
