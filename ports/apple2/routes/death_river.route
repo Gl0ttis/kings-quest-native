@@ -1,0 +1,6 @@
+# Death route: the river bank in room 40. Standing on the water (priority 0 under all of
+# Graham's bottom row, v4 = 1) in the top-left corner, he slips into the river.
+# Run with: kqroute extracted/disk1.do extracted/disk2.do extracted/disk3.do routes/death_river.route
+room 40
+final 11 43 13 47
+dies 600
