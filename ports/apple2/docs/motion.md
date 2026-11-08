@@ -32,11 +32,14 @@ the ego's direction is forced to 0.
 ## Actor update (`$4BF0`)
 
 1. **Player control.** While the player has control (`$67 = 0`), the keyboard
-   direction is copied into the ego's field `$0F`. If the ego's cycle mode is
-   below 2, it becomes 1 (hold the cel) when the ego is stopped and 0 (animate)
-   when it is moving.
+   direction is copied into the ego's field `$0F`, if the ego's direction `$10` is
+   0 or already equals it (`$4C10`). Then, whatever `$67` is, if the ego's cycle
+   mode is below 2 it becomes 1 (hold the cel) when the ego is stopped and 0
+   (animate) when it is moving; `$68 != 0` forces 0.
+   - A view-0 ego under player control in cycle mode 0, whose `$0F` (below 9)
+     differs from `$10`, has its direction cleared (`$4C5E`–`$4C85`).
 2. **Updates.** Every actor that is in room `v1` and whose delay counter `[$0A]`
-   has reached 0 is updated by `$60DD`:
+   has reached 0 is updated by `$60DD`, from the highest slot down (`DEX/BPL`):
    - **Direction.** If `[$0F]` is between 1 and 8, it becomes the direction
      `[$10]`. If it is `$0C` or above, the motion-mode handler picks the
      direction (`$5531`).
@@ -99,11 +102,17 @@ ignore barriers. That flag is set by `obj_field4_on` (`$1A`).
 | 2 | previous cel; at cel 0, set `v8 = 1` and switch to mode 1 |
 | 3 | next cel; at the last cel, set `v8 = 1` and switch to mode 1. For the ego, also give control back to the player. |
 | 4 | switch to mode 3 (a start delayed by one cycle) |
-| 5 | play the ego's special view to its end, then restore the ego's normal view |
-| 6, 7 | the steps of mode 5 that restore and reset the ego |
+| 5 | advance to the last cel of the ego's special view; then restore view 0, set `v8 = 1`, step right by `$73` and switch to mode 7 |
+| 6 | step left by `$73`, then switch to mode 5 |
+| 7 | give control back to the player, switch to mode 1, clear the direction and flags, reload loop 0's header |
+
+`$73` (from `ego_special_view`, `$2D`) is the size of the one step after the special
+view.
 
 `play_loop_once` (`$16`) uses modes 4 then 3. `play_loop_reverse` (`$17`) uses
-mode 2. Both clear `v8` first, so scripts can wait for `v8` to be set.
+mode 2 and clears `v8` first, so scripts can wait for `v8` to be set.
+`play_loop_once` means to clear `v8` too, but clears `v0` instead (see
+[script-format.md](script-format.md)), so a script must clear `v8` itself.
 
 ## Motion modes (`[$0F]` ≥ `$0C`, table `$6AE4`, confirmed)
 
@@ -120,8 +129,10 @@ mode 2. Both clear `v8` first, so scripts can wait for `v8` to be set.
 position from the previous cycle (`$7020`/`$7021`). If the actor hasn't moved,
 it walks in a random direction for a few cycles to get round the obstacle.
 
-**Arrival (`$55F8`).** The actor's cel is reset, and the ego gives control back
-to the player. For modes `$0C` and `$0F`, `v6` is set to the view number;
+**Arrival (`$55F8`).** The actor's step sizes and delay are reloaded from loop 0's
+header, keeping its loop and cel (aux routine `$0C`; this is the port's reading of
+it, which undoes the step of 4 set by `ego_move_to_x`/`_y`), and the ego gives
+control back to the player. For modes `$0C` and `$0F`, `v6` is set to the view number;
 otherwise `v8 = 1`. The motion mode and direction are then cleared.
 
 **Scripts.** Scripts wait on these flags. For example, room 10's cycle rules
@@ -163,14 +174,15 @@ high byte advances only when the carry happened to be set on entry; otherwise th
 low byte wraps within its page. The pointer starts at `$4011` and goes back there
 when the game is initialised (`$5D4C`).
 
-There are two call sites. The carry on entry, traced through each path, is:
+There are two call sites: `$4BBD` (room change) and `$5F4A` (a random direction),
+which is reached three ways. The carry on entry, traced through each path, is:
 
 | Call | Carry on entry |
 |---|---|
 | Room change, `v14 = random & 1` (`$4BBD`) | 0 from the scripts: the edge path ends in `CLC; ADC #5`, and the other path inherits the action interpreter's `ASL` of an opcode below `$80`. 1 from restore when the ego left by no edge (`v3 = 0`): restore reaches `$4B19` straight from the loop at `$48DF`, which ends with carry set. Found by restoring a save in refemu; the port had restored with carry clear, so `v14` and the RNG pointer differed after the next room change. |
 | Wander, picking a direction (`$5F2B`) | 0, left by the motion dispatch's `SBC`/`ASL` |
 | Re-pick after a blocked trial move (`$5F6E`) | 0 if the picture blocked the move (the XFER return clears it); 1 if the second-edge-contact rule blocked it (an equal compare); otherwise the carry it entered with |
-| Chaser's stuck detour (`$4413`) | 1 on the first try, after two equal compares. A retry has 1 if the duration was 11 or more, or bit 1 of the old timer if the duration was 0 (`LSR LSR`). |
+| Chaser's stuck detour (`$4413`) | 1 on the first try, after two equal compares. A retry happens only when `$6F >> 2` is 11 or more, so its carry is also 1 (`$6F` is always a multiple of 4, at least 4). |
 
 **Confirmed against the original** with [refemu](../refemu/README.md). Over a
 900-pass walk through rooms 1, 2, 15 and 16, every call came from `$4BBD` with
@@ -204,7 +216,6 @@ pass (`tests/reference_trace.rs`, `fall_into_the_moat`).
 - The exact collision rules for priorities 1 and 15 in aux `$12C7` (which flags
   enable water and the conditional barriers).
 - How the erase and redraw order (`$4DD7`–`$4E69`) handles overlapping actors.
-- Cycle modes 6 and 7, and how `$73` (from `ego_special_view`) is used.
 
 ## The joystick (`$4817`, `$4846`)
 
@@ -221,11 +232,18 @@ only, so the thresholds survive a restart.
    Button 1 (`$C062`, Solid-Apple) sets `v17`. Either clears `$1D`, the "more" line
    count. The global script turns `v16` into `v27` (swim) and `v17` into `v20`
    (jump or duck).
-2. **Direction.** `$74 = 0`. If the joystick is on (`$F5 != 0`), each axis falls in a
-   zone: 0 below the low threshold, 2 at or above the high one, 1 between. `$74` is
+2. **Direction.** `$74 = 0`. If the joystick is on (`$F5 != 0`) and this is the main
+   loop's poll (`$F8 = 1`, set only around the `$52A8` call at `$4039`), each axis
+   falls in a zone: 0 below the low threshold, 2 at or above the high one, 1 between. `$74` is
    the table at `$67F4`, indexed by `3 * x zone + y zone`: 8, 7, 6, 1, 0, 5, 2, 3, 4
    (up-left, left, down-left; up, none, down; up-right, right, down-right). A non-zero
    direction clears `v31`.
+
+The redraw polls the keyboard four more times (`$5D33`–`$5D45`, `$F8 = 0`): those
+calls read the buttons and set `$74 = 0`, and the main poll sets `$74` again before
+it is next used. The port reads the joystick once a pass, at the main poll, so a
+button press shorter than a pass that falls only within the redraw is seen by the
+original and not by the port.
 
 The port: `World::calibrate_joystick` and `poll_joystick` (src/engine/cycle.rs), with
 the front end supplying paddle counts through `IoImpl::joystick`. `kqplay` reads any

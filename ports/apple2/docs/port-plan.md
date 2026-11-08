@@ -9,8 +9,8 @@ Apple II King's Quest as the original does.
   translation. Each engine subsystem is reimplemented from its documented
   behaviour.
 - **The original disks supply the game.** The port ships an engine only. At run
-  time it reads the user's own disk images (`.nib`, or the decoded
-  `.do`/`.po`). It never embeds or redistributes pictures, sprites, scripts or
+  time it reads the user's own disk images (`.nib`, or decoded DOS-order
+  `.do`/`.dsk`). It never embeds or redistributes pictures, sprites, scripts or
   text.
 - **The game logic runs unchanged.** The 81 original scripts drive the game
   through a native interpreter. No game logic is rewritten by hand.
@@ -22,23 +22,24 @@ Apple II King's Quest as the original does.
 ## Where we are
 
 The engine is complete enough to play the whole game. A maximum-score playthrough
-(158 points, 17,332 passes from power-on to the coronation) runs identically in the
-port and in the original, pass by pass (see [route.md](route.md) and M6 below).
+(158 points, a 17,332-pass route from power-on to the coronation) runs identically in
+the port and in the original, pass by pass (see [route.md](route.md) and M6 below).
 
 All the static content is decoded, checked, and has a Rust reader:
 
 | Area | Status | Code | Docs |
 |---|---|---|---|
 | Disk decode (6-and-2 GCR, checksums) | Done; all 2,240 sectors valid | `nib.rs`, `nibdecode` | README |
-| Resource layout and directories | Done; 240 resources, no overlaps | `kq.rs`, `kqextract` | [disk-layout.md](disk-layout.md) |
+| Resource layout and directories | Done; 259 resources, no overlaps | `kq.rs`, `kqextract` | [disk-layout.md](disk-layout.md) |
 | Pictures | Done; 83 render correctly | `pic.rs`, `kqpic` | [picture-format.md](picture-format.md) |
-| Views (sprites) | Done; 69 views / 533 cels render correctly | `view.rs`, `kqview` | [view-format.md](view-format.md) |
-| Script structure and opcodes | Done; 81 scripts, 3,316 rules and 2,793 actions parse; 67 of 68 opcodes named | `script.rs`, `kqscript` | [script-format.md](script-format.md) |
+| Views (sprites) | Done; 88 views / 674 cels render correctly | `view.rs`, `kqview` | [view-format.md](view-format.md) |
+| Script structure and opcodes | Done; 81 scripts, 3,316 rules and 2,793 actions parse; all 68 opcodes named | `script.rs`, `kqscript` | [script-format.md](script-format.md) |
 | Vocabulary | Done; 345 entries | `vocab.rs` | [script-format.md](script-format.md) |
 | Movement and animation | Done | `engine/cycle.rs` | [motion.md](motion.md) |
 | Script VM, text, parser, save | Done | `engine/` | [text-and-parser.md](text-and-parser.md), [save-format.md](save-format.md) |
 
-The only third-party dependency is `minifb`, for the window in `kqplay`.
+The only third-party dependency is `minifb`, for the window in `kqplay`; it is
+optional (feature `player`), so the engine library has none.
 
 ## What is still unknown
 
@@ -51,7 +52,6 @@ difference.
 |---|---|
 | Collision rules for priorities 1 and 15: which flag combinations enable water and the conditional barriers, beyond those the scripts use | aux `$12C7`–`$1373` |
 | The erase and redraw order for overlapping actors in every case | engine `$4DD7`–`$4E69` |
-| Cycle modes 6 and 7, and how `$73` (from `ego_special_view`) is used | `$6117` table |
 | The purpose of `v31` | text and parser code |
 
 **Sound.** The only sound is the Apple ROM bell (`$FBDD`, called at `$6618`): single
@@ -81,24 +81,26 @@ disk images ──► kq (resources) ──► pic / view / script / vocab   (do
                   ┌──────────────────────┼──────────────────────┐
                   ▼                      ▼                      ▼
              renderer               text / parser            save / load
-       (140×160 buffer → RGB,       (input line,           (files; disk 4
-        double-wide pixels)          messages)              optional)
+       (140×160 buffer → RGB,       (input line,          (files, or an
+        double-wide pixels)          messages)          original save disk)
                   │                      │
-                  └──────── platform (window, keyboard, timer) ────────┘
+         └──── platform (window, keyboard, joystick, sound, pacing) ────┘
 ```
 
 **Design rules:**
 
 - **The world state is plain data.** A struct holds the 256 variables, the
-  150 object records, the actor records, the picture buffer and the loaded
+  object table (111 records and the names; the port keeps it as 150 eight-byte
+  rows), the actor records, the picture buffer and the loaded
   views. This makes a save just a copy of that data, and lets the tests check
   it.
 - **The script VM works on the raw script bytes, not on a parsed tree.** The
   rule matcher's skip-by-scanning behaviour depends on the byte layout. The
   existing parser stays as a disassembler and validator only.
-- **Opcodes are matched exhaustively.** Each opcode is one function, named
-  from `op_name` and checked against `OPERANDS`. Adding behaviour is a
-  per-opcode task, and an unimplemented opcode fails loudly in debug builds.
+- **Opcodes are matched exhaustively.** One dispatcher (`World::exec`, src/engine/vm.rs)
+  has an arm per opcode, named from `op_name` with operand counts from
+  `OPERANDS`. An opcode without an arm is logged as "unimplemented opcode"; none
+  is, in any room.
 - **The engine is deterministic.** Given the disk images, a starting state and
   a list of key presses per cycle, a run always produces the same states. This
   is the basis for testing (below).
@@ -153,14 +155,13 @@ that touch the screen or text are routed to a recording sink for now.
 - all cycle modes and motion modes (chase, approach, follow with patrol, wander, move-to)
 - the exact draw-order sort
 
-`kqplay` runs it in a window at a fixed cycle rate, adjustable with `+`/`-`, and prints messages to the console. These were checked by headless runs:
+`kqplay` runs it in a window, at first at a fixed cycle rate; it now runs at the original's speed (M6), with `--rate N` for a fixed rate and F11/F12 or `--speed N` to scale it. These were checked by headless runs:
 - walking between rooms 1 → 16 → 9, through the horizon and right-edge exits, with the entry positions from the edge table
 - obstacles stopping Graham: a tree base in his own priority band, and priority-15 lines
 - walking into room 1's moat, which plays the scripted alligator death and the global "Thank you for playing" ending
 - the gnome in room 40 wandering on his own
 
-The RNG carry model, the original's pacing and the `$4165` re-fit, once open here, were done in M6. Still open in M3:
-- **The joystick** is supported (2026-11-08): see [motion.md](motion.md#the-joystick-4817-4846).
+The RNG carry model, the original's pacing and the `$4165` re-fit, once open here, were done in M6, and the joystick on 2026-11-08 (see [motion.md](motion.md#the-joystick-4817-4846)). Nothing remains open in M3.
 
 The original plan for M3 was:
 
@@ -208,7 +209,7 @@ entries resolve, and every message in the scripts can be displayed.
 
 ### M5: Save, restore, restart (done 2026-11-08)
 
-Saves are files with the original's data blocks in the original layout. The original letter prompts and messages are used, and restoring re-enters the room the way the original does. Restart works through the original "start over?" prompt. Three integration tests cover a save and restore round trip, an empty slot, and restart. See [save-format.md](save-format.md). Reading and writing real disk-4 save images is still optional and not done; the shared layout makes it a format adapter.
+Saves are files with the original's data blocks in the original layout. The original letter prompts and messages are used, and restoring re-enters the room the way the original does. Restart works through the original "start over?" prompt. Three integration tests cover a save and restore round trip, an empty slot, and restart. See [save-format.md](save-format.md). Saves can also go to an original save-disk image (`--savedisk`; see the optional items in M6).
 
 The original plan for M5 was:
 
@@ -220,10 +221,10 @@ format work.
 - **Done when:** saving and restoring at any point gives an identical state
   trace afterwards.
 
-### M6: Fidelity pass (in progress)
+### M6: Fidelity pass (done 2026-11-08)
 
 [refemu/](../refemu/README.md) is a reference Apple IIe built only as a measuring tool, with no Apple ROM. It boots the original from the `.nib` files and records cycles per main-loop pass and per-pass state traces. Its first results:
-- The original's speed varies by room, from about 7.2 to 11.5 passes per second.
+- The original's speed varies: about 7.2 passes per second in room 1 and 11.5 in room 8 (busy scenes were later measured as low as about 3.7; see the playtest below).
 - Movement matches the port pass for pass.
 - Pass time is mostly screen updates, cel drawing and rule matching.
 
@@ -238,7 +239,7 @@ format work.
   - picture pixels plotted
   - room changes
 
-  The costs per event were refitted on 2026-11-08 over the whole maximum-score run, port counts against the original's measured cycles. Over 17,292 passes (leaving out the passes where the original waits for a key), the median error is 1.1% and 90% of passes are within 3.2%. The heaviest 10% of passes (busy scenes like the condor and the leprechauns) have a 0.7% median error, and the whole 3,615-second run comes out 0.4% short. `kqplay` paces passes this way by default; `--rate N` gives a fixed rate, and `--fast-loads` drops the loading time. With this, a room change takes about 13 seconds, as on a real Apple IIe. The test `speed_model_matches_original` keeps it there.
+  The costs per event were refitted on 2026-11-08 over the whole maximum-score run, port counts against the original's measured cycles. Over 17,299 passes (leaving out pass 1 and the passes where the original waits for a key), the median error is 1.1% and 90% of passes are within 3.2%. The busiest 10% of passes by the original's duration (scenes like the condor and the leprechauns) have a 0.8% median error, and the whole 3,616-second run comes out 0.4% short. `kqplay` paces passes this way by default; `--rate N` gives a fixed rate, and `--fast-loads` drops the loading time. With this, a room change takes about 10 to 13 seconds, as on a real Apple IIe. The test `speed_model_matches_original` keeps it there.
 
   Before the refit, the port's counts were brought in line with the original's, pass by pass:
   - the prompt clears its line by drawing 40 spaces, and is drawn at the start of the next pass
@@ -248,12 +249,12 @@ format work.
 
   What's left: disk reads vary with the head position and rotation, which isn't modelled (a median of 3.9% on loading passes), and the original's swap prompts ("Please insert side B") have no counterpart in the port.
 - **Random numbers.** The carry is modelled at every call site, and this is confirmed against the original (see [motion.md](motion.md#random-numbers-65f1-confirmed)).
-- **Start-up.** The title sequence (`$432F`: the Sierra logo, then the title and credits, each shown for about 3.8 s or until a key is pressed) and the initialisation (`$45A1`) are implemented. Initialisation runs the global rules once before the first pass, so room 1 starts with the pass counter at 0, as in the original. Restart re-runs the initialisation and abandons the rest of the pass.
+- **Start-up.** The title sequence (`$432F`: the Sierra logo, then the title and credits, each shown for 3.84 s or until a key is pressed) and the initialisation (`$45A1`) are implemented. Initialisation runs the global rules once before the first pass, so room 1 starts with the pass counter at 0, as in the original. Restart re-runs the initialisation and abandons the rest of the pass.
 - **The ego re-fit (`$4165`)** is implemented (see [motion.md](motion.md)).
 - **Picture fill.** The fill is now a literal transcription, including a quirk in its leftward scan. The original's whole picture buffer matches the port's byte for byte in rooms 1 and 16, and the screen colours match on every dot.
 - **Trace comparison.** For 300 passes, from start-up through two room changes, the port and the original agree on room, ego position, direction and all 223 variables on every pass. One bug was found and fixed along the way: `draw` must redraw every sprite at once (`$4E42`), which updates `v7`. [tests/reference_trace.rs](../tests/reference_trace.rs) checks this against traces recorded from the original, and a second case covers falling into the moat (85 passes).
 
-- **Maximum-score playthrough.** [routes/max_score.route](../routes/max_score.route), derived from the room scripts and played by the `kqroute` autopilot, scores 158 of 158. Its key log replayed in the original gives the same trace on all 17,332 passes (`max_score_playthrough`). Following it found four engine fixes: per-actor background save and restore, the self-modified `JSR` operands that the RNG reads, the `$F2` width that sets the condor's turning point, and arrival clobbering the motion registers. See [route.md](route.md).
+- **Maximum-score playthrough.** [routes/max_score.route](../routes/max_score.route), derived from the room scripts and played by the `kqroute` autopilot, scores 158 of 158. Its key log replayed in the original gives the same trace on every pass; the test (`max_score_playthrough`) compares all 17,339 recorded passes. Following it found four engine fixes: per-actor background save and restore, the self-modified `JSR` operands that the RNG reads, the `$F2` width that sets the condor's turning point, and arrival clobbering the motion registers. See [route.md](route.md).
 - **The parser's self-modified operand (`$523F`)** is tracked, and its value matches the original after each typed line ([motion.md](motion.md)).
 - **Death and restart.** Dying in the moat, pressing 5 and answering Y, then walking through rooms 16 and 9 matches the original for 375 passes (`restart_after_death`). This found one bug: a restart chosen from a typed command went on to set `v28` and `v13`, which the original never does, because its restart resets the stack.
 
@@ -264,7 +265,7 @@ format work.
 - **Human playtest (2026-11-08).** The whole max-score replay was watched in `kqplay` at the original's speed, start to coronation, with no text, sprite or colour problems seen. Findings and what came of them:
   - *The game froze while the window was dragged.* Windows stops a window's thread during a drag or resize. The engine now runs on its own thread. A hook in front of minifb's window procedure does all the painting, and a timer keeps it painting during a drag or resize. Verified by holding the title bar: room 1 kept drawing and Graham appeared.
   - *Full screen.* Alt+Enter (or `--fullscreen`) toggles a borderless full-screen window, with the picture kept in shape between black bars. The first version drew the picture at window size in a corner. minifb missed the size change because `--fullscreen` resized the window before minifb's first update, and its stretch was wrong under display scaling anyway. Alt+Enter also typed a RETURN, because minifb turns Alt+key into characters. The hook now catches Alt+Enter itself and drops every Alt+key character. kqplay is per-monitor DPI aware, so sizes are in real pixels (on a 4K monitor at 150%, the picture is 3150×2160, sharp), and the window starts at `--scale` (default 2) times the frame, times the display scale.
-  - *Load pauses showed the finished room.* The original plots pictures straight to the screen, so during a room change it shows the old room while the disk turns, then the screen goes white and the new picture appears line by line and fill by fill; the sprites come at the end. refemu screenshots of the change from room 56 to 57 at 1.0M, 2.7M, 5.0M and 10.3M cycles into the pass show exactly that. The port showed each pass's frame at the start of its time, so a load showed the finished room for 10 s. Now each pass's frame is shown when its time is up, and a pass that draws a picture replays the drawing: the engine records each draw (`World::pic_draws`: the work done before it, the buffer drawn onto, and the plot count), and `pic::draw_partial` gives the buffer after any number of plots. Text rows stay blank meanwhile, as in the original. At matching points the port's picture is within a few fills of the original's, since lines and fills share one plot cost. The title pictures are not replayed yet. With fast loads the drawing is instant.
+  - *Load pauses showed the finished room.* The original plots pictures straight to the screen, so during a room change it shows the old room while the disk turns, then the screen goes white and the new picture appears line by line and fill by fill; the sprites come at the end. refemu screenshots of the change from room 56 to 57 at 1.0M, 2.7M, 5.0M and 10.3M cycles into the pass show exactly that. The port showed each pass's frame at the start of its time, so a load showed the finished room for 10 s. Now each pass's frame is shown when its time is up, and a pass that draws a picture replays the drawing: the engine records each draw (`World::pic_draws`: the work done before it, the buffer drawn onto, and the plot count), and `pic::draw_partial` gives the buffer after any number of plots. Text rows stay blank meanwhile, as in the original. At matching points the port's picture is within a few fills of the original's, since lines and fills share one plot cost. The title pictures are drawn the same way (below). With fast loads the drawing is instant.
   - *Slowdown with several moving sprites (the condor, the goat).* This is the original: Graham moves a fixed step per pass, and passes take longer as more cels are decoded and copied. In the original's trace, passes with little sprite work run at 11.3 per second, with 300+ cel nibbles at 5.9, and with 600+ at 3.7. The giant's room averages 3.8. The speed model follows this to within about 1%.
   - *The giant stands again after falling asleep.* This is the original: room 58's exit rule (A01AC) resets `v186`, so on return the giant is drawn awake (actor 37, without his chest) and cycles in place. The original's screen at pass 15200 matches the port's.
   - *No sound.* The console bell made no sound in a terminal. `kqplay` now plays the rebuilt bell (see Sound above). F8 or `--mute` turns it off.
@@ -320,6 +321,17 @@ The original plan for M6 was:
 
 ## Testing
 
+What exists: unit tests in the library (decoding, the parser against the original
+vocabulary, partial picture drawing, the display options, the bell's timing) and
+integration tests in tests/ that run the original's scripts and compare with traces
+recorded from the original in refemu: reference_trace.rs (walks, the moat, the
+max-score playthrough, death and restart, the speed model), save_restore.rs,
+save_disk.rs, joystick.rs and text_page.rs. They skip themselves without the disk
+images. Golden-image hashes and per-opcode unit tests (below) were not built; the
+reference traces cover that ground.
+
+The original plan for testing was:
+
 - **Data tests (existing).** Every resource decodes, and every structural
   check passes. Keep these as `cargo test` cases that run when the disk images
   are present, and skip them otherwise.
@@ -336,12 +348,11 @@ The original plan for M6 was:
   variables and actor positions each cycle while the original runs on an Apple
   II emulator, then comparing with the port's trace. This uses an emulator only
   as an external measuring tool and doesn't affect the no-emulation rule for
-  the port. It needs an emulator with memory watch or trace support on your
-  machine.
+  the port. (Built as refemu.)
 
 ## Decisions
 
-All four recommendations below were accepted on 2026-11-07.
+All four recommendations below were accepted on 2026-11-07; the outcomes follow each.
 
 1. **Game speed.** The original has no speed control. A cycle takes as long as
    the 6502 needs, so busy screens run slower, and the script timers count
@@ -353,6 +364,9 @@ All four recommendations below were accepted on 2026-11-07.
    
    **Recommendation:** (a) first, with a speed setting. Consider (b) only if
    the timing of particular puzzles needs it.
+
+   **Outcome (2026-11-08):** (b), the default (src/engine/cost.rs), fitted to the
+   original measured in refemu; (a) remains as `--rate N`.
 2. **Script 064's header defect.**
    - **(a)** Reproduce it: the parser rules start one byte late and the first
      message loses its "S". This means modelling what lies past the end of the
@@ -369,17 +383,23 @@ All four recommendations below were accepted on 2026-11-07.
    save-format work.
    
    **Recommendation:** the port's own files first.
+
+   **Outcome (2026-11-08):** both: the port's files by default, original save disks
+   with `--savedisk`.
 4. **Display.** Choose the scaling and aspect ratio. Each logical pixel is 4
    double hi-res dots wide and one scanline tall, so drawing it as 2×1 gives
    about the original 4:3 shape. Also choose whether to offer an option that
    imitates NTSC colour fringing.
+
+   **Outcome:** 2×1 (scaled with `--scale` and to the window, keeping the shape);
+   NTSC fringing is an option (`--ntsc`, F7).
 
 ## Risks
 
 | Risk | Mitigation |
 |---|---|
 | The scripts depend on undocumented engine quirks (scanning, 8-bit wraparound, carry-dependent RNG) | The VM runs on raw bytes, and quirks are reproduced on purpose and tested. Reference traces can be used for confirmation. |
-| Timing-sensitive puzzles behave differently at a fixed speed | Decision 1; replay tests that measure in cycles, not seconds |
+| Timing-sensitive puzzles behave differently at a fixed speed | Decision 1 (resolved: the original's speed is modelled); replay tests that measure in passes, not seconds |
 | Gaps in understanding found during implementation | Each milestone starts with a short reverse-engineering pass on its unknowns, recorded in docs/ |
 | Only one dump of the disks exists | Everything is validated against internal consistency, so a second source is optional |
 | Legal: game content | The port reads the user's own disk images and never bundles content |

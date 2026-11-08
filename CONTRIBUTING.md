@@ -15,18 +15,20 @@ disassemblies or saves. `.gitignore` covers the usual places and file types; che
 
 ## Checks
 
-Every pull request runs (`.github/workflows/ci.yml`), on Windows and Linux:
+Every pull request runs (`.github/workflows/ci.yml`) `cargo fmt --all --check`, and on
+Windows and Linux:
 
 ```
-cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo build --workspace --all-targets --locked
 cargo test --workspace --locked
+cargo test -p kq1-apple2 --no-default-features --lib --locked
 ```
 
 CI has no game data, so the tests that need it skip themselves there. Run
-`cargo test --workspace` locally with the disks in place before opening a pull
-request that touches an engine.
+`cargo test --workspace` locally with the game data in place (for the Apple IIe:
+`extracted/disk1.do` to `disk3.do`, see its README) before opening a pull request
+that touches an engine.
 
 ## Commits and pull requests
 
@@ -72,7 +74,8 @@ versions and changelogs (`ports/<port>/CHANGELOG.md`). Merging that pull request
 tags the release.
 
 A change under `ports/apple2/refemu/` releases `kq1-apple2-refemu` only; anything
-else under `ports/apple2/` releases `kq1-apple2`.
+else under `ports/apple2/` releases `kq1-apple2`, and with it `kq1-apple2-refemu`,
+which depends on it (release-please's `cargo-workspace` plugin bumps dependents).
 
 ## Adding a port
 

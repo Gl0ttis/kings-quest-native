@@ -15,13 +15,14 @@ marked as engine addresses.
 
 ## Loading (confirmed)
 
-- **Where views go.** Views load into aux memory using a bump allocator
-  (`$47BB`), at `$7022` (from `$9800`) or `$6F06` (from `$D000`).
+- **Where views go.** Views load into aux memory using a bump allocator (engine
+  `$47BB`), through the pointers at engine `$7022` (starting at aux `$9800`) or
+  engine `$6F06` (starting at aux `$D000`).
 - **Sizes come from a table.** The amount to reserve is the view's size from
   the **`$1500` table**: a fixed resource of 120 little-endian `u16` sizes, one
   per view number. 88 of the 89 present directory entries match their table entry exactly. The odd one is view 101, a dead alias of view 36. If
-  there is no room, the engine prints the message at `$67DC`.
-- **The slot table.** The view's address is stored at `$6F41 + 2n`. An actor
+  there is no room, the engine prints the message at engine `$67DC`.
+- **The slot table.** The view's address is stored at engine `$6F41 + 2n`. An actor
   points at it through its fields 1 and 2.
 
 ## Layout (confirmed)
@@ -58,8 +59,10 @@ table. A view has no mirrored loops; each direction is drawn separately.
 - **Two entry points.**
   - `$10AD` draws a sprite and keeps the buffer's priority.
   - `$10B5` writes the actor's priority as well, which adds the sprite to the
-    picture permanently. It also marks the cel's bottom row (and the side
-    columns up to the next 8-row boundary) with priority 15.
+    picture permanently. It also marks with priority 15 the cel's bottom
+    row, the row at the 8-row boundary above it (`y & $F8`), and both side columns
+    between them (`add_to_picture`, `$11BB`/`$11C8`). The look-down rule for 15
+    applies to `$10AD` only.
 - **Actor field `$1C`** is set to 1 if no pixel of the cel was drawn.
 
 ## Priority (confirmed, `$1374`)
@@ -78,14 +81,12 @@ y is clamped to:
 - at least 41, unless actor flag bit 3 is set (`obj_flag8_on`, `$40`)
 - at most 162
 
-## Collision with the picture (partly read, `$12C7`)
+## Collision with the picture (`$12C7`)
 
-Before an actor moves, the engine checks its new bottom row against the
-priority buffer:
-
-- **Priority 0** blocks the move.
-- **Priority 1** (`$10`) has special handling depending on actor flags, and
-  sets `v3`/`v4`, apparently for "on water" or similar.
-- **Priority 15** is treated as a boundary in some modes.
-
-Exactly how these interact with the motion modes is still to be traced.
+Before an actor moves, the engine checks its new bottom row against the priority
+buffer. The rules (implemented in `World::collide`) are in
+[motion.md](motion.md): for other actors priority 1 is free, 0 blocks unless flag
+bit 2 is set, 15 blocks unless flag bit 1 is set, and a pixel of the actor's own
+priority blocks; for the ego, priority 0 never blocks, and `v4` records whether it
+stands on water. Still open: which flag combinations enable water and the
+conditional barriers, beyond those the scripts use.

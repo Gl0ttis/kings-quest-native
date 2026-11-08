@@ -79,7 +79,7 @@ pub fn op_name(op: u8) -> Option<&'static str> {
         0x2E => "player_control",
         0x2F => "set_priority",
         0x30 => "set_view",
-        0x31 => "text_screen_wait",
+        0x31 => "inventory_screen",
         0x32 => "save_game",
         0x33 => "restore_game",
         0x34 => "release_priority",

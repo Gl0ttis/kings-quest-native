@@ -36,27 +36,32 @@ images must be in order 1, 2, 3.
 (press again to stop). Type commands and press RETURN. Tab shows the inventory, Esc
 pauses, Ctrl-E recalls the last line. `1` saves, `3` restores, `5` restarts (after a
 death too). A joystick or game controller connected at start-up works as the Apple
-joystick; its buttons 1 and 2 are the Apple's two buttons.
+joystick; its buttons 1 and 2 are the Apple's two buttons (Windows only).
 
 **Front-end keys:** F11/F12 slower/faster, F9 fast loads (skips the disk and
 picture-drawing time of room changes), F8 sound, F7 NTSC colour fringing, F6 fill the
-white specks the picture fills miss, Alt+Enter full screen.
+white specks the picture fills miss, Alt+Enter full screen. Sound, full screen and
+the joystick are Windows only for now.
 
 **Options:** `--speed N`, `--fast-loads`, `--fullscreen`, `--mute`, `--ntsc`,
 `--fill-specks`, `--savedisk FILE` (save to an original save disk image instead of
-`saves/`), `--charrom FILE` / `--no-charrom`, `--no-joystick`, `--keys FILE` (replay a
-key log, such as [routes/max_score.keys](routes/max_score.keys)), `--headless PLAN`.
+`saves/`), `--saves DIR` (where save files go), `--charrom FILE` / `--no-charrom`,
+`--no-joystick`, `--keys FILE` (replay a key log, such as
+[routes/max_score.keys](routes/max_score.keys)), `--rate N` (a fixed rate),
+`--scale N` (window size). For testing: `--headless PLAN`, `--room N`,
+`--trace FILE`, `--picbuf FILE`.
 
 ## Tools
 
-All take the three disk images.
+Most take the three disk images; `nibdecode` takes any number of `.nib` files, and
+`kqroute` also takes a route file.
 
 | Binary | Does |
 |---|---|
 | `nibdecode` | Decodes `.nib` images to `.do`/`.po` in `extracted/`, checking every sector |
 | `kqextract` | Extracts every resource with the engine's own loader rules ([docs/disk-layout.md](docs/disk-layout.md)) |
 | `kqpic` | Renders all 83 pictures ([docs/picture-format.md](docs/picture-format.md)) |
-| `kqview` | Renders all 69 views ([docs/view-format.md](docs/view-format.md)) |
+| `kqview` | Renders all 88 views ([docs/view-format.md](docs/view-format.md)) |
 | `kqscript` | Disassembles the scripts and vocabulary ([docs/script-format.md](docs/script-format.md)) |
 | `kqroom` | Enters each room through the engine and renders it |
 | `kqroute` | Plays a scripted route with an autopilot and records the keys ([docs/route.md](docs/route.md)) |
@@ -72,9 +77,15 @@ Python analysis scripts.
 cargo test -p kq1-apple2
 ```
 
-With the disks decoded into `extracted/` (`nibdecode`), the tests replay the
-reference runs and compare them with traces measured from the original
-(`extracted/reference/*.csv`). Without the game data those tests skip themselves.
+With the disks decoded as `extracted/disk1.do` to `disk3.do` (`nibdecode` names its
+output after its input, so name the `.nib` files `disk1.nib` to `disk3.nib`, or
+rename the output), the tests replay the reference runs and compare them with
+traces measured from the original (`extracted/reference/*.csv`). Without the game
+data those tests skip themselves. Two use further local-only files, since they
+hold game data: `save_disk.rs` (`original/disk4.nib` and the original's save disk
+`extracted/reference/save_disk_pass2001.nib`) and `text_page.rs`
+(`extracted/reference/textpage_speak_king.txt`, a dump of the original's text
+screen).
 
 ## Documentation
 

@@ -15,7 +15,7 @@ for checking it.
   the game's own RWTS and loader run unmodified. The disk the game expects (the volume
   number it puts at `$6F33`) is inserted automatically. The game still prints its swap
   prompt ("Please insert side B and press RETURN."), which the automatic RETURN answers.
-- **Keyboard:** injected from a plan. Paddles read as centred.
+- **Keyboard:** injected from a plan, or a key log (`--keys`). Paddles read as centred.
 - **No Apple ROM.** ROM images are copyrighted, so the handful of firmware routines the
   game calls are substituted at their entry points:
   - XFER `$C314` and the Disk II boot read `$C65C`
@@ -44,6 +44,11 @@ cargo run --release -- ../original/disk1.nib ../original/disk2.nib ../original/d
 | `>text` | type a command and RETURN |
 | `kHH` | press a raw key code |
 | `pHH` | press a raw key code once the game waits at a prompt (a letter for save or restore) |
+
+**Other options:** `--keys FILE` replays a kqroute key log (lines "PASS KEY-HEX", the
+key pressed before that pass); `--passes N` stops after N passes (default 400);
+`--max-cycles N` stops after N cycles; `--picbuf FILE` writes the picture buffer
+(aux `$4000`) at the end.
 
 A fourth image is the save disk (volume 10): the game's writes go to it (the Disk
 II write latch is emulated), and `--save-out FILE` writes it out afterwards.
@@ -85,8 +90,9 @@ state, but it did change the text window and the timings.
   (room changes) with carry 0, and the pointer advanced one byte per call.
   `$4D` = pass number. The port models this (`docs/motion.md`).
 - **Pass-by-pass agreement.** From power-on, the port reproduces room, ego position,
-  direction and all variables `v0`–`v222` for 300 passes, including two room changes
-  (`tests/reference_trace.rs`).
+  direction and all variables `v0`–`v222` on every pass of the 158-point max-score
+  playthrough (17,332 passes), a death and restart, and the walks in
+  `tests/reference_trace.rs`.
 - **The speed model** in `src/engine/cost.rs` was fitted from these traces.
 - **Boot.** The game boots without any ROM and reaches its main loop (`$4026`) after
   about 34.1 million cycles, 33.4 s at 1.02 MHz. Room 1 then looks the same as in the

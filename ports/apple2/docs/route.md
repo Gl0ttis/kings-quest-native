@@ -7,10 +7,13 @@ native engine and writes a key log. The key log is then replayed into the origin
 in [refemu](../refemu/README.md), and the two traces are compared pass by pass.
 
 The route scores **158 of 158** and plays from power-on to the coronation in 17,332
-passes. The original, given the same keys, does the same thing on every pass. The key
+passes (the test compares all 17,339 passes recorded from the original). The original, given the same keys, does the same thing on every pass. The key
 log is kept in [routes/max_score.keys](../routes/max_score.keys), and the test
 `max_score_playthrough` (tests/reference_trace.rs) replays it against the original's
 trace, `extracted/reference/max_score.csv`.
+
+Run these from `ports/apple2` (kqroute reads `routes/room_exits.json`); the built
+binaries are in the workspace's `target/release`.
 
 ```
 kqroute extracted/disk1.do extracted/disk2.do extracted/disk3.do routes/max_score.route \
@@ -35,7 +38,7 @@ number), so nothing needs extracting first:
 kqplay "original/King Quest (1983)(Sierra)(Disk 1 of 3)[nib].nib" "original/...(Disk 2 of 3)[nib].nib" "original/...(Disk 3 of 3)[nib].nib"
 ```
 
-While the log plays, typed keys are ignored; the front-end keys (F8 to F12, Alt+Enter)
+While the log plays, typed keys are ignored; the front-end keys (F6 to F9, F11, F12, Alt+Enter)
 still work. "More" pauses are
 answered with RETURN after about 3 seconds, as refemu does with the original. When the
 log ends, the game is yours. `--headless "" --keys … --trace …` replays it without a
@@ -92,6 +95,8 @@ Route steps: `room N [goal rect]`, `goto`, `area`, `edge`, `enter ROOM rect [wat
 | `KQ_DEADLY=1` | print the deadly rectangles |
 | `KQ_TRACE=1` | trace collisions |
 | `KQ_RNG=1` | trace room-change random draws |
+| `KQ_RNG_ALL=1` | trace every random number (pointer, counter, byte) |
+| `KQ_DUMPVARS=pass` | print all variables after that pass |
 
 In refemu, `REFEMU_DUMP=p,…` prints the variables, the actor table and the follow-motion
 zero page at those passes, and `REFEMU_F2=a,b` logs every change to `$F2` between those

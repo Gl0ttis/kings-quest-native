@@ -37,7 +37,7 @@ the same rule.
 | Variable | Meaning |
 |---|---|
 | `v1` | current room. `new_room` writes it, and the room-object check at `$0B37` compares against it. |
-| `v19` (`$13`) | score: dropping an item subtracts points, and the status line prints it (`$4660`) |
+| `v19` (`$13`) | score: dropping an item subtracts points, and the inventory screen prints it ("Your score is:", `$4655`, called from `$45CF`) |
 
 ## Rule matcher (`$62B0`, confirmed)
 
@@ -127,7 +127,7 @@ into `$94`, and `$49A9` selects object *n* together with its actor (object byte
 | `$0F` | 1–8: a fixed direction; `$0C`–`$11`: a motion mode (see motion.md) |
 | `$16`, `$17` | pointer to the current cel |
 | `$18`, `$19` | x, and y of the bottom edge |
-| `$1A`, `$1B` | previous x, y |
+| `$1A`, `$1B` | new x, y: where the actor moves to this cycle (copied to `$18`/`$19` when drawn; a blocked move falls back to `$18`/`$19`) |
 | `$1D` | fixed priority (high nibble), used while flag bit 0 is set (`$1374`) |
 | `$1E` | drawn on screen |
 
@@ -141,17 +141,19 @@ ego). Move targets are stored at `$69`/`$6A`.
 
 **Confidence.** The operand counts and the state each handler changes come
 straight from the code. The names are based on that and on how the scripts use
-each opcode. Names that read as mechanics (`obj_flags6_on`, `obj_field4_on`) mark
-handlers whose game-level purpose is not yet clear.
+each opcode. Some names stay mechanical, but their effects are known (see
+[motion.md](motion.md)): actor field 4 = 1 makes it ignore the barriers; flag bit 2
+lets it stand on priority 0, bit 1 lets it pass priority 15, and bit 3 lets it go
+above the horizon.
 
 | Op | Operands | Name | Effect |
 |---|---|---|---|
 | 00 | — | nop | — |
-| 01 | — | reset_ego | Reset the ego: view 0, loop and cel restored, room = `v1`, default motion |
+| 01 | — | reset_ego | Reset the ego: view 0, the loop kept and the cel taken from field 4, room = `v1`, default motion |
 | 02 | v | add_actor | Load view *v* and bind it to the next free actor slot (at most 4) for object *v*, at loop 0, cel 0. The actor appears when it is drawn. |
-| 03 | — | clear_actors | Clear every actor's drawn flag and reset the drawing state |
-| 04 | r | new_room | `v1 = r`, then load room *r* |
-| 05 | — | redraw_room | Reload and redraw the picture for room `v1`, then reset the ego |
+| 03 | — | clear_actors | Save each in-room actor back to its object (room, position, loop, cel; `$491F`), clear the drawn flags and remove all actors (count = 0) |
+| 04 | r | new_room | `v1 = r`, then load room *r*; stops the action |
+| 05 | — | redraw_room | Load the picture for room `v1` into aux `$D800` (`show_overlay_picture` draws it), then reset the ego |
 | 06 | — | show_overlay_picture | Clear the screen and draw the picture held at aux `$D800` |
 | 07 | o | draw | Put object *o* on screen in room `v1`, nudging it in a spiral (`$655A`) until it fits; then sets its stored room to `v0`, which is always 0. Room bytes are written for real when `clear_actors` saves the actors. |
 | 08 / 09 | v | set / reset | `v = 1` / `v = 0` |
@@ -159,7 +161,7 @@ handlers whose game-level purpose is not yet clear.
 | 0B | o | carry | Set object bit 7 (also runs an anti-tamper check) |
 | 0C | o | obj_erase | Erase the object from the screen and clear its stored room (bit 7 kept) |
 | 0D | o | uncarry | Clear object bit 7 |
-| 0E | a b | copy_position | Give object *b* the position of object *a* |
+| 0E | a b | copy_position | Give object *b* the position of object *a*, then draw *b* (as `draw`, nudging it to fit) |
 | 0F | v | input_number | Read a decimal number from the keyboard into *v* |
 | 10 / 11 | v | increment / decrement | Saturates at 250 / stops at 0 |
 | 12 | v n | assign | `v = n` |
@@ -171,10 +173,10 @@ handlers whose game-level purpose is not yet clear.
 | 19 | o x y | position | Set x and y (clamped), also into object bytes 5 and 6 |
 | 1A / 1B | o | obj_field4_on / off | Actor field 4 = 1 / 0 |
 | 1C, 41 | v | set_ego_view | Give the ego loaded view *v* (same handler) |
-| 1D | o | approach_ego | Motion mode `$0F`: approach the ego to within 5, then set `v6`; fixes the priority at 15 |
+| 1D | o | approach_ego | Motion mode `$0F`: approach the ego to within 5, then set `v6`; fixes the priority at 15 until it arrives (arrival clears flag byte `$0B`) |
 | 1E | o d | follow_ego | Motion mode `$11`, keeping distance *d* (`$6D`); fixes the priority at 15 |
 | 1F | o | chase_ego | Motion mode `$0C`: chase the ego until touching, then set `v6`; cycle mode 0 |
-| 20 / 21 | a b c | set_x_limits / set_y_limits | Store a clamped x into `$61`, b into `$63`, c into `$64` (y: `$62`, `$65`, `$66`) |
+| 20 / 21 | a b c | set_x_limits / set_y_limits | Store a clamped x into `$61`, b into `$63`, c into `$64` (y: `$62`, `$65`, `$66`): the barriers ([motion.md](motion.md#barriers-57f8-confirmed)) |
 | 22 | o | wander | Motion mode `$10`: random wandering |
 | 23 | y | ego_move_to_y | Move the ego vertically to y (motion mode `$0D`) |
 | 24 | v | load_view | Load view *v*'s data only (slot table `$6F41`), for later `set_view` / `set_ego_view`. It does not create an actor. |
@@ -183,20 +185,20 @@ handlers whose game-level purpose is not yet clear.
 | 27 | o l c | set_loop_cel | Set loop and cel; actor room = `v1` |
 | 28 | x | ego_move_to_x | Move the ego horizontally to x (motion mode `$0E`) |
 | 29 | x | nop1 | No effect |
-| 2A | — | program_control | Ego motion mode 0; `$67 = $68 = 1` |
+| 2A | — | program_control | Ego cycle mode 0 (animate); `$67 = $68 = 1` |
 | 2B | — | disable_input | Sets `$6F05`: typed input is ignored, except Esc, Tab, and the restart and restore keys (`$534E`). It stops the action. Used when the game ends. |
 | 2C | p | load_picture | Load picture *p* into aux `$9800` and copy it to `$D000` |
 | 2D | v n | ego_special_view | Give the ego view *v*, cycle mode 5; `$73 = n` |
 | 2E | — | player_control | `$67 = $68 = 0` |
 | 2F | o n | set_priority | Fix the actor's priority at *n* (flag bit 0; `[$1D] = n << 4`) |
 | 30 | o v | set_view | Give the object loaded view *v*, at loop 0, cel 0 |
-| 31 | x x | text_screen_wait | Text screen, then wait for a key and return to graphics |
+| 31 | x x | inventory_screen | The inventory (same routine as Tab, `$45CF`): text screen, the carried objects and the score, wait for a key, back to graphics. Operands ignored. |
 | 32 | — | save_game | Save-game dialog |
-| 33 | — | restore_game | Sets the restore flag; the main loop runs `$4F56` |
+| 33 | — | restore_game | Sets the restore flag; the main loop runs `$4F56`. Stops the action. |
 | 34 | o | release_priority | Clear flag bit 0, so priority follows y again |
 | 35 | v | copy_room_to | `v = v1` |
 | 36 | a b | set_if_room_eq | `vb = (va == v1)` |
-| 37 | v | new_room_var | `new_room` using the room number held in *v* |
+| 37 | v | new_room_var | `new_room` using the room number held in *v*; stops the action |
 | 38 | o l | set_loop | Set the loop, at cel 0 |
 | 39 | o | store_position | Add the object's current cel permanently to the picture (`$6476`), then copy its x and y into object bytes 5 and 6 |
 | 3A / 3B | o | obj_flags6_on / off | Set / clear flag bits 1 and 2 |
@@ -219,7 +221,8 @@ NUL-terminated word followed by three bytes:
 
 - **position:** 1 = a single word, 2 = the start of a phrase, 3 = a later word
   in a phrase
-- **type:** 2 = verb, 3 = noun, 4 = ignored
+- **type:** 2 = verb, 3 = noun, 4 = ignored; 0 on the non-final words of a phrase
+  (the phrase's type is on its last word)
 - **id**
 
 A phrase takes the id on its last word. The list ends with an empty word. Verb
@@ -253,9 +256,6 @@ in the original. The port uses the corrected boundary (`Resources::load`'s
 
 ## Still open
 
-- The game-level purpose of the opcodes with mechanical names.
-- **The motion modes `$0C`–`$11` and the cycle modes.** These are the per-cycle
-  behaviour run through the dispatch at `$6114`.
-- **The view format** (the `$1900` directory) and sprite drawing, in aux
-  routines 0–6 and 9–15.
-- **What `set_x_limits` / `set_y_limits` (`$61`–`$66`) do.**
+Nothing in the script format. The behaviour behind the opcodes is in
+[motion.md](motion.md) (motion and cycle modes, barriers), [view-format.md](view-format.md)
+(views and sprite drawing) and [text-and-parser.md](text-and-parser.md).

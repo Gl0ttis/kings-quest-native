@@ -33,8 +33,9 @@ text, which differed visibly from the original.)
 prints "Please insert side B and press RETURN." and waits. The port reads every disk
 image up front, so it has no swap prompts.
 
-**The text screen.** Opcodes `$3C`–`$3F`, the inventory and the restart prompt
-switch to the Apple text page (`$56E6`) and print through the ROM. The game turns
+**The text screen.** Opcode `$3C` and the inventory switch to the Apple text page
+(`$56E6`); `$3D`/`$3E` then print on it through the ROM, and `$3F` returns to
+graphics. The game turns
 on the IIe's alternate character set (`$C00F`) and sends plain ASCII (high bit
 clear), so everything it prints is stored as an inverse code: black text on a white
 cell. The output filter (`$5782`) masks upper case (`$41`-`$60`) to `$01`-`$20`,
@@ -76,9 +77,9 @@ directly; that was wrong.
    Then it moves to column 0.
 2. **Line by line.** Messages contain explicit carriage returns, so they arrive
    already wrapped. Each line is printed and followed by a new line.
-3. **Pausing.** `$1D` counts the lines printed since the last input. When three
-   lines have been printed, the next one is preceded by a beep and a wait for
-   RETURN (or Esc), and the count starts again.
+3. **Pausing.** `$1D` counts the lines printed since the last input. After a
+   fourth line is printed, the engine beeps and waits for RETURN (or Esc) before
+   the line break, and the count starts again.
 
 After the message, `$1C` is set to 10 cycles. When it runs out, `$1D` is reset
 (`$40E5`).
@@ -148,7 +149,10 @@ list as "not found".
 |---|---|---|
 | 1 | no verb found | "I do not understand that." |
 | 2 | a verb, but no rule matched | "You can't do that here." |
-| 3 | a rule matched, or there was an unknown word | none |
+| 3 | a rule matched | none |
+
+`$408E` also gives 3 when the verb is `$FF`, but an unknown word never gets there:
+`$514B` then returns "nothing usable" (`$51DC`), so the rules don't run.
 
 ## Inventory (`$45CF`)
 
@@ -170,7 +174,6 @@ are "dagger", "pouch", "pouch of diamonds" and "carrot".
 
 ## Still open
 
-- **Save, restore and init disk:** the messages and the file format. This is M5.
 - **The exact Apple text-mode characters**: only with a user-supplied ROM dump
   (above).
 - **What `v31` controls** (toggled with `=`).

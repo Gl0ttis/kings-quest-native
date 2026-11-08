@@ -46,9 +46,9 @@ and the global script starts room 1 again.
 
 **Save files.** A save is a file, `saves/kq-a.sav` to `kq-z.sav` (`kqplay
 --saves DIR` changes the folder). It holds the same four blocks in the same
-layout, after an 8-byte tag `KQSAVE01`, 1,815 bytes in all. Keeping the
-original layout made reading and writing real disk-4 save images (below) a matter of
-added later without changing the saved data.
+layout, after an 8-byte tag `KQSAVE01`, 1,779 bytes in all. Because the
+file keeps the original layout, reading and writing real disk-4 save images (below)
+was added later without changing the saved data.
 
 **Gaps.**
 
@@ -92,18 +92,21 @@ carried on into the next sectors ($605E). Objects start in sector 1, actors in s
 
 - **The object stream overlaps.** 2 + `$500` bytes run 2 bytes into sector 6, which
   the actor block then overwrites. So the original restores `$1F7E-$1F7F` as `$7C $00`,
-  the actor block's length. The port does the same.
+  the actor block's length. The port reads the same bytes back, but doesn't use the
+  part of the block after the object records.
 - **The buffer is never cleared**, so bytes after a block hold leftovers. Nothing reads
-  them; the port writes zeros there.
+  them. The port carries its buffer from sector to sector the same way (starting from
+  zeros), so its leftovers come from its own earlier sectors.
 - **The variables block** starts at `$6E06`, the address of `v0`, so its first 32
   bytes are not variables. The original's own save has zeros there, as the port writes.
 
 **Checks (refemu, which emulates the Disk II write latch for this).**
 
-1. The original replayed the max-score route to pass 2000 and saved to letter A on a
+1. The original replayed the max-score route and, at pass 2001, saved to letter A on a
    blank disk 4. The port reads it back (extracted/reference/save_disk_pass2001.nib).
 2. Play went on to pass 2300, then restored A, then ran 100 more passes
-   (extracted/reference/restore_pass2301.csv). That is the reference.
+   (extracted/reference/restore_pass2301.csv). That is the reference. The save-disk
+   image itself holds game data, so like the disks it stays local (not in git).
 3. The port restoring the original's save, the port restoring its own save, and the
    original restoring the port's save all match the reference on all 100 passes
    (tests/save_disk.rs for the first two; the third was run once in refemu).

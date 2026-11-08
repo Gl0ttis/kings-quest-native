@@ -5,9 +5,9 @@
 //! per-event costs, fitted against the reference emulator (refemu/README.md), turn the
 //! counts into the original's pass duration.
 //!
-//! Fit over the maximum-score playthrough (routes/max_score.route; 17,070 ordinary
+//! Fit over the maximum-score playthrough (routes/max_score.route; 17,299 ordinary
 //! passes, port counts against the original's cycles in refemu): median error 1.1%, 90%
-//! of passes within 3.1%. BASE is the fit's intercept; the rule-byte cost carries most
+//! of passes within 3.2%, the whole run 0.4% short. BASE is the fit's intercept; the rule-byte cost carries most
 //! of the fixed per-pass work. Loading passes fit within 3.9% (median); the rest of
 //! their spread is the disk's head position and rotation, which is not modelled.
 

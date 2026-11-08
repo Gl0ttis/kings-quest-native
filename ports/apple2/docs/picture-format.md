@@ -12,8 +12,9 @@ recognisable scene.
 
 ## How the engine draws a picture (confirmed)
 
-- **Loading.** The picture resource loads into aux `$9800`. It is then copied to
-  aux `$D000` (aux entry 16, `$1396`). The interpreter (aux entry 10, `$0B83`)
+- **Loading.** The picture resource loads into aux `$9800`. Aux entry 16 (`$1396`)
+  then copies it: a room picture to aux `$D800` (`redraw_room`, `$4208`), a picture
+  loaded with `load_picture` to aux `$D000` (`$421E`). The interpreter (aux entry 10, `$0B83`)
   reads it from the start through `$AA`/`$AB`, so the data begins directly with
   an opcode. Main-memory code calls aux routines through `$C314` (XFER), using
   the entry table at `$09F1`.
@@ -24,8 +25,9 @@ recognisable scene.
   priority 1.
 - **Coordinates.** Picture coordinates are offset by (10, 3). Valid points run
   from x 10–149 and y 3–162; anything outside is silently clipped (`$1079`).
-- **Screen.** Each plot also writes to the double hi-res screen. One logical
-  pixel is 4 dots wide and one scanline tall.
+- **Screen.** Each plot also writes to the double hi-res screen, so the picture
+  appears as it is drawn; the port replays that (`pic::draw_partial`,
+  `World::pic_draws`). One logical pixel is 4 dots wide and one scanline tall.
 
 ## Drawing state
 
@@ -62,8 +64,8 @@ it. Commands that take a list of arguments keep reading until the next byte of
   size. The step is added to the target point using 8-bit wrapping arithmetic.
 - **Line (`$0F63`).** The first point of a polyline is plotted once. Vertical and
   horizontal lines step one pixel at a time. Other lines use a DDA: the major
-  axis runs `max(dx, dy)` steps, and two 8-bit accumulators start at half the
-  major length. The ADC carry is discarded before the compare, so very long
+  axis runs `max(dx, dy)` steps; the minor axis's 8-bit accumulator starts at half
+  the major length, and the major axis's at 0. The ADC carry is discarded before the compare, so very long
   lines wrap the same way as on the Apple.
 - **Fill (`$0D47`).** A stack-based scanline fill (`$0D7E`–`$0E8E`). Visual and
   combined fills spread over pixels whose visual nibble is still 15. A
@@ -76,11 +78,13 @@ it. Commands that take a list of arguments keep reading until the next byte of
     from the left end. A child entry is pushed at each fillable pixel found. When
     a child finishes, the parent resumes after the child's right end.
   - **A quirk.** The leftward scan ends with `DEY; BPL`, so it continues only while
-    the x index stays below 128. From x index 129 up, it fills one pixel and
+    the x index is at most 128. From x index 129 up, it fills one pixel and
     stops. That leaves the odd fillable pixel unfilled near the right edge; room
     1's picture has one at (147, 157).
   - **In the port.** The fill is a literal transcription, quirk included. A
     complete 4-connected fill differs from the original in exactly such pixels.
+    An optional display setting (`--fill-specks`, F6) paints such specks from their
+    neighbours; the buffer, and so the game, is unchanged.
 
 ## Colours (confirmed against the original's screen)
 
@@ -103,7 +107,8 @@ lowest bit first, the rotated pattern names these Apple colours:
 This is the PC 16-colour order, with the nearest Apple colour standing in where
 there is no exact match (light magenta becomes purple). The fact that all 16
 entries fit that order is the evidence that this reading is right. `dhgr_rgb`
-uses Apple IIgs RGB values for the Apple colours; real NTSC output varies.
+uses Apple IIgs RGB values for the Apple colours. An optional NTSC display
+(`--ntsc`, F7) adds composite colour fringing from the same 16 colours.
 
 **Checking the mapping.** The emulator ([refemu](../refemu/README.md)) reads the
 original's double hi-res memory four dots at a time, in Apple IIe Technical
@@ -120,16 +125,16 @@ it, 22,400 bytes each.
 - **1–80:** room backgrounds.
 - **82:** Sierra logo.
 - **83:** King's Quest title scroll.
-- **84:** a beanstalk on a blank background. It is probably drawn over another
-  room picture.
+- **84:** a beanstalk on a blank background. The global script loads it at
+  start-up (`load_picture 84`, into aux `$D000`), and `redraw_picture` (`$25`,
+  engine `$5FBF`) draws it over the room, without clearing, once the beans are
+  planted (`v35`): rooms 6, 9, 21, 22, 31, 35, 38, 44, 45, 46 and 47, and a global
+  action.
 - **81:** its directory entry is invalid. **0:** not a picture.
 
 Most pictures are followed by 1–24 unused bytes after the `$FF`.
 
 ## Still open
 
-- Which routine draws picture 84, and when (`$5FA4` draws a second picture from
-  aux `$D800`).
-- The exact NTSC colours, if an NTSC-style display option is wanted. The RGB
-  values per Apple colour are a display choice; the colours themselves are
-  confirmed.
+Nothing in the picture format. The RGB values per Apple colour are a display
+choice; the colours themselves are confirmed.
