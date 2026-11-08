@@ -1,0 +1,44 @@
+# Build output
+target/
+
+# Python
+__pycache__/
+*.pyc
+
+# ---------------------------------------------------------------------------
+# Game content. The ports ship engines only: the original disks, ROMs and
+# anything decoded from them are copyrighted and never committed. Each port
+# reads them from its own local folders (see CONTRIBUTING.md).
+# ---------------------------------------------------------------------------
+ports/*/original/
+ports/*/saves/
+ports/*/scratch/
+ports/*/RE/
+
+# Decoded disks and resources are local; only the reference traces (numbers
+# measured from the original: rooms, positions, hashes, cycle counts) are kept.
+ports/*/extracted/*
+!ports/*/extracted/reference/
+ports/*/extracted/reference/*
+!ports/*/extracted/reference/*.csv
+
+# Disk images, ROMs and saves, wherever they end up.
+*.nib
+*.dsk
+*.do
+*.po
+*.woz
+*.2mg
+*.img
+*.ima
+*.rom
+*.bin
+*.sav
+*.wav
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

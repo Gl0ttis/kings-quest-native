@@ -1,0 +1,54 @@
+[package]
+name = "kq1-apple2"
+version = "0.1.0"
+description = "Native port of the 1984 Apple IIe King's Quest: engine, player (kqplay) and tools. Runs on the user's own disk images."
+edition.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "kq1_apple2"
+path = "src/lib.rs"
+
+[[bin]]
+name = "nibdecode"
+path = "src/bin/nibdecode.rs"
+
+[dependencies]
+# Only the windowed player (kqplay) uses it; the engine library has no dependencies.
+minifb = { version = "0.29.0", optional = true }
+
+[features]
+default = ["player"]
+player = ["dep:minifb"]
+
+[[bin]]
+name = "kqextract"
+path = "src/bin/kqextract.rs"
+
+[[bin]]
+name = "kqpic"
+path = "src/bin/kqpic.rs"
+
+[[bin]]
+name = "kqscript"
+path = "src/bin/kqscript.rs"
+
+[[bin]]
+name = "kqview"
+path = "src/bin/kqview.rs"
+
+[[bin]]
+name = "kqroom"
+path = "src/bin/kqroom.rs"
+
+[[bin]]
+name = "kqplay"
+path = "src/bin/kqplay.rs"
+required-features = ["player"]
+
+[[bin]]
+name = "kqroute"
+path = "src/bin/kqroute.rs"

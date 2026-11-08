@@ -1,0 +1,12 @@
+# Normalise line endings in the repository; check out with the platform's own.
+* text=auto
+
+*.rs text diff=rust
+*.toml text
+*.md text diff=markdown
+*.yml text
+*.json text
+*.csv text
+*.py text diff=python
+
+*.png binary

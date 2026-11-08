@@ -1,0 +1,16 @@
+[package]
+name = "kq1-apple2-refemu"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+description = "Reference Apple IIe emulator used only to measure the original game (timing, state traces). Not part of the port."
+
+[[bin]]
+name = "refemu"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+kq1-apple2 = { path = "..", default-features = false }

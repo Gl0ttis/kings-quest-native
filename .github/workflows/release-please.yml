@@ -1,0 +1,21 @@
+# Semantic versioning from conventional commits: release-please keeps a release pull
+# request open per change set, with the version bumps (per crate) and changelogs. Merging
+# it tags each released crate (kq1-apple2-v0.2.0, ...) and creates the GitHub release.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

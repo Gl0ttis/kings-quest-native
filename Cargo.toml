@@ -1,0 +1,19 @@
+# King's Quest I native ports: one crate set per original platform under ports/.
+[workspace]
+resolver = "2"
+members = ["ports/apple2", "ports/apple2/refemu"]
+
+[workspace.package]
+edition = "2021"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+
+[workspace.lints.clippy]
+# Indexed loops mirror the original's table walks; kept deliberately.
+needless_range_loop = "allow"
+type_complexity = "allow"
+too_many_arguments = "allow"
+
+[profile.release]
+debug = 1
