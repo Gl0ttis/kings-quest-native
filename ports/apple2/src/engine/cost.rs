@@ -27,6 +27,19 @@ pub const CHAR: f64 = 2_284.0;
 pub const SECTOR: f64 = 69_300.0;
 /// Per picture pixel plotted by lines and fills (aux $102F).
 pub const PLOT: f64 = 397.0;
+/// The drawing itself, run by run (tools/runfit.py: 125 pictures of the max-score run,
+/// every plot timed in refemu): per plot and per line segment, per plot and per fill
+/// seed. Whole drawings within 1.1% (median), 3.3% (90%). These pace the replay of a
+/// picture being drawn; a pass's total still uses PLOT, which also covers the clearing
+/// and set-up before the drawing.
+pub const LINE_PLOT: f64 = 239.5;
+pub const LINE_SEGMENT: f64 = 308.0;
+pub const FILL_PLOT: f64 = 330.2;
+pub const FILL_SEED: f64 = 10_702.0;
+/// From the work counted before a picture is drawn to its first plot: clearing the
+/// screen and setting up (median over the 126 room loads of the max-score run; 90% of
+/// them within 0.92M-1.67M).
+pub const DRAW_START: f64 = 1_130_000.0;
 /// Fixed extra per room change (head seeks and bookkeeping).
 pub const ROOM_CHANGE: f64 = 320_800.0;
 
@@ -38,6 +51,8 @@ pub struct Cost {
     pub chars: u64,
     pub sectors: u64,
     pub plots: u64,
+    /// Of `plots`, those plotted by fills.
+    pub fill_plots: u64,
     pub room_changes: u64,
     /// Characters drawn by the prompt redraw that the port does at the end of a pass but
     /// the original does at the start of the next one ($4029-$4036); counted there.
@@ -55,6 +70,8 @@ pub struct PicDraw {
     pub onto: Vec<u8>,
     pub data: std::rc::Rc<Vec<u8>>,
     pub plots: u32,
+    /// The drawing's runs: (plots before it, a fill?), one per drawing command.
+    pub runs: Vec<(u32, bool)>,
     /// Measured (load, draw) seconds, in place of the speed model (the title screens).
     pub timing: Option<(f64, f64)>,
 }
@@ -64,7 +81,8 @@ impl PicDraw {
     pub fn partial(&self, n: u32) -> Vec<u8> {
         crate::pic::draw_partial(self.onto.clone(), &self.data, n)
     }
-    /// Seconds from the start of the pass to the start and end of the drawing.
+    /// Seconds from the start of the pass to the start and end of the drawing: it starts
+    /// DRAW_START after the work counted before it, and takes `draw_cycles`.
     pub fn span(&self, fast_loads: bool) -> (f64, f64) {
         if let Some((load, draw)) = self.timing {
             return if fast_loads { (0.0, 0.0) } else { (load, load + draw) };
@@ -73,9 +91,41 @@ impl PicDraw {
             let t = self.before.seconds_fast_loads();
             (t, t)
         } else {
-            let t = self.before.seconds();
-            (t, t + PLOT * self.plots as f64 / CPU_HZ)
+            let t = self.before.seconds() + DRAW_START / CPU_HZ;
+            (t, t + self.draw_cycles() / CPU_HZ)
         }
+    }
+
+    /// The drawing's duration in cycles, from its runs.
+    pub fn draw_cycles(&self) -> f64 {
+        self.run_costs().map(|(_, n, fixed, per)| fixed + per * n as f64).sum()
+    }
+
+    /// (plots before, plots in, fixed cycles, cycles per plot) for each run.
+    fn run_costs(&self) -> impl Iterator<Item = (u32, u32, f64, f64)> + '_ {
+        self.runs.iter().enumerate().map(|(i, &(start, fill))| {
+            let end = self.runs.get(i + 1).map_or(self.plots, |r| r.0);
+            let (fixed, per) = if fill { (FILL_SEED, FILL_PLOT) } else { (LINE_SEGMENT, LINE_PLOT) };
+            (start, end - start, fixed, per)
+        })
+    }
+
+    /// The plots done when `frac` (0 to 1) of the drawing's time has passed: each run
+    /// spends its fixed cost first, then plots at its rate.
+    pub fn plots_at(&self, frac: f64) -> u32 {
+        if frac >= 1.0 || self.runs.is_empty() {
+            return if frac >= 1.0 { self.plots } else { (frac.max(0.0) * self.plots as f64) as u32 };
+        }
+        let mut left = frac.max(0.0) * self.draw_cycles();
+        for (start, n, fixed, per) in self.run_costs() {
+            let cost = fixed + per * n as f64;
+            if left < cost {
+                let into = ((left - fixed).max(0.0) / per) as u32;
+                return start + into.min(n);
+            }
+            left -= cost;
+        }
+        self.plots
     }
 }
 
@@ -152,11 +202,66 @@ impl World {
         if let Some(&k) = self.res.sectors.get(kind).and_then(|v| v.get(n as usize)) {
             self.cost.sectors += k as u64;
         }
+        let want = self.res.disks.get(kind).and_then(|v| v.get(n as usize)).copied().unwrap_or(0);
+        self.change_disk(want);
+    }
+
+    /// $6009 -> $6075: before a read from disk `want` (volume; 0 = the shared tracks), if
+    /// another disk is in the drive, the original asks for it and waits for RETURN:
+    /// "Please insert side A/B/C and press RETURN." ($6CDC, the letter from $6CD0,
+    /// $6CF1), or for the save disk (volume 10) its own message ($6D05). The port shows
+    /// them only with `swap_prompts`.
+    pub(crate) fn change_disk(&mut self, want: u8) {
+        if want == 0 || want == self.drive {
+            return;
+        }
+        self.note(format!("disk swap: {} -> {want}", self.drive));
+        if self.swap_prompts {
+            let mut msg = Vec::new();
+            if want == 10 {
+                msg.extend(self.engine_text(0x6D05));
+            } else {
+                msg.extend(self.engine_text(0x6CDC));
+                let letter = self.engine_word(0x6CD0 + 2 * (want as u16 - 1));
+                msg.extend(self.engine_text(letter));
+                msg.extend(self.engine_text(0x6CF1));
+            }
+            self.put_str(&msg);
+            while self.io_wait_key() != 0x0D {}
+        }
+        self.drive = want;
     }
 
     fn cel_ref(&self, s: usize) -> Option<&crate::view::Cel> {
         let v = self.res.views.get(self.actor_view[s]? as usize)?.as_ref()?;
         let a = &self.actors[s];
         v.loops.get(a[f::LOOP] as usize)?.cels.get(a[f::CEL] as usize)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn drawing_pace_follows_the_runs() {
+        // A line segment of 10 plots, then a fill seed of 100.
+        let d = PicDraw {
+            before: Cost::default(),
+            onto: Vec::new(),
+            data: std::rc::Rc::new(Vec::new()),
+            plots: 110,
+            runs: vec![(0, false), (10, true)],
+            timing: None,
+        };
+        let line = LINE_SEGMENT + 10.0 * LINE_PLOT;
+        let total = line + FILL_SEED + 100.0 * FILL_PLOT;
+        assert!((d.draw_cycles() - total).abs() < 1e-6);
+        assert_eq!(d.plots_at(0.0), 0);
+        assert_eq!(d.plots_at(line / total), 10);
+        // During the fill seed's fixed cost nothing new is plotted.
+        assert_eq!(d.plots_at((line + FILL_SEED / 2.0) / total), 10);
+        assert_eq!(d.plots_at(1.0), 110);
+        assert!((1..100).all(|i| d.plots_at(i as f64 / 100.0) <= d.plots_at((i + 1) as f64 / 100.0)));
     }
 }

@@ -19,7 +19,7 @@ fn main() {
     let mut csv = std::env::var("CSV").ok().map(|p| {
         use std::io::Write;
         let mut f = std::io::BufWriter::new(std::fs::File::create(p).unwrap());
-        writeln!(f, "pass,rule_bytes,cel_nibbles,screen_pixels,chars,sectors,plots,room_changes").unwrap();
+        writeln!(f, "pass,rule_bytes,cel_nibbles,screen_pixels,chars,sectors,plots,fill_plots,room_changes").unwrap();
         f
     });
     for pass in 1..=to {
@@ -32,8 +32,8 @@ fn main() {
             use std::io::Write;
             writeln!(
                 f,
-                "{pass},{},{},{},{},{},{},{}",
-                c.rule_bytes, c.cel_nibbles, c.screen_pixels, c.chars, c.sectors, c.plots, c.room_changes
+                "{pass},{},{},{},{},{},{},{},{}",
+                c.rule_bytes, c.cel_nibbles, c.screen_pixels, c.chars, c.sectors, c.plots, c.fill_plots, c.room_changes
             )
             .unwrap();
         }

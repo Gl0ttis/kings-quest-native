@@ -159,6 +159,52 @@ fn max_score_playthrough() {
     compare_keys("max_score.csv", "routes/max_score.keys");
 }
 
+/// The original's disk-swap prompts (`swap_prompts`): every prompt the port shows falls
+/// on a pass where the original waited at one, and the game still matches the original
+/// on every pass.
+#[test]
+fn swap_prompts_match_the_original() {
+    let base = concat!(env!("CARGO_MANIFEST_DIR"), "/");
+    let Ok(trace) = fs::read_to_string(format!("{base}extracted/reference/max_score.csv")) else { return };
+    let Ok(keys) = fs::read_to_string(format!("{base}routes/max_score.keys")) else { return };
+    let imgs: Option<Vec<Vec<u8>>> = (1..=3).map(|n| fs::read(format!("{base}extracted/disk{n}.do")).ok()).collect();
+    let Some(imgs) = imgs else { return };
+    let keys: std::collections::HashMap<usize, u8> = keys
+        .lines()
+        .filter_map(|l| {
+            let (p, k) = l.split_once(' ')?;
+            Some((p.parse().ok()?, u8::from_str_radix(k.trim(), 16).ok()?))
+        })
+        .collect();
+    let mut w = World::new(Resources::load(&Disks::new(imgs), false).unwrap());
+    w.io = Some(Box::new(Scripted::default()));
+    w.swap_prompts = true;
+    w.boot();
+    let lines: Vec<Vec<String>> = trace.lines().skip(1).map(|l| l.split(',').map(String::from).collect()).collect();
+    let mut seen = w.log.len();
+    let mut swaps = 0;
+    for pass in 1..lines.len() {
+        if let Some(&k) = keys.get(&pass) {
+            w.key(k);
+        }
+        w.cycle();
+        let model = w.take_cost().cycles();
+        let swapped = w.log[seen..].iter().any(|l| l.starts_with("disk swap"));
+        seen = w.log.len();
+        let o = &lines[pass];
+        if swapped {
+            swaps += 1;
+            // The original's pass took far longer than its work: it waited at the prompt.
+            let delta: f64 = o[2].parse().unwrap();
+            assert!(delta - model > 2_000_000.0, "pass {pass}: a swap prompt, but the original didn't wait");
+        }
+        let hash =
+            w.vars[..0xDF].iter().fold(1469598103934665603u64, |h, &b| (h ^ b as u64).wrapping_mul(1099511628211));
+        assert_eq!((w.vars[1].to_string(), format!("{hash:016x}")), (o[3].clone(), o[8].clone()), "pass {pass}");
+    }
+    assert_eq!(swaps, 27);
+}
+
 /// The gnome's riddle failed (a gold key instead of the beans), room 19's door, the
 /// stairs into the clouds, and the fall from room 56's west edge into room 64, the room
 /// whose script carries the original's data defect; 200 passes past the death.

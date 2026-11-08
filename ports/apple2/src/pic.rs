@@ -23,6 +23,12 @@ pub struct Picture {
     pub end: usize,
     /// Pixels plotted, by lines and fills (calls of aux $102F): the drawing work.
     pub plots: u32,
+    /// Of those, the ones plotted by fills (which cost the original more each).
+    pub fill_plots: u32,
+    /// The drawing's runs in order: (plots before the run, is it a fill), a new run at
+    /// each line segment and each fill (seed point) that plots anything. With per-kind costs it gives the
+    /// time at which any plot is reached.
+    pub runs: Vec<(u32, bool)>,
 }
 
 impl Picture {
@@ -48,6 +54,9 @@ struct Painter<'a> {
     warnings: Vec<String>,
     overrun: bool,
     plots: u32,
+    fill_plots: u32,
+    runs: Vec<(u32, bool)>,
+    new_command: bool,
     /// For draw_partial: the buffer as it stood after `limit` plots.
     shown: Option<Vec<u8>>,
     limit: u32,
@@ -80,8 +89,20 @@ impl Painter<'_> {
         if let Some(i) = self.index(self.f0, self.f1) {
             self.watch(i, "plot");
             self.buf[i] = (self.buf[i] & !self.c4) | (self.c4 & self.c3);
+            self.run(false);
             self.plots += 1;
             self.show(i);
+        }
+    }
+
+    /// Note the start of a run of line or fill plots.
+    fn run(&mut self, fill: bool) {
+        if self.new_command || self.runs.last().is_none_or(|r| r.1 != fill) {
+            self.runs.push((self.plots, fill));
+            self.new_command = false;
+        }
+        if fill {
+            self.fill_plots += 1;
         }
     }
 
@@ -146,6 +167,7 @@ impl Painter<'_> {
 
     /// $0F63: draw from (f0, f1) to (c5, c6), not re-plotting the start in the general case.
     fn line(&mut self) {
+        self.new_command = true;
         if self.f0 == self.c5 {
             // $1001: vertical
             loop {
@@ -199,6 +221,7 @@ impl Painter<'_> {
     /// stays below 128: from x index 129 or more it fills a single pixel and stops. That
     /// quirk leaves occasional unfilled pixels near the right edge, as in the original.
     fn fill(&mut self) {
+        self.new_command = true;
         let (target, tmask) = if self.c4 == 0xF0 {
             if self.c3 & 0xF0 == 0x10 {
                 return;
@@ -334,6 +357,7 @@ impl Painter<'_> {
         if let Some(i) = self.index(x, y) {
             self.watch(i, "fill");
             self.buf[i] = (self.buf[i] & !self.c4) | (self.c4 & self.c3);
+            self.run(true);
             self.plots += 1;
             self.show(i);
         }
@@ -449,6 +473,9 @@ fn paint(buf: Vec<u8>, data: &[u8], limit: Option<u32>) -> Picture {
         warnings: Vec::new(),
         overrun: false,
         plots: 0,
+        fill_plots: 0,
+        runs: Vec::new(),
+        new_command: false,
         shown,
         limit: limit.unwrap_or(u32::MAX),
     };
@@ -456,6 +483,7 @@ fn paint(buf: Vec<u8>, data: &[u8], limit: Option<u32>) -> Picture {
     // $0BB1: $FF or any byte below $F0 in opcode position ends the picture.
     // (A partial draw stops after the command that reaches the limit.)
     while (0xF0..0xFF).contains(&op) && p.plots < p.limit {
+        p.new_command = true;
         op = match op {
             0xF0 => {
                 p.c0 ^= 0xFF;
@@ -515,9 +543,16 @@ fn paint(buf: Vec<u8>, data: &[u8], limit: Option<u32>) -> Picture {
         p.warnings.push(format!("stopped on non-opcode byte ${op:02X} at offset {}", p.pos - 1));
     }
     if let Some(s) = p.shown {
-        return Picture { buf: s, warnings: p.warnings, end: p.pos, plots: p.plots.min(p.limit) };
+        return Picture {
+            buf: s,
+            warnings: p.warnings,
+            end: p.pos,
+            plots: p.plots.min(p.limit),
+            fill_plots: p.fill_plots,
+            runs: p.runs,
+        };
     }
-    Picture { buf: p.buf, warnings: p.warnings, end: p.pos, plots: p.plots }
+    Picture { buf: p.buf, warnings: p.warnings, end: p.pos, plots: p.plots, fill_plots: p.fill_plots, runs: p.runs }
 }
 
 /// Apple DHGR colour value (as stored in the buffer) -> RGB.

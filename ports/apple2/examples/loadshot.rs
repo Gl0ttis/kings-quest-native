@@ -35,7 +35,7 @@ fn main() {
         let (t0, t1) = d.span(false);
         println!("draw: {:.2}s to {:.2}s, {} plots", t0, t1, d.plots);
         if t >= t0 {
-            let n = if t >= t1 { d.plots } else { ((t - t0) / (t1 - t0) * d.plots as f64) as u32 };
+            let n = if t >= t1 { d.plots } else { d.plots_at((t - t0) / (t1 - t0)) };
             frame = w.render_frame_with(&d.partial(n), false);
         }
     }

@@ -50,7 +50,8 @@ Debian and Ubuntu).
 
 **Options:** `--speed N`, `--fast-loads`, `--fullscreen`, `--mute`, `--ntsc`,
 `--fill-specks`, `--savedisk FILE` (save to an original save disk image instead of
-`saves/`), `--saves DIR` (where save files go), `--charrom FILE` / `--no-charrom`,
+`saves/`), `--saves DIR` (where save files go), `--swap-prompts` (the original's "Please insert
+side B" prompts, off by default), `--charrom FILE` / `--no-charrom`,
 `--no-joystick`, `--keys FILE` (replay a key log, such as
 [routes/max_score.keys](routes/max_score.keys)), `--rate N` (a fixed rate),
 `--scale N` (window size). For testing: `--headless PLAN`, `--room N`,

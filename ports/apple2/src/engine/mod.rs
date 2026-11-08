@@ -86,14 +86,19 @@ pub struct Resources {
     pub font: Vec<u8>,
     /// Sectors the loader reads for each picture, view and script (for timing).
     pub sectors: [Vec<u32>; 3],
+    /// The disk (volume) each picture, view and script asks for; 0 for the shared tracks.
+    pub disks: [Vec<u8>; 3],
 }
 
 impl Resources {
     pub fn load(disks: &Disks, fix_script_064: bool) -> Result<Self, String> {
         // Each entry: the resource bytes, and how many sectors the loader reads for it.
-        let dir = |page: u16| -> Result<(Vec<Option<Vec<u8>>>, Vec<u32>), String> {
+        // Each entry: the resource bytes, how many sectors the loader reads for it, and
+        // the disk (volume) it asks for (0: the shared tracks, on every disk).
+        let dir = |page: u16| -> Result<(Vec<Option<Vec<u8>>>, Vec<u32>, Vec<u8>), String> {
             let mut data = Vec::new();
             let mut sectors = Vec::new();
+            let mut want = Vec::new();
             for (i, r) in disks.directory(page)?.iter().enumerate() {
                 let kind = crate::kq::DIRS.iter().find(|d| d.0 == page).map_or("", |d| d.1);
                 let res = if r[0] == 0 || crate::kq::UNUSED.contains(&(kind, i)) {
@@ -102,15 +107,16 @@ impl Resources {
                     disks.read(DiskAddr::from_record(r), 1).ok()
                 };
                 sectors.push(res.as_ref().map_or(0, |x| ((x.span.end - 1) / 256 - x.span.start / 256 + 1) as u32));
+                want.push(if res.is_some() { DiskAddr::from_record(r).disk } else { 0 });
                 data.push(res.map(|x| x.data.to_vec()));
             }
-            Ok((data, sectors))
+            Ok((data, sectors, want))
         };
-        let (pics, pic_sectors) = dir(0x1700)?;
+        let (pics, pic_sectors, pic_disks) = dir(0x1700)?;
         let pictures = pics.into_iter().map(|p| p.map(Rc::new)).collect();
-        let (vs, view_sectors) = dir(0x1900)?;
+        let (vs, view_sectors, view_disks) = dir(0x1900)?;
         let views = vs.into_iter().map(|v| v.and_then(|d| view::decode(&d).ok()).map(Rc::new)).collect();
-        let (mut scripts, script_sectors) = dir(0x1800)?;
+        let (mut scripts, script_sectors, script_disks) = dir(0x1800)?;
         if fix_script_064 {
             // Original data defect: section 1 is declared one byte longer than it is
             // (docs/script-format.md). Port policy: use the corrected boundary.
@@ -130,6 +136,7 @@ impl Resources {
             vocab: disks.fixed(0x6787)?.data.to_vec(),
             font: disks.fixed(0x6784)?.data.to_vec(),
             sectors: [pic_sectors, view_sectors, script_sectors],
+            disks: [pic_disks, view_disks, script_disks],
         })
     }
 }
@@ -223,6 +230,12 @@ pub struct World {
     pub pic_draws: Vec<cost::PicDraw>,
     /// Display options (not game state).
     pub display: display::Display,
+    /// Show the original's disk-swap prompts ("Please insert side B and press RETURN.")
+    /// when the game reads from another disk (kqplay --swap-prompts). Off by default:
+    /// the port reads every disk up front, so there is nothing to insert.
+    pub swap_prompts: bool,
+    /// The disk "in the drive" ($6F3E: the volume last read).
+    pub drive: u8,
 }
 
 /// A copy of the whole game state, without the front end (`io` is left empty).
@@ -250,6 +263,8 @@ impl Clone for World {
             cost: self.cost.clone(),
             pic_draws: self.pic_draws.clone(),
             display: self.display.clone(),
+            swap_prompts: self.swap_prompts,
+            drive: self.drive,
         }
     }
 }
@@ -279,6 +294,8 @@ impl World {
             cost: cost::Cost::default(),
             pic_draws: Vec::new(),
             display: Default::default(),
+            swap_prompts: false,
+            drive: 1,
         }
     }
 
@@ -341,8 +358,10 @@ impl World {
         let base = std::mem::take(&mut self.base);
         let log = std::mem::take(&mut self.log);
         let display = std::mem::take(&mut self.display);
+        let (swap_prompts, drive) = (self.swap_prompts, self.drive);
         *self = World::new(res);
         self.display = display;
+        (self.swap_prompts, self.drive) = (swap_prompts, drive);
         self.io = io;
         self.text = text;
         self.cost = cost;
@@ -370,6 +389,7 @@ impl World {
             let data = self.res.pictures.get(pic as usize).cloned().flatten();
             let p = crate::pic::draw(data.as_deref().map_or(&[][..], |v| v));
             self.cost.plots += p.plots as u64;
+            self.cost.fill_plots += p.fill_plots as u64;
             // The original plots it to the screen as it goes (after the disk read).
             if let (Some(data), Some(mut io)) = (data, self.io.take()) {
                 let draw = cost::PicDraw {
@@ -377,6 +397,7 @@ impl World {
                     onto: vec![0x1F; WIDTH * HEIGHT],
                     data,
                     plots: p.plots,
+                    runs: p.runs.clone(),
                     timing: Some((load, draw)),
                 };
                 io.show_drawing(&draw, &|n| self.render_frame_with(&draw.partial(n), false));

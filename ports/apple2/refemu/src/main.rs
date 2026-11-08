@@ -148,6 +148,13 @@ fn main() {
     let mut last_auto: u64 = 0;
     let mut prompt_keys: std::collections::VecDeque<u8> = std::collections::VecDeque::new();
     let mut text_dump = env::var("REFEMU_TEXTDUMP").ok();
+    // REFEMU_PLOTLOG=pass,file: "pass cycles" for every picture plot (aux $102F) in that
+    // pass (0: in every pass).
+    let plot_log: Option<(u64, String)> = env::var("REFEMU_PLOTLOG").ok().and_then(|v| {
+        let (p, f) = v.split_once(',')?;
+        Some((p.parse().ok()?, f.to_string()))
+    });
+    let mut plot_cycles: Vec<u64> = Vec::new();
     // REFEMU_PCLOG=hex,...: log the cycle count each time main-memory code reaches these
     // addresses (the first 20 times each).
     let pc_log: Vec<u16> = env::var("REFEMU_PCLOG")
@@ -234,6 +241,11 @@ fn main() {
                 m.main_at(0x4D),
                 m.main_at(next)
             );
+        }
+        if let Some((pp, _)) = &plot_log {
+            if (*pp == 0 || passes == *pp) && cpu.pc == 0x102F && m.sw.ramrd {
+                plot_cycles.push(passes << 48 | cpu.cycles);
+            }
         }
         for (i, &(_, a, aux)) in EVENTS.iter().enumerate() {
             if cpu.pc == a && m.sw.ramrd == aux {
@@ -455,6 +467,20 @@ fn main() {
     println!("bells: {}, speaker clicks: {}", m.bells, m.speaker_clicks);
     for n in &m.notes {
         println!("note: {n}");
+    }
+    if let Some((_, f)) = &plot_log {
+        let text: String = plot_cycles
+            .iter()
+            .map(|c| {
+                format!(
+                    "{} {}
+",
+                    c >> 48,
+                    c & 0xFFFF_FFFF_FFFF
+                )
+            })
+            .collect();
+        fs::write(f, text).expect("write plot log");
     }
     if let Some(p) = trace_path {
         fs::write(&p, trace).expect("write trace");
