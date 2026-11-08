@@ -42,7 +42,7 @@ use kq1_apple2::engine::{f, IoImpl, Resources, Scripted, World};
 use kq1_apple2::kq::Disks;
 use minifb::{InputCallback, Key, KeyRepeat, Scale, ScaleMode, Window, WindowOptions};
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::{HashMap, VecDeque},
     env, fs,
     path::{Path, PathBuf},
@@ -100,6 +100,8 @@ struct EngineIo {
     /// --savedisk: an original save-disk image (and where to write it back).
     disk: Option<(kq1_apple2::savedisk::SaveDisk, PathBuf)>,
     joystick: bool,
+    /// Buttons pressed since the engine last read the joystick (see run_engine).
+    latch: Rc<Cell<[bool; 2]>>,
 }
 
 /// saves/kq-a.sav .. kq-z.sav
@@ -196,11 +198,15 @@ impl IoImpl for EngineIo {
         }
     }
     fn joystick(&mut self) -> kq1_apple2::engine::Joystick {
-        if self.joystick {
-            joystick::read()
-        } else {
-            Default::default()
+        if !self.joystick {
+            return Default::default();
         }
+        // A press seen between passes counts too: the original also reads the buttons
+        // during its redraw ($5D33-$5D45), so it sees a press within the pass.
+        let mut j = joystick::read();
+        let l = self.latch.replace([false; 2]);
+        j.buttons = [j.buttons[0] || l[0], j.buttons[1] || l[1]];
+        j
     }
     fn show_drawing(&mut self, draw: &kq1_apple2::engine::cost::PicDraw, frame: &dyn Fn(u32) -> Vec<u32>) {
         // As a pass's drawing in run_engine: the disk read, then the plots.
@@ -272,7 +278,67 @@ mod joystick {
         kq1_apple2::engine::Joystick { paddles: Some((x.max(1), y)), buttons: [j.buttons & 1 != 0, j.buttons & 2 != 0] }
     }
 }
-#[cfg(not(windows))]
+/// The joystick through Linux's joystick device (`/dev/input/js0`, any game controller):
+/// axes as Apple paddle counts, 1-255 across, about 128 at rest; buttons 1 and 2. The
+/// device is opened at the first read and reopened if it goes away.
+#[cfg(target_os = "linux")]
+mod joystick {
+    use std::{fs::File, io::Read, os::unix::fs::OpenOptionsExt, sync::Mutex};
+
+    struct State {
+        dev: Option<File>,
+        axes: [i16; 8],
+        buttons: [bool; 2],
+    }
+    static STATE: Mutex<State> = Mutex::new(State { dev: None, axes: [0; 8], buttons: [false; 2] });
+
+    pub fn read() -> kq1_apple2::engine::Joystick {
+        let mut st = STATE.lock().unwrap();
+        if st.dev.is_none() {
+            st.dev = std::fs::OpenOptions::new().read(true).custom_flags(libc_nonblock()).open("/dev/input/js0").ok();
+        }
+        let Some(dev) = st.dev.as_mut() else { return Default::default() };
+        // struct js_event { u32 time; i16 value; u8 type; u8 number }, 8 bytes each.
+        let mut buf = [0u8; 8 * 64];
+        let mut events = Vec::new();
+        let mut gone = false;
+        loop {
+            match dev.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => events
+                    .extend(buf[..n - n % 8].chunks(8).map(|e| (i16::from_le_bytes([e[4], e[5]]), e[6] & 0x7F, e[7]))),
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(_) => {
+                    gone = true;
+                    break;
+                }
+            }
+        }
+        if gone {
+            st.dev = None;
+            return Default::default();
+        }
+        for (value, kind, number) in events {
+            match kind {
+                1 if (number as usize) < 2 => st.buttons[number as usize] = value != 0,
+                2 if (number as usize) < 8 => st.axes[number as usize] = value,
+                _ => {}
+            }
+        }
+        let paddle = |v: i16| (1 + ((v as i32 + 32768) * 254 / 65535)) as u8;
+        // A hat (d-pad) is usually axes 6 and 7; it pushes to the edges when used.
+        let (hx, hy) = (st.axes[6], st.axes[7]);
+        let (x, y) =
+            if hx != 0 || hy != 0 { (paddle(hx), paddle(hy)) } else { (paddle(st.axes[0]), paddle(st.axes[1])) };
+        kq1_apple2::engine::Joystick { paddles: Some((x.max(1), y)), buttons: st.buttons }
+    }
+
+    /// O_NONBLOCK on Linux.
+    fn libc_nonblock() -> i32 {
+        0o4000
+    }
+}
+#[cfg(not(any(windows, target_os = "linux")))]
 mod joystick {
     pub fn read() -> kq1_apple2::engine::Joystick {
         Default::default()
@@ -341,7 +407,69 @@ mod sound {
         unsafe { PlaySoundW(wav.as_ptr() as *const u16, std::ptr::null_mut(), SND_MEMORY | SND_ASYNC | SND_NODEFAULT) };
     }
 }
-#[cfg(not(windows))]
+/// The bell through cpal (ALSA, or PulseAudio/PipeWire through it), on a thread of its
+/// own that keeps the output stream; beeps are queued as samples at the device's rate.
+#[cfg(target_os = "linux")]
+mod sound {
+    use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+    use std::{
+        collections::VecDeque,
+        sync::{Arc, Mutex, OnceLock},
+    };
+
+    struct Out {
+        queue: Arc<Mutex<VecDeque<f32>>>,
+        rate: u32,
+    }
+    static OUT: OnceLock<Option<Out>> = OnceLock::new();
+
+    fn start() -> Option<Out> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let run = || -> Option<()> {
+                let device = cpal::default_host().default_output_device()?;
+                let config = device.default_output_config().ok()?;
+                let rate = config.sample_rate().0;
+                let channels = config.channels() as usize;
+                let queue = Arc::new(Mutex::new(VecDeque::<f32>::new()));
+                let q = queue.clone();
+                let stream = device
+                    .build_output_stream(
+                        &config.into(),
+                        move |data: &mut [f32], _| {
+                            let mut q = q.lock().unwrap();
+                            for frame in data.chunks_mut(channels) {
+                                let v = q.pop_front().unwrap_or(0.0);
+                                frame.fill(v);
+                            }
+                        },
+                        |e| eprintln!("sound: {e}"),
+                        None,
+                    )
+                    .ok()?;
+                stream.play().ok()?;
+                println!("sound: {} at {rate} Hz", device.name().unwrap_or_default());
+                tx.send(Some(Out { queue, rate })).ok()?;
+                // Keep the stream alive for the life of the program.
+                loop {
+                    std::thread::park();
+                }
+            };
+            if run().is_none() {
+                eprintln!("sound: no audio output could be opened; the bell is silent");
+                let _ = tx.send(None);
+            }
+        });
+        rx.recv().ok().flatten()
+    }
+
+    pub fn play(double: bool) {
+        let Some(out) = OUT.get_or_init(start) else { return };
+        let samples = kq1_apple2::sound::samples(double, out.rate);
+        out.queue.lock().unwrap().extend(samples.iter().map(|&s| s as f32 / 32768.0));
+    }
+}
+#[cfg(not(any(windows, target_os = "linux")))]
 mod sound {
     pub fn play(_double: bool) {
         print!("\x07");
@@ -353,6 +481,8 @@ mod sound {
 struct Fullscreen {
     #[cfg(windows)]
     saved: Option<(isize, win32::Rect)>,
+    #[cfg(target_os = "linux")]
+    on: bool,
 }
 
 #[cfg(windows)]
@@ -441,9 +571,48 @@ impl Fullscreen {
             }
         }
     }
-    #[cfg(not(windows))]
+    /// X11: ask the window manager to toggle `_NET_WM_STATE_FULLSCREEN`; minifb then
+    /// stretches the picture to the new size, keeping its shape.
+    #[cfg(target_os = "linux")]
+    fn toggle(&mut self, win: &mut Window) {
+        use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
+        use x11_dl::xlib;
+        let (Ok(dh), Ok(wh)) = (win.display_handle(), win.window_handle()) else { return };
+        let (RawDisplayHandle::Xlib(d), RawWindowHandle::Xlib(w)) = (dh.as_raw(), wh.as_raw()) else {
+            println!("full screen needs X11");
+            return;
+        };
+        let Some(display) = d.display else { return };
+        let Ok(x) = xlib::Xlib::open() else { return };
+        let display = display.as_ptr() as *mut xlib::Display;
+        // SAFETY: the display and window are minifb's own, alive while `win` is.
+        unsafe {
+            let state = (x.XInternAtom)(display, c"_NET_WM_STATE".as_ptr(), xlib::False);
+            let full = (x.XInternAtom)(display, c"_NET_WM_STATE_FULLSCREEN".as_ptr(), xlib::False);
+            let mut ev: xlib::XEvent = std::mem::zeroed();
+            ev.client_message.type_ = xlib::ClientMessage;
+            ev.client_message.window = w.window;
+            ev.client_message.message_type = state;
+            ev.client_message.format = 32;
+            ev.client_message.data.set_long(0, 2); // _NET_WM_STATE_TOGGLE
+            ev.client_message.data.set_long(1, full as i64);
+            ev.client_message.data.set_long(3, 1);
+            let root = (x.XDefaultRootWindow)(display);
+            (x.XSendEvent)(
+                display,
+                root,
+                xlib::False,
+                xlib::SubstructureRedirectMask | xlib::SubstructureNotifyMask,
+                &mut ev,
+            );
+            (x.XFlush)(display);
+        }
+        self.on = !self.on;
+        win.set_cursor_visibility(!self.on);
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
     fn toggle(&mut self, _win: &mut Window) {
-        println!("full screen is only implemented on Windows");
+        println!("full screen is only implemented on Windows and Linux (X11)");
     }
 }
 
@@ -671,12 +840,19 @@ fn main() {
             let mut w = new_world();
             w.display.charrom = charrom_bytes
                 .map(|r| std::rc::Rc::new(kq1_apple2::engine::display::CharRom::from_rom(&r).expect("character ROM")));
-            w.io = Some(Box::new(EngineIo { link: link.clone(), saves, disk: savedisk, joystick: use_joystick }));
+            let latch = Rc::new(Cell::new([false; 2]));
+            w.io = Some(Box::new(EngineIo {
+                link: link.clone(),
+                saves,
+                disk: savedisk,
+                joystick: use_joystick,
+                latch: latch.clone(),
+            }));
             if !key_log.is_empty() {
                 println!("replaying {} keys to pass {last_key}; the keyboard is ignored until then", key_log.len());
             }
             start(&mut w, start_room);
-            run_engine(w, &link, &key_log, last_key, fixed_rate);
+            run_engine(w, &link, &key_log, last_key, fixed_rate, use_joystick.then_some(latch));
         })
     };
 
@@ -718,7 +894,13 @@ fn main() {
         }
         win.update_with_buffer(&frame, FRAME_W, FRAME_H * 2).expect("update");
         // After an update, so that minifb sees the size change.
-        if std::mem::take(&mut want_full) || hook::take_alt_enter() {
+        #[cfg(not(windows))]
+        let alt = win.is_key_down(Key::LeftAlt) || win.is_key_down(Key::RightAlt);
+        #[cfg(not(windows))]
+        let alt_enter = alt && win.is_key_pressed(Key::Enter, KeyRepeat::No);
+        #[cfg(windows)]
+        let alt_enter = false;
+        if std::mem::take(&mut want_full) || hook::take_alt_enter() || alt_enter {
             full.toggle(&mut win);
         }
         let mut s = link.lock().unwrap();
@@ -757,6 +939,12 @@ fn main() {
             s.keys.push_back(c);
         }
         let chars: Vec<u8> = typed.borrow_mut().drain(..).collect();
+        // Alt+key isn't typing (the Apple has no Alt); on Windows the hook drops it.
+        #[cfg(not(windows))]
+        if !alt {
+            s.keys.extend(chars);
+        }
+        #[cfg(windows)]
         s.keys.extend(chars);
         let t = format!(
             "{TITLE} - speed x{:.2}{}{}{}{}{}",
@@ -782,7 +970,14 @@ fn main() {
 /// end of a pass. A pass that draws a picture (a room change) shows it being drawn: the
 /// old room while the disk turns, then the picture plotted line by line on white, as the
 /// original plots straight to the screen; the sprites come with the pass's end.
-fn run_engine(mut w: World, link: &Link, key_log: &HashMap<usize, u8>, last_key: usize, fixed_rate: Option<f64>) {
+fn run_engine(
+    mut w: World,
+    link: &Link,
+    key_log: &HashMap<usize, u8>,
+    last_key: usize,
+    fixed_rate: Option<f64>,
+    latch: Option<Rc<Cell<[bool; 2]>>>,
+) {
     let mut log = Log(0);
     let mut pass: usize = 0;
     let mut next = Instant::now();
@@ -863,6 +1058,12 @@ fn run_engine(mut w: World, link: &Link, key_log: &HashMap<usize, u8>, last_key:
                 publish(link, &w.render_frame_with(&draws[i].partial(n), false));
                 *shown = state;
             }
+        }
+        // Between passes, keep an eye on the joystick buttons (EngineIo::joystick).
+        if let Some(l) = &latch {
+            let b = joystick::read().buttons;
+            let old = l.get();
+            l.set([old[0] || b[0], old[1] || b[1]]);
         }
         let wait = next.saturating_duration_since(Instant::now()).min(Duration::from_millis(15));
         std::thread::sleep(wait.max(Duration::from_millis(1)));
