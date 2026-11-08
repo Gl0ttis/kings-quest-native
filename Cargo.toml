@@ -1,7 +1,7 @@
 # King's Quest I native ports: one crate set per original platform under ports/.
 [workspace]
 resolver = "2"
-members = ["ports/apple2", "ports/apple2/refemu"]
+members = ["ports/apple2", "ports/apple2/refemu", "ports/pcjr"]
 
 [workspace.package]
 edition = "2021"

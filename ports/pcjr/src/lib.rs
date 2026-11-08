@@ -1,0 +1,4 @@
+//! Native port of the 1984 IBM PCjr King's Quest, in progress. So far: the disk image
+//! and its resource directory (docs/disk-layout.md).
+
+pub mod disk;
