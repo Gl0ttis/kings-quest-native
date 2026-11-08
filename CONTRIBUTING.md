@@ -71,8 +71,11 @@ Each crate has its own [semantic version](https://semver.org/), in its `Cargo.to
 and its own tags (`kq1-apple2-v0.2.0`). Nothing is bumped by hand:
 [release-please](https://github.com/googleapis/release-please) reads the
 conventional commits on `main` and keeps a release pull request open with the next
-versions and changelogs (`ports/<port>/CHANGELOG.md`). Merging that pull request
-tags the release.
+versions and changelogs (`ports/<port>/CHANGELOG.md`). Its checks are started by the
+release workflow (GitHub doesn't start them for a pull request a workflow opened).
+Merging it tags the release, and the release workflow attaches the builds of `kq`.
+`kq1-apple2-refemu` gets versions and a changelog but no GitHub release: it is
+a measuring tool, not something to download.
 
 A change under `ports/apple2/refemu/` releases `kq1-apple2-refemu` only; anything
 else under `ports/apple2/` releases `kq1-apple2`, and with it `kq1-apple2-refemu`,
