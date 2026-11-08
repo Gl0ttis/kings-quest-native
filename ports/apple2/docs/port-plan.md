@@ -323,6 +323,27 @@ format work.
   (`/dev/input/js0`; WSL can't pass a controller through, so untested). minifb is
   built for X11 only, which needs fewer libraries and makes full screen possible.
 
+- **The screen, dot by dot (2026-11-08).** refemu records the original's screen on
+  every pass (`--frames`) and the `framediff` example compares it with the port's, in
+  double hi-res dots, over all seven recorded routes (about 67,500 passes). It found
+  four differences the state traces couldn't see, all fixed:
+  - the goat at the troll's bridge: the original puts its saved background back where
+    a script moved it, shifting the planks; the port now does too
+    ([motion.md](motion.md#erasing-and-redrawing-4dd74e69));
+  - the castle doors (view 9) stepping one cel past their loop: the original keeps
+    drawing the last cel, the port drew nothing for two passes;
+  - `set_ego_view` keeps the byte after the loop instead of the cel, so Graham comes
+    back from another view at cel 0 ([script-format.md](script-format.md)); the port
+    restored his cel, and his walk was one cel out of step until his loop changed;
+  - the copyright line under the Sierra logo stayed on the title scroll, which the
+    original's clear removes; and the first prompt now shows from the first pass.
+  Picture overlays (the beanstalk) also show in the pass that draws them now, not at
+  the next sprite redraw, and a disk-swap prompt is followed by a new prompt line as
+  in the original (`$6077` sets `$702C`). With the swap prompts on (`--swap-prompts`,
+  `FRAMEDIFF_SWAP=1`), every pass of every route matches the original on screen, 67,987
+  of 67,987; with them off (the default), the 26 passes of each long route where the
+  original asks for another disk differ.
+
 - **The start-up screen.** As the original: black while DOS boots and loads the engine,
   then a white screen with "Please wait..." (row 9, column 13, `$4537`) while the
   engine loads its data, then the title screens. Every phase uses times measured in

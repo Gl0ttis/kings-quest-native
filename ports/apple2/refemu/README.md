@@ -60,6 +60,11 @@ II write latch is emulated), and `--save-out FILE` writes it out afterwards.
 - **`--trace`:** a CSV with the room, ego position, direction, score and a hash of all
   variables at every pass.
 - **`--shot`:** a screenshot of double hi-res page 1.
+- **`--frames FILE`:** the screen at the start of every pass (after its prompt redraw,
+  `$4039`, which the port does at the end of the pass before), recorded whenever it
+  changes: per record the pass (u32), a mode byte (1 = text), the double hi-res page
+  as 192 rows of 560 dots (70 bytes each, first dot in bit 0) and the 40x24 text page.
+  The port's `framediff` example compares a run with it.
 - **Profile:** with `REFEMU_PROFILE=1`, a profile of instructions by 256-byte page.
 - **Debug variables:**
   - `REFEMU_DUMP=p,…` prints the variables, the actor table and the follow-motion zero

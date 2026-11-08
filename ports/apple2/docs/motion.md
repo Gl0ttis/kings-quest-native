@@ -243,6 +243,26 @@ sprite is drawn, so each saved background is the bare picture and the restore or
 can't matter, however the actors overlap. The port does the same (`restore_all`,
 `move_all`, `save_all`, the draw pass, `commit_all`).
 
+**A block put back in the wrong place.** The save (aux `$15BF`) reads the block at the
+actor's new position (`[$1A]`, `[$1B]`) with the new cel's size (`[$16]`); the restore
+(aux `$15F5`) writes it at the current position (`[$18]`, `[$19]`) with the committed
+cel's size (`[$14]`). The commit step makes them equal, so normally the block goes
+back where it came from. If a script moves an actor that is on screen (`position`
+writes `[$18]`/`[$19]`), the block is written at the new place instead. The picture
+there is overwritten with the background from where the actor was, and whatever of
+the sprite the block no longer covers stays in the picture until the room is drawn
+again. It happens at the troll's bridge (room 25): when the goat chases the troll
+off, the script moves the goat from (36,80) to (35,78), and the bridge planks under
+it come out two rows higher, for the rest of the visit. The port replays its restores
+on a copy of the screen (which holds the sprites, as the original's buffer does) and
+keeps the result where an actor had moved (`World::restore_all`).
+
+**A cel past the end of its loop.** An animation can step the cel number to the loop's
+cel count, one past the last cel (the castle doors, view 9, at room 2). A lookup of it
+would read past the cel table, but the drawing pointer `[$16]` still points at the last
+cel, and that is what the original shows. The port draws the last cel
+(`World::actor_cel`).
+
 ## The joystick (`$4817`, `$4846`)
 
 **Calibration (`$4817`, once at power-on).** Both paddles are read (`$48BC`: count

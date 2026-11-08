@@ -172,7 +172,7 @@ above the horizon.
 | 18 | o x y | move_to | Motion mode `$0E` toward (x, y); for the ego, also takes control from the player |
 | 19 | o x y | position | Set x and y (clamped), also into object bytes 5 and 6 |
 | 1A / 1B | o | obj_field4_on / off | Actor field 4 = 1 / 0 |
-| 1C, 41 | v | set_ego_view | Give the ego loaded view *v* (same handler) |
+| 1C, 41 | v | set_ego_view | Give the ego loaded view *v* (same handler). Leaving view 0, it keeps the loop (`$6651`) and, meaning to keep the cel, the byte after the loop, `[$04]` (the no-move flag, normally 0), in `$6650`; back to view 0, it restores that loop and "cel". So Graham comes back at cel 0 of the loop he left, not the cel he was on. Other views start at loop 0, cel 0 |
 | 1D | o | approach_ego | Motion mode `$0F`: approach the ego to within 5, then set `v6`; fixes the priority at 15 until it arrives (arrival clears flag byte `$0B`) |
 | 1E | o d | follow_ego | Motion mode `$11`, keeping distance *d* (`$6D`); fixes the priority at 15 |
 | 1F | o | chase_ego | Motion mode `$0C`: chase the ego until touching, then set `v6`; cycle mode 0 |

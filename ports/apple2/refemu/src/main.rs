@@ -20,6 +20,8 @@ pub fn boot_sector(d: &Disk, phys: usize) -> Option<[u8; 256]> {
 }
 
 const MAIN_LOOP: u16 = 0x4026;
+/// Where --frames captures the screen: after the prompt redraw that starts each pass.
+const FRAME_AT: u16 = 0x4039;
 
 /// Inner-loop entry points counted per pass for the cost model: (name, address, aux?).
 const EVENTS: [(&str, u16, bool); 11] = [
@@ -64,6 +66,10 @@ fn main() {
     let trace_path = opt("--trace");
     let shot_path = opt("--shot");
     let buf_path = opt("--picbuf");
+    // --frames FILE: the screen at the start of each pass, written when it changes.
+    let frames_path = opt("--frames");
+    let mut frames: Vec<u8> = Vec::new();
+    let mut last_frame: Vec<u8> = Vec::new();
     // Key log from kqroute: "PASS HEXKEY" per line; each key is pressed at the start of
     // that pass, so the engine reads it during the pass, as in the port.
     let key_log: BTreeMap<u64, u8> = opt("--keys")
@@ -324,6 +330,16 @@ fn main() {
             break;
         }
         // A pass of the engine's main loop, with main memory mapped in.
+        // --frames: the screen once the pass has redrawn the prompt ($4029-$4036), which
+        // the port does at the end of the pass before.
+        if cpu.pc == FRAME_AT && !m.sw.ramrd && frames_path.is_some() {
+            let f = displayed_frame(&m);
+            if f != last_frame {
+                frames.extend_from_slice(&(passes as u32).to_le_bytes());
+                frames.extend_from_slice(&f);
+                last_frame = f;
+            }
+        }
         if cpu.pc == MAIN_LOOP && !m.sw.ramrd {
             passes += 1;
             if passes == 1 {
@@ -492,6 +508,44 @@ fn main() {
     if let Some(p) = shot_path {
         fs::write(&p, screenshot(&m)).expect("write shot");
     }
+    if let Some(p) = frames_path {
+        fs::write(&p, frames).expect("write frames");
+    }
+}
+
+/// The size of a --frames record after its pass number.
+pub const FRAME_RECORD: usize = 1 + 192 * 70 + 24 * 40;
+
+/// What the screen shows, for --frames: a mode byte (0 double hi-res, 1 text), the
+/// double hi-res page as 192 rows of 560 dots (70 bytes, first dot in bit 0), and the
+/// 40-column text page as screen codes (24 rows of 40). The page shown is page 1
+/// unless PAGE2 is on without 80STORE.
+fn displayed_frame(m: &Machine) -> Vec<u8> {
+    let mut f = Vec::with_capacity(FRAME_RECORD);
+    f.push(m.sw.text as u8);
+    let second = m.sw.page2 && !m.sw.store80;
+    let gbase = if second { 0x4000 } else { 0x2000 };
+    for y in 0..192usize {
+        let base = gbase + (y & 7) * 0x400 + ((y >> 3) & 7) * 0x80 + (y >> 6) * 0x28;
+        let mut row = [0u8; 70];
+        let mut d = 0;
+        for col in 0..40 {
+            for mem in [&m.aux, &m.main] {
+                let b = mem[base + col];
+                for i in 0..7 {
+                    row[d / 8] |= (b >> i & 1) << (d % 8);
+                    d += 1;
+                }
+            }
+        }
+        f.extend_from_slice(&row);
+    }
+    let tbase = if second { 0x800 } else { 0x400 };
+    for r in 0..24usize {
+        let base = tbase + (r & 7) * 0x80 + (r >> 3) * 0x28;
+        f.extend_from_slice(&m.main[base..base + 40]);
+    }
+    f
 }
 
 /// Double hi-res page 1 as a 560x192 PNG. Colour is taken from each aligned group of

@@ -497,6 +497,12 @@ impl World {
                 // $5FBF: draw the $D000 picture over the current one
                 let cur = std::mem::take(&mut self.base);
                 self.base = self.picture(self.pic_d000, Some(cur));
+                // The original draws it into the buffer on display, over the sprites, so
+                // it shows at once rather than at the next sprite redraw.
+                let data = self.pic_d000.and_then(|n| self.res.pictures.get(n as usize).cloned().flatten());
+                if let Some(data) = data.filter(|_| self.screen.len() == self.base.len()) {
+                    self.screen = crate::pic::draw_onto(std::mem::take(&mut self.screen), &data).buf;
+                }
             }
             0x26 => {
                 // $63FC place_object: set loop/cel, draw (nudging), add to the picture
@@ -656,8 +662,11 @@ impl World {
         let old = self.actors[0][f::VIEW];
         self.actors[0][f::VIEW] = v;
         let (l, c) = if old == 0 {
+            // $412B-$4135: the loop ([$03]), and for the cel the next byte, [$04] (the
+            // no-move flag, normally 0) rather than [$08]; so coming back to view 0
+            // restores the loop at cel 0, or at that flag's value.
             self.g.saved_loop = self.actors[0][f::LOOP];
-            self.g.saved_cel = self.actors[0][f::CEL];
+            self.g.saved_cel = self.actors[0][f::NO_MOVE];
             (0, 0)
         } else if v == 0 {
             (self.g.saved_loop, self.g.saved_cel)
