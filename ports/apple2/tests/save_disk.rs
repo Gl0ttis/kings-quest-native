@@ -5,7 +5,7 @@
 //! The reference: refemu replayed routes/max_score.keys, pressed 1 and A at pass 2001
 //! (save to letter A on a blank disk 4: extracted/reference/save_disk_pass2001.nib),
 //! went on to pass 2300, then pressed 3 and A (restore) and ran 100 more passes
-//! (extracted/reference/restore_pass2301.csv). The original also restored a save the
+//! (reference/restore_pass2301.csv). The original also restored a save the
 //! port wrote and gave the same 100 passes (checked once with refemu; see
 //! docs/save-format.md).
 use kq1_apple2::engine::{f, IoImpl, Resources, World};
@@ -80,7 +80,7 @@ fn run(disk: Vec<u8>, save: Option<usize>) -> Option<(Vec<(u8, u8, u8, u8, Strin
 }
 
 fn reference() -> Option<Vec<(u8, u8, u8, u8, String)>> {
-    let csv = fs::read_to_string(format!("{BASE}extracted/reference/restore_pass2301.csv")).ok()?;
+    let csv = fs::read_to_string(format!("{BASE}reference/restore_pass2301.csv")).ok()?;
     // Trace row k + 1 is the port's pass k.
     Some(
         csv.lines()

@@ -34,7 +34,7 @@ shared by all three). When it differs from the one last read (`$6F3E`), the orig
 prints "Please insert side " with the disk's letter (`$6CD0`: A, B, C) and " and press
 RETURN." (`$6CDC`, `$6CF1`), and waits for RETURN; the save disk (volume 10) has its own
 message (`$6D05`). The port reads every disk image up front, so it shows these only
-with `kqplay --swap-prompts` (`World::swap_prompts`); it tracks the disk "in the drive"
+with `kq --swap-prompts` (`World::swap_prompts`); it tracks the disk "in the drive"
 either way. Over the max-score run the port changes disk 27 times, each on a pass where
 the original waited at its prompt (test `swap_prompts_match_the_original`, which also
 checks the game still matches the original on every pass with the prompts on).
@@ -54,7 +54,7 @@ bottom line's clear is from the ROM listing: refemu's stand-in for COUT doesn't 
 or scroll, so it can't show it.) The port stores these screen codes and draws them
 as the IIe does, with the game's font. The
 exact Apple text-mode character set needs the Apple's video ROM, which the port
-doesn't ship. Given a dump (`kqplay --charrom FILE`: the IIe video ROM, 342-0133 or
+doesn't ship. Given a dump (`kq --charrom FILE`: the IIe video ROM, 342-0133 or
 342-0265), the text screen uses it; `CharRom::from_rom` (src/engine/display.rs) finds
 the dump's dot order and polarity from the space and the L (the upright stands at
 the left end of the foot; glyphs have a blank first column, so the upright is not

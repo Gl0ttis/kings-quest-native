@@ -1,4 +1,4 @@
-"""cmp_ref.py PORT_TRACE ORIG_TRACE: compare a port trace (kqplay --headless --keys
+"""cmp_ref.py PORT_TRACE ORIG_TRACE: compare a port trace (kq --headless --keys
 --trace) with refemu's (--keys --trace). Row k+1 of refemu's trace is the port's pass k.
 Prints the first differences and a summary."""
 import csv, sys

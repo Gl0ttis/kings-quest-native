@@ -38,7 +38,7 @@ All the static content is decoded, checked, and has a Rust reader:
 | Movement and animation | Done | `engine/cycle.rs` | [motion.md](motion.md) |
 | Script VM, text, parser, save | Done | `engine/` | [text-and-parser.md](text-and-parser.md), [save-format.md](save-format.md) |
 
-The only third-party dependency is `minifb`, for the window in `kqplay`; it is
+The only third-party dependency is `minifb`, for the window in `kq`; it is
 optional (feature `player`), so the engine library has none.
 
 ## What is still unknown
@@ -60,7 +60,7 @@ caught between passes; see motion.md.)
 beeps for the "more" pause, and a double beep (`$6625`) for save and restore disk errors.
 `src/sound.rs` rebuilds it from the ROM routine's cycle counts (0.0114 s of silence,
 then 192 speaker toggles 546 cycles apart: a 935 Hz square wave for 0.1 s), and
-`kqplay` plays it through Windows and takes the original's time for it.
+`kq` plays it through Windows and takes the original's time for it.
 
 ## Architecture
 
@@ -157,7 +157,7 @@ that touch the screen or text are routed to a recording sink for now.
 - all cycle modes and motion modes (chase, approach, follow with patrol, wander, move-to)
 - the exact draw-order sort
 
-`kqplay` runs it in a window, at first at a fixed cycle rate; it now runs at the original's speed (M6), with `--rate N` for a fixed rate and F11/F12 or `--speed N` to scale it. These were checked by headless runs:
+`kq` runs it in a window, at first at a fixed cycle rate; it now runs at the original's speed (M6), with `--rate N` for a fixed rate and F11/F12 or `--speed N` to scale it. These were checked by headless runs:
 - walking between rooms 1 → 16 → 9, through the horizon and right-edge exits, with the entry positions from the edge table
 - obstacles stopping Graham: a tree base in his own priority band, and priority-15 lines
 - walking into room 1's moat, which plays the scripted alligator death and the global "Thank you for playing" ending
@@ -194,7 +194,7 @@ wanderers behave as described, and death sequences triggered by scripts play.
 - the restart prompt
 - `input_number`
 
-`kqplay` takes typed commands. In headless tests, "look at the castle" and "look banners" print the room's descriptions, "castle" alone gets "I do not understand that.", and an unknown word gets `I don't understand "xyzzy".` In room 6, walking to the stump and typing "get pouch" gives 3 points and the pouch shows up in the inventory.
+`kq` takes typed commands. In headless tests, "look at the castle" and "look banners" print the room's descriptions, "castle" alone gets "I do not understand that.", and an unknown word gets `I don't understand "xyzzy".` In room 6, walking to the stump and typing "get pouch" gives 3 points and the pouch shows up in the inventory.
 
 See [text-and-parser.md](text-and-parser.md). Still open: the purpose of `v31`. The exact Apple text-mode characters need a user-supplied ROM dump (found automatically next to the disks).
 
@@ -241,7 +241,7 @@ format work.
   - picture pixels plotted
   - room changes
 
-  The costs per event were refitted on 2026-11-08 over the whole maximum-score run, port counts against the original's measured cycles. Over 17,299 passes (leaving out pass 1 and the passes where the original waits for a key), the median error is 1.1% and 90% of passes are within 3.2%. The busiest 10% of passes by the original's duration (scenes like the condor and the leprechauns) have a 0.8% median error, and the whole 3,616-second run comes out 0.4% short. `kqplay` paces passes this way by default; `--rate N` gives a fixed rate, and `--fast-loads` drops the loading time. With this, a room change takes about 10 to 13 seconds, as on a real Apple IIe. The test `speed_model_matches_original` keeps it there.
+  The costs per event were refitted on 2026-11-08 over the whole maximum-score run, port counts against the original's measured cycles. Over 17,299 passes (leaving out pass 1 and the passes where the original waits for a key), the median error is 1.1% and 90% of passes are within 3.2%. The busiest 10% of passes by the original's duration (scenes like the condor and the leprechauns) have a 0.8% median error, and the whole 3,616-second run comes out 0.4% short. `kq` paces passes this way by default; `--rate N` gives a fixed rate, and `--fast-loads` drops the loading time. With this, a room change takes about 10 to 13 seconds, as on a real Apple IIe. The test `speed_model_matches_original` keeps it there.
 
   Before the refit, the port's counts were brought in line with the original's, pass by pass:
   - the prompt clears its line by drawing 40 spaces, and is drawn at the start of the next pass
@@ -264,22 +264,22 @@ format work.
 - **The text window on room entry.** `show_overlay_picture` clears the text rows and starts the prompt on row 20, as in the original. The port had kept the old text on screen.
 - **refemu fixes.** Its automatic RETURN no longer fires during long room loads, or twice for one pause. Those extra RETURNs had been typed into the original as empty lines.
 
-- **Human playtest (2026-11-08).** The whole max-score replay was watched in `kqplay` at the original's speed, start to coronation, with no text, sprite or colour problems seen. Findings and what came of them:
+- **Human playtest (2026-11-08).** The whole max-score replay was watched in `kq` at the original's speed, start to coronation, with no text, sprite or colour problems seen. Findings and what came of them:
   - *The game froze while the window was dragged.* Windows stops a window's thread during a drag or resize. The engine now runs on its own thread. A hook in front of minifb's window procedure does all the painting, and a timer keeps it painting during a drag or resize. Verified by holding the title bar: room 1 kept drawing and Graham appeared.
-  - *Full screen.* Alt+Enter (or `--fullscreen`) toggles a borderless full-screen window, with the picture kept in shape between black bars. The first version drew the picture at window size in a corner. minifb missed the size change because `--fullscreen` resized the window before minifb's first update, and its stretch was wrong under display scaling anyway. Alt+Enter also typed a RETURN, because minifb turns Alt+key into characters. The hook now catches Alt+Enter itself and drops every Alt+key character. kqplay is per-monitor DPI aware, so sizes are in real pixels (on a 4K monitor at 150%, the picture is 3150×2160, sharp), and the window starts at `--scale` (default 2) times the frame, times the display scale.
+  - *Full screen.* Alt+Enter (or `--fullscreen`) toggles a borderless full-screen window, with the picture kept in shape between black bars. The first version drew the picture at window size in a corner. minifb missed the size change because `--fullscreen` resized the window before minifb's first update, and its stretch was wrong under display scaling anyway. Alt+Enter also typed a RETURN, because minifb turns Alt+key into characters. The hook now catches Alt+Enter itself and drops every Alt+key character. kq is per-monitor DPI aware, so sizes are in real pixels (on a 4K monitor at 150%, the picture is 3150×2160, sharp), and the window starts at `--scale` (default 2) times the frame, times the display scale.
   - *Load pauses showed the finished room.* The original plots pictures straight to the screen, so during a room change it shows the old room while the disk turns, then the screen goes white and the new picture appears line by line and fill by fill; the sprites come at the end. refemu screenshots of the change from room 56 to 57 at 1.0M, 2.7M, 5.0M and 10.3M cycles into the pass show exactly that. The port showed each pass's frame at the start of its time, so a load showed the finished room for 10 s. Now each pass's frame is shown when its time is up, and a pass that draws a picture replays the drawing: the engine records each draw (`World::pic_draws`: the work done before it, the buffer drawn onto, and the plot count), and `pic::draw_partial` gives the buffer after any number of plots. Text rows stay blank meanwhile, as in the original. The drawing is paced run by run, at the original's measured rates per line segment and fill seed (`LINE_PLOT`, `LINE_SEGMENT`, `FILL_PLOT`, `FILL_SEED` in cost.rs; fitted on every plot of the max-score run's 125 room loads timed in refemu, `REFEMU_PLOTLOG`): each picture's drawing time is within 1.1% (median), and the progress part way within 0.9%, against 13.5% and 1.4% with one cost per plot. It starts `DRAW_START` (1.13M cycles, the screen clear) after the work counted before it. The title pictures are drawn the same way (below). With fast loads the drawing is instant.
   - *Slowdown with several moving sprites (the condor, the goat).* This is the original: Graham moves a fixed step per pass, and passes take longer as more cels are decoded and copied. In the original's trace, passes with little sprite work run at 11.3 per second, with 300+ cel nibbles at 5.9, and with 600+ at 3.7. The giant's room averages 3.8. The speed model follows this to within about 1%.
   - *The giant stands again after falling asleep.* This is the original: room 58's exit rule (A01AC) resets `v186`, so on return the giant is drawn awake (actor 37, without his chest) and cycles in place. The original's screen at pass 15200 matches the port's.
-  - *No sound.* The console bell made no sound in a terminal. `kqplay` now plays the rebuilt bell (see Sound above). F8 or `--mute` turns it off.
+  - *No sound.* The console bell made no sound in a terminal. `kq` now plays the rebuilt bell (see Sound above). F8 or `--mute` turns it off.
   - *Skipping the load pauses.* F9 or `--fast-loads` leaves out the disk reads, room-change bookkeeping and picture drawing from the pacing (about 10 s of each room change) and keeps the original's pace for everything else. The game plays the same, because its state depends only on passes, and the Apple has no clock. `--speed` scales everything, walking included.
 
 **Optional items, done 2026-11-08:**
 
 - **Joystick.** The original's calibration and per-pass reading, from the
-  disassembly (`$4817`, `$4846`); any Windows game controller in `kqplay`. Buttons 0
+  disassembly (`$4817`, `$4846`); any Windows game controller in `kq`. Buttons 0
   and 1 are the Apple's two buttons (swim, and jump or duck, through the global
   script). tests/joystick.rs.
-- **Original save disks.** `kqplay --savedisk FILE`; saves move both ways between the
+- **Original save disks.** `kq --savedisk FILE`; saves move both ways between the
   port and the original. Checked against the original in refemu, which now emulates
   disk writes. This found a restore bug in the port (the carry into the room-entry
   random number). See [save-format.md](save-format.md#save-disks-confirmed-with-refemu)
@@ -298,7 +298,7 @@ format work.
 
 - **Playing from `.nib` images.** `Disks::from_files` (src/kq.rs) takes `.nib` or
   `.do`/`.dsk`, decodes `.nib` images itself and orders them by volume (disk 1-3), and
-  refuses the save disk or damaged images. Every tool uses it; `kqplay` needs no
+  refuses the save disk or damaged images. Every tool uses it; `kq` needs no
   extraction step. The decoded images are byte-identical to extracted/disk1-3.do, and
   the max-score replay from the `.nib` files matches the original on every pass.
 
@@ -316,8 +316,8 @@ format work.
   [route.md](route.md)). Tests: `gold_key_route`, `giant_sling_route`,
   `magic_ring_route`.
 - **Linux (2026-11-08).** Under WSL2 (Ubuntu 24.04, WSLg) the workspace builds without
-  warnings, all tests pass, kqplay opens its window and plays, and the max-score replay
-  matches the original on every pass. kqplay's Linux front end now has the bell
+  warnings, all tests pass, kq opens its window and plays, and the max-score replay
+  matches the original on every pass. kq's Linux front end now has the bell
   (cpal, through ALSA; checked under WSLg through PulseAudio), full screen (X11's
   `_NET_WM_STATE_FULLSCREEN`; the window manager applied it) and the joystick
   (`/dev/input/js0`; WSL can't pass a controller through, so untested). minifb is

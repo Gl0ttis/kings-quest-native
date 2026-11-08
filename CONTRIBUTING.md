@@ -5,9 +5,10 @@
 The repository holds no game content. To build and run everything, and to run the
 tests that compare a port with the original, put your own disk images in the port's
 `original/` folder (for the Apple IIe: `ports/apple2/original/`, see its README).
-Everything decoded from them goes to `ports/<port>/extracted/`, which git ignores,
-except `extracted/reference/*.csv`: traces measured from the original (rooms,
-positions, variable hashes, cycle counts), which the tests compare against.
+Everything decoded from them goes to `ports/<port>/extracted/`, which git ignores
+entirely. The traces the tests compare against are in `ports/<port>/reference/`:
+numbers measured from the original (rooms, positions, variable hashes, cycle
+counts), with no game content in them.
 
 Never commit disk images, ROM images, decoded resources, script listings,
 disassemblies or saves. `.gitignore` covers the usual places and file types; check

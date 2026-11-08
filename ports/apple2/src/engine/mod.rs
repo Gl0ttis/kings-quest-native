@@ -231,7 +231,7 @@ pub struct World {
     /// Display options (not game state).
     pub display: display::Display,
     /// Show the original's disk-swap prompts ("Please insert side B and press RETURN.")
-    /// when the game reads from another disk (kqplay --swap-prompts). Off by default:
+    /// when the game reads from another disk (kq --swap-prompts). Off by default:
     /// the port reads every disk up front, so there is nothing to insert.
     pub swap_prompts: bool,
     /// The disk "in the drive" ($6F3E: the volume last read).

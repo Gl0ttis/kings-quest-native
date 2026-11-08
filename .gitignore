@@ -15,12 +15,8 @@ ports/*/saves/
 ports/*/scratch/
 ports/*/RE/
 
-# Decoded disks and resources are local; only the reference traces (numbers
-# measured from the original: rooms, positions, hashes, cycle counts) are kept.
-ports/*/extracted/*
-!ports/*/extracted/reference/
-ports/*/extracted/reference/*
-!ports/*/extracted/reference/*.csv
+# Decoded disks, resources and anything else made from the game are local.
+ports/*/extracted/
 
 # Disk images, ROMs and saves, wherever they end up.
 *.nib

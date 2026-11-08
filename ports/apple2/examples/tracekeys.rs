@@ -1,5 +1,5 @@
 // tracekeys KEYS PASSES OUT: replay a key log for PASSES passes and write the trace
-// (same columns and hash as kqplay --trace).
+// (same columns and hash as kq --trace).
 use kq1_apple2::engine::{f, Resources, Scripted, World};
 fn main() {
     let a: Vec<String> = std::env::args().collect();

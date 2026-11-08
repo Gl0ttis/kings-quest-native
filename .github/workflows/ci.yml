@@ -38,7 +38,7 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      # kqplay on Linux: minifb's X11 window, and ALSA for the bell (cpal).
+      # kq on Linux: minifb's X11 window, and ALSA for the bell (cpal).
       - name: Linux window and sound libraries
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libx11-dev libxkbcommon-dev libxcursor-dev libxrandr-dev libasound2-dev

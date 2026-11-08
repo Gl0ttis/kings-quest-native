@@ -23,27 +23,35 @@ release, each behaving as that release did: same rules, same timing, same quirks
 ```
 Cargo.toml              workspace
 ports/
-  apple2/               the Apple IIe port: crate kq1-apple2 (engine, kqplay, tools)
+  apple2/               the Apple IIe port: crate kq1-apple2 (engine, kq, tools)
     refemu/             crate kq1-apple2-refemu: the reference emulator (measuring only)
     docs/ routes/ tools/
+    reference/          traces measured from the original (numbers only), for the tests
     original/           your disk images (not in git)
-    extracted/          decoded data (not in git); extracted/reference/*.csv are kept
+    extracted/          decoded game data (not in git)
 .github/                CI, PR title check, release-please, Dependabot
 ```
 
 Each port is self-contained in `ports/<platform>/`. Code shared between ports will go
 into crates under `crates/` when a second port needs it.
 
-## Quick start (Apple IIe)
+## Playing (Apple IIe)
 
-Put the three game disk images (`.nib`) in `ports/apple2/original/`, then:
+Download `kq` for Windows or Linux from the
+[releases page](https://github.com/Gl0ttis/kings-quest-native/releases), put your three
+game disk images next to it and start it. [ports/apple2/PLAYING.md](ports/apple2/PLAYING.md)
+has the details, keys and options.
+
+## Building (Apple IIe)
+
+Put the disk images in `ports/apple2/original/` (git ignores it), then:
 
 ```
 cd ports/apple2
-cargo run --release --bin kqplay -- "original/<disk 1>.nib" "original/<disk 2>.nib" "original/<disk 3>.nib"
+cargo run --release --bin kq -- original
 ```
 
-See [ports/apple2/README.md](ports/apple2/README.md) for keys, options and tools.
+See [ports/apple2/README.md](ports/apple2/README.md) for the tools, tests and documentation.
 
 ## Licence
 

@@ -1,8 +1,10 @@
-//! kqplay <disk1> <disk2> <disk3> [--speed N] [--fast-loads] [--fullscreen] [--mute]
+//! kq [FOLDER | disk1 disk2 disk3] [--speed N] [--fast-loads] [--fullscreen] [--mute]
 //!        [--rate N] [--scale N] [--room N] [--saves DIR] [--keys FILE] [--headless PLAN]
 //!
 //! The disks are the game's three disk images, as .nib (any order: each records its
-//! disk number) or decoded DOS-order .do/.dsk (in order).
+//! disk number) or decoded DOS-order .do/.dsk (in order, or found by the disk number
+//! in their names). With none given, kq looks next to itself, then in the current
+//! folder (Disks::find). Saves go in a saves folder next to the disks.
 //!
 //! Plays the game in a window using the native engine, at the original's speed (each
 //! pass of the main loop lasts as long as it did on an Apple IIe; engine::cost). Room
@@ -23,7 +25,7 @@
 //!
 //! --savedisk FILE saves to and restores from an original save disk image (disk 4,
 //! volume 10; .nib or .do), which the original on an emulator can read, and the other
-//! way round. Without it, saves are files in saves/ (--saves DIR).
+//! way round. Without it, saves are files in a saves folder next to the disks (--saves DIR).
 //! --charrom FILE uses an Apple IIe video ROM dump for the text screen (the inventory);
 //! the port ships no ROM. A file named like one (342-0265 or 342-0133) next to the disk
 //! images is used without asking; --no-charrom keeps the game's own font. A joystick or game controller is used if one is connected
@@ -38,7 +40,7 @@
 //!
 //! --headless runs without a window. PLAN is a comma-separated list: a direction (U, UR,
 //! R, DR, D, DL, L, UL, or S to stop) followed by a number of cycles, or ">text" to type a
-//! command and press RETURN. The final frame is written to extracted/kqplay_last.png.
+//! command and press RETURN. The final frame is written to extracted/kq_last.png.
 use kq1_apple2::engine::text::{FRAME_H, FRAME_W};
 use kq1_apple2::engine::{f, IoImpl, Resources, Scripted, World};
 use kq1_apple2::kq::Disks;
@@ -628,6 +630,55 @@ fn doubled(frame: &[u32]) -> Vec<u32> {
     v
 }
 
+/// The three game disk images: as given, or found in the folder given, or (none given)
+/// next to the executable and then in the current folder. Exits with a message when
+/// they can't be found.
+fn disk_paths(args: &[String]) -> Vec<PathBuf> {
+    if args.len() == 3 {
+        return args.iter().map(PathBuf::from).collect();
+    }
+    let dirs: Vec<PathBuf> = match args.first() {
+        Some(d) => vec![PathBuf::from(d)],
+        None => {
+            let exe_dir = env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf));
+            let mut dirs: Vec<PathBuf> = exe_dir.into_iter().chain(env::current_dir().ok()).collect();
+            dirs.dedup_by(|a, b| fs::canonicalize(&*a).ok() == fs::canonicalize(&*b).ok());
+            dirs
+        }
+    };
+    let mut why = Vec::new();
+    for d in &dirs {
+        match Disks::find(d) {
+            Ok(p) => return p,
+            Err(e) => why.push(e),
+        }
+    }
+    fatal(&format!(
+        "{}\n\nPut the game's three disk images (.nib, or .do/.dsk named with their disk number) next to kq, \
+         or give their folder or the three files: kq disk1 disk2 disk3",
+        why.join("\n")
+    ))
+}
+
+/// Report an error that stops kq before its window opens, and exit. On Windows it is
+/// shown in a message box too, since kq is often started from Explorer, whose console
+/// window closes at once.
+fn fatal(msg: &str) -> ! {
+    eprintln!("{msg}");
+    #[cfg(windows)]
+    {
+        #[link(name = "user32")]
+        unsafe extern "system" {
+            fn MessageBoxW(hwnd: isize, text: *const u16, caption: *const u16, kind: u32) -> i32;
+        }
+        let wide = |s: &str| s.encode_utf16().chain([0]).collect::<Vec<u16>>();
+        let (text, caption) = (wide(msg), wide("King's Quest"));
+        // SAFETY: both strings are NUL-terminated and outlive the call. 0x10: MB_ICONERROR.
+        unsafe { MessageBoxW(0, text.as_ptr(), caption.as_ptr(), 0x10) };
+    }
+    std::process::exit(1)
+}
+
 fn main() {
     let mut args: Vec<String> = env::args().skip(1).collect();
     let mut opt = |name: &str| -> Option<String> {
@@ -639,7 +690,7 @@ fn main() {
     let fixed_rate: Option<f64> = opt("--rate").map(|r| r.parse().expect("--rate"));
     let scale: u32 = opt("--scale").map_or(2, |v| v.parse().expect("--scale"));
     let headless = opt("--headless");
-    let saves = PathBuf::from(opt("--saves").unwrap_or_else(|| "saves".into()));
+    let saves = opt("--saves").map(PathBuf::from);
     let savedisk = opt("--savedisk").map(|p| {
         let disk = kq1_apple2::savedisk::SaveDisk::open(fs::read(&p).unwrap_or_else(|e| panic!("{p}: {e}")))
             .unwrap_or_else(|e| panic!("{p}: {e}"));
@@ -686,18 +737,19 @@ fn main() {
     let use_joystick = !flag("--no-joystick");
     let swap_prompts = flag("--swap-prompts");
     let no_charrom = flag("--no-charrom");
-    if args.len() != 3 {
-        eprintln!("usage: kqplay disk1 disk2 disk3 (.nib or .do) [--speed N] [--fast-loads] [--fullscreen] [--mute] [--ntsc] [--fill-specks] [--charrom FILE] [--no-charrom] [--swap-prompts] [--savedisk FILE] [--no-joystick] [--rate N] [--scale N] [--room N] [--keys FILE] [--headless PLAN]");
+    if args.iter().any(|a| a == "--help" || a == "-h") || !(args.len() <= 1 || args.len() == 3) {
+        eprintln!("usage: kq [FOLDER | disk1 disk2 disk3] [--speed N] [--fast-loads] [--fullscreen] [--mute] [--ntsc] [--fill-specks] [--charrom FILE] [--no-charrom] [--swap-prompts] [--saves DIR] [--savedisk FILE] [--no-joystick] [--rate N] [--scale N] [--room N] [--keys FILE] [--headless PLAN]");
+        eprintln!("With no disks given, kq looks for them next to itself, then in the current folder.");
         std::process::exit(2);
     }
+    let disk_paths = disk_paths(&args);
+    let disk_dir = disk_paths[0].parent().map_or_else(|| PathBuf::from("."), Path::to_path_buf);
     // A IIe video ROM next to the disk images is used for the text screen.
     if charrom_bytes.is_none() && !no_charrom {
-        charrom_bytes = find_charrom(Path::new(&args[0]).parent().unwrap_or(Path::new(".")));
+        charrom_bytes = find_charrom(&disk_dir);
     }
-    let disks = Disks::from_files(&args).unwrap_or_else(|e| {
-        eprintln!("{e}");
-        std::process::exit(1)
-    });
+    let saves = saves.unwrap_or_else(|| disk_dir.join("saves"));
+    let disks = Disks::from_files(&disk_paths).unwrap_or_else(|e| fatal(&e));
     let new_world = move || World::new(Resources::load(&disks, false).expect("resources"));
 
     if let Some(plan) = headless {
@@ -819,7 +871,7 @@ fn main() {
             .collect();
         println!("score {}, carrying {:?}", w.vars[19], carried);
         let rgb: Vec<u8> = w.render_frame().iter().flat_map(|&p| [(p >> 16) as u8, (p >> 8) as u8, p as u8]).collect();
-        fs::write("extracted/kqplay_last.png", kq1_apple2::png::encode_rgb(FRAME_W as u32, FRAME_H as u32, &rgb)).ok();
+        fs::write("extracted/kq_last.png", kq1_apple2::png::encode_rgb(FRAME_W as u32, FRAME_H as u32, &rgb)).ok();
         return;
     }
 
