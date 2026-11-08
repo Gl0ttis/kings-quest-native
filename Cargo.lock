@@ -421,7 +421,7 @@ dependencies = [
 
 [[package]]
 name = "kq1-apple2"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cpal",
  "minifb",
@@ -431,7 +431,7 @@ dependencies = [
 
 [[package]]
 name = "kq1-apple2-refemu"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "kq1-apple2",
 ]
