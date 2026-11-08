@@ -13,7 +13,7 @@ fn main() {
         })
         .collect();
     let (pass, at): (usize, f64) = (a[2].parse().unwrap(), a[3].parse().unwrap());
-    let mut w = World::new(Resources::load(&kq1_apple2::kq::Disks::new(imgs), true).unwrap());
+    let mut w = World::new(Resources::load(&kq1_apple2::kq::Disks::new(imgs), false).unwrap());
     w.io = Some(Box::new(Scripted::default()));
     w.boot();
     let mut prev = w.render_frame();

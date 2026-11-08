@@ -39,7 +39,7 @@ fn main() {
     let (save, restore, total): (usize, usize, usize) =
         (a[4].parse().unwrap(), a[5].parse().unwrap(), a[6].parse().unwrap());
     let q = Rc::new(RefCell::new(VecDeque::new()));
-    let mut w = World::new(Resources::load(&kq1_apple2::kq::Disks::new(imgs), true).unwrap());
+    let mut w = World::new(Resources::load(&kq1_apple2::kq::Disks::new(imgs), false).unwrap());
     w.io = Some(Box::new(DiskIo { keys: q.clone(), disk: disk.clone() }));
     w.boot();
     let mut trace = String::from("pass,room,ego_x,ego_y,ego_dir,score,model_cycles,vars_hash\n");

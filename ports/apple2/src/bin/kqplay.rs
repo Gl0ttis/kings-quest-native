@@ -526,7 +526,7 @@ fn main() {
         eprintln!("{e}");
         std::process::exit(1)
     });
-    let new_world = move || World::new(Resources::load(&disks, true).expect("resources"));
+    let new_world = move || World::new(Resources::load(&disks, false).expect("resources"));
 
     if let Some(plan) = headless {
         let mut w = new_world();

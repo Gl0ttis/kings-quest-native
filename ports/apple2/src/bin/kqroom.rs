@@ -35,7 +35,7 @@ fn main() {
     let mut sheet: Vec<Vec<u8>> = Vec::new();
     let mut report = String::new();
     for r in first..=last {
-        let res = Resources::load(&disks, true).expect("resources");
+        let res = Resources::load(&disks, false).expect("resources");
         let mut w = World::new(res);
         let cycles = w.enter_room(r, 8);
         let screen = w.compose();

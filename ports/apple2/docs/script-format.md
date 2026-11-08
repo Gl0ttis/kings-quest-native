@@ -245,14 +245,24 @@ number. If that doesn't match, it scans forward for an `FE`, past the end of the
 script and into whatever follows it in memory. The death message would also lose its
 "S" ("o you're walking on clouds, huh?").
 
-**Room 64 can't be reached in normal play.** It is the fall from the clouds, and its
-only entrance is room 56's west edge while `v105 = 0` (`new_room 64`). `v105` is set
-only when the beans are planted (global script, `05B6`), and nothing resets it except a
-restart. The clouds can only be reached up the beanstalk, so by then `v105` is 1 and
-the west edge leads to room 72. The one variable room change, `new_room_var 34` in room
-70, uses `v34`, which no script and no engine code writes. So the defect never shows
-in the original. The port uses the corrected boundary (`Resources::load`'s
-`fix_script_064`); reproducing the defect would have no visible effect in a real game.
+**Room 64 is reachable, and the port reproduces the defect.** It is the fall from the
+clouds; its only entrance is room 56's west edge while `v105 = 0` (`new_room 64`), that
+is, before the beans are planted (global script, `05B6`). The beanstalk isn't the only
+way into the clouds: on the gold-key path (the gnome's riddle failed), room 19's door
+and the stairs (rooms 66 to 68) lead to room 69 and the clouds with no beans planted.
+An earlier version of this section said the room couldn't be reached; it overlooked
+the stairs. The gold-key route (routes/gold_key.route) walks off room 56's west edge
+into room 64, and in refemu the original prints "o you're walking on clouds, huh?",
+without its "S".
+
+The port now uses the script as it is on the disk (`Resources::load(.., false)`;
+`true` still gives the corrected boundary), so it prints the same message. Its parser
+pass in room 64 starts on the `S` too. If a line is typed there, the original scans on
+past the end of the script into whatever memory follows it (the remains of earlier
+room scripts); the port's matcher stops at the end of the data, with no rule matched.
+Typing "look" while walking on the clouds of room 64 gives the same state on both
+(both answer "You can't do that here."), so the two agree in the measured case; the
+port does not model the memory past the script.
 
 ## Still open
 

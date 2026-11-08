@@ -8,7 +8,7 @@ fn world() -> Option<World> {
     let base = concat!(env!("CARGO_MANIFEST_DIR"), "/extracted/");
     let imgs: Option<Vec<Vec<u8>>> = (1..=3).map(|n| fs::read(format!("{base}disk{n}.do")).ok()).collect();
     let disks = Disks::new(imgs?);
-    Some(World::new(Resources::load(&disks, true).ok()?))
+    Some(World::new(Resources::load(&disks, false).ok()?))
 }
 
 fn type_line(w: &mut World, s: &str) {

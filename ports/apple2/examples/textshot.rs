@@ -29,7 +29,7 @@ fn main() {
         .collect();
     let pass: usize = a[2].parse().unwrap();
     let grab = Rc::new(RefCell::new(Vec::new()));
-    let mut w = World::new(Resources::load(&kq1_apple2::kq::Disks::new(imgs), true).unwrap());
+    let mut w = World::new(Resources::load(&kq1_apple2::kq::Disks::new(imgs), false).unwrap());
     w.io = Some(Box::new(Grab(grab.clone())));
     if let Ok(r) = std::env::var("CHARROM") {
         w.display.charrom =

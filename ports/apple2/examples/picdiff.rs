@@ -3,7 +3,7 @@
 fn main() {
     let a: Vec<String> = std::env::args().collect();
     let imgs: Vec<Vec<u8>> = (1..=3).map(|n| std::fs::read(format!("extracted/disk{n}.do")).unwrap()).collect();
-    let res = kq1_apple2::engine::Resources::load(&kq1_apple2::kq::Disks::new(imgs), true).unwrap();
+    let res = kq1_apple2::engine::Resources::load(&kq1_apple2::kq::Disks::new(imgs), false).unwrap();
     let n: usize = a[1].parse().unwrap();
     let data = res.pictures[n].clone().unwrap();
     let p = kq1_apple2::pic::draw(&data);

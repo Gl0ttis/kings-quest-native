@@ -50,7 +50,7 @@ fn run(disk: Vec<u8>, save: Option<usize>) -> Option<(Vec<(u8, u8, u8, u8, Strin
         .collect();
     let disk = Rc::new(RefCell::new(SaveDisk::open(disk).ok()?));
     let q = Rc::new(RefCell::new(VecDeque::new()));
-    let mut w = World::new(Resources::load(&kq1_apple2::kq::Disks::new(imgs?), true).ok()?);
+    let mut w = World::new(Resources::load(&kq1_apple2::kq::Disks::new(imgs?), false).ok()?);
     w.io = Some(Box::new(DiskIo { keys: q.clone(), disk: disk.clone() }));
     w.boot();
     let mut out = Vec::new();

@@ -35,7 +35,7 @@ impl IoImpl for T {
 fn main() {
     let imgs: Vec<Vec<u8>> = (1..=3).map(|n| std::fs::read(format!("extracted/disk{n}.do")).unwrap()).collect();
     let log = Rc::new(RefCell::new(Vec::new()));
-    let mut w = World::new(Resources::load(&kq1_apple2::kq::Disks::new(imgs), true).unwrap());
+    let mut w = World::new(Resources::load(&kq1_apple2::kq::Disks::new(imgs), false).unwrap());
     w.io = Some(Box::new(T(log.clone())));
     w.boot();
     let mut t = 0.0;

@@ -25,7 +25,7 @@ fn king_speech_text_page_matches_original() {
     for (i, c) in b"speak king\r".iter().enumerate() {
         keys.insert(6301 + i, *c);
     }
-    let mut w = World::new(Resources::load(&kq1_apple2::kq::Disks::new(imgs), true).unwrap());
+    let mut w = World::new(Resources::load(&kq1_apple2::kq::Disks::new(imgs), false).unwrap());
     w.io = Some(Box::new(Scripted::default()));
     w.boot();
     for p in 1..=6311 {

@@ -26,7 +26,7 @@ fn stick_walks_graham_and_buttons_reach_the_scripts() {
     let Some(imgs) = (1..=3).map(|n| fs::read(format!("{base}disk{n}.do")).ok()).collect::<Option<Vec<_>>>() else {
         return;
     };
-    let mut w = World::new(Resources::load(&kq1_apple2::kq::Disks::new(imgs), true).unwrap());
+    let mut w = World::new(Resources::load(&kq1_apple2::kq::Disks::new(imgs), false).unwrap());
     let stick = Rc::new(Cell::new(Joystick { paddles: Some((128, 128)), buttons: [false; 2] }));
     w.io = Some(Box::new(Stick(stick.clone())));
     w.boot(); // calibrates at rest: thresholds 64 and 192
@@ -65,7 +65,7 @@ fn no_joystick_reads_zero_and_stays_off() {
     let Some(imgs) = (1..=3).map(|n| fs::read(format!("{base}disk{n}.do")).ok()).collect::<Option<Vec<_>>>() else {
         return;
     };
-    let mut w = World::new(Resources::load(&kq1_apple2::kq::Disks::new(imgs), true).unwrap());
+    let mut w = World::new(Resources::load(&kq1_apple2::kq::Disks::new(imgs), false).unwrap());
     let stick = Rc::new(Cell::new(Joystick::default()));
     w.io = Some(Box::new(Stick(stick.clone())));
     w.boot();
