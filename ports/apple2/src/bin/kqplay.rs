@@ -15,6 +15,8 @@
 //! speed; everything speeds up, walking included). F9 fast loads (--fast-loads): room
 //! changes skip the disk and the picture drawing, about 10 s each, and the rest keeps the
 //! original's pace; the game plays the same, since its state depends only on passes.
+//! --swap-prompts shows the original's "Please insert side B and press RETURN." prompts
+//! when the game reads another disk (the port has every disk, so they're off by default).
 //! F8 sound on/off (--mute). F7 NTSC colour fringing (--ntsc). F6 fills the white specks
 //! where the picture's fills miss a pixel (--fill-specks; display only). Alt+Enter full
 //! screen (--fullscreen). The window can be resized; the picture keeps its shape.
@@ -226,7 +228,7 @@ impl IoImpl for EngineIo {
                 return;
             }
             if t >= t0 {
-                let n = ((t - t0) / (t1 - t0) * draw.plots as f64) as u32;
+                let n = draw.plots_at((t - t0) / (t1 - t0));
                 if shown != Some(n) {
                     publish(&self.link, &frame(n));
                     shown = Some(n);
@@ -682,9 +684,10 @@ fn main() {
     let ntsc = flag("--ntsc");
     let specks = flag("--fill-specks");
     let use_joystick = !flag("--no-joystick");
+    let swap_prompts = flag("--swap-prompts");
     let no_charrom = flag("--no-charrom");
     if args.len() != 3 {
-        eprintln!("usage: kqplay disk1 disk2 disk3 (.nib or .do) [--speed N] [--fast-loads] [--fullscreen] [--mute] [--ntsc] [--fill-specks] [--charrom FILE] [--no-charrom] [--savedisk FILE] [--no-joystick] [--rate N] [--scale N] [--room N] [--keys FILE] [--headless PLAN]");
+        eprintln!("usage: kqplay disk1 disk2 disk3 (.nib or .do) [--speed N] [--fast-loads] [--fullscreen] [--mute] [--ntsc] [--fill-specks] [--charrom FILE] [--no-charrom] [--swap-prompts] [--savedisk FILE] [--no-joystick] [--rate N] [--scale N] [--room N] [--keys FILE] [--headless PLAN]");
         std::process::exit(2);
     }
     // A IIe video ROM next to the disk images is used for the text screen.
@@ -840,6 +843,7 @@ fn main() {
             let mut w = new_world();
             w.display.charrom = charrom_bytes
                 .map(|r| std::rc::Rc::new(kq1_apple2::engine::display::CharRom::from_rom(&r).expect("character ROM")));
+            w.swap_prompts = swap_prompts;
             let latch = Rc::new(Cell::new([false; 2]));
             w.io = Some(Box::new(EngineIo {
                 link: link.clone(),
@@ -1050,7 +1054,7 @@ fn run_engine(
             let state = draws.iter().enumerate().rev().find_map(|(i, d)| {
                 let (t0, t1) = d.span(*fast);
                 (t >= t0).then(|| {
-                    let n = if t >= t1 { d.plots } else { ((t - t0) / (t1 - t0) * d.plots as f64) as u32 };
+                    let n = if t >= t1 { d.plots } else { d.plots_at((t - t0) / (t1 - t0)) };
                     (i, n)
                 })
             });

@@ -71,6 +71,9 @@ II write latch is emulated), and `--save-out FILE` writes it out afterwards.
   - `REFEMU_TEXTDUMP=FILE` writes the text page's screen codes (24 lines of 40) the
     first time the game waits for a key in text mode. The COUT stand-in neither wraps
     nor scrolls, so cells the game cleared that way may read `00`.
+  - `REFEMU_PLOTLOG=pass,FILE` writes "pass cycles" for every picture plot (aux
+    `$102F`) in that pass, or in every pass with 0 (tools/runfit.py fits the drawing
+    costs from it).
   - `REFEMU_PCLOG=hex,…` logs the cycle count when main-memory code reaches those
     addresses (the first 20 times each).
   - `REFEMU_CHARS=n` logs every character drawn (aux `$14A4`) during pass `n`, with the

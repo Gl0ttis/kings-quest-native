@@ -712,7 +712,15 @@ impl World {
                 let before = self.cost.clone();
                 let p = crate::pic::draw_onto(onto.clone(), &data);
                 self.cost.plots += p.plots as u64;
-                self.pic_draws.push(super::cost::PicDraw { before, onto, data, plots: p.plots, timing: None });
+                self.cost.fill_plots += p.fill_plots as u64;
+                self.pic_draws.push(super::cost::PicDraw {
+                    before,
+                    onto,
+                    data,
+                    plots: p.plots,
+                    runs: p.runs,
+                    timing: None,
+                });
                 p.buf
             }
             None => {

@@ -115,7 +115,7 @@ impl World {
     }
 
     /// A string from the engine image (the original prompt texts), up to its NUL.
-    fn engine_text(&self, addr: u16) -> Vec<u8> {
+    pub(crate) fn engine_text(&self, addr: u16) -> Vec<u8> {
         let o = (addr - crate::kq::ENGINE_BASE) as usize;
         self.res.engine.get(o..).unwrap_or(&[]).iter().take_while(|&&c| c != 0).map(|&c| c & 0x7F).collect()
     }
@@ -153,6 +153,7 @@ impl World {
     /// file. The confirmation uses the first sentence of $6C86.
     pub fn save_game(&mut self) {
         if let Some(slot) = self.ask_letter(0x6B8B) {
+            self.change_disk(10);
             self.persist_actors(); // $491F
             let img = self.save_image();
             match self.io_save(slot, &img) {
@@ -180,6 +181,7 @@ impl World {
                 return false;
             };
             self.put_char(0x0D);
+            self.change_disk(10);
             let Some(img) = self.io_load(slot) else {
                 // $4FE7: "That game was not saved on this disk."
                 let msg = self.engine_text(0x69FE);

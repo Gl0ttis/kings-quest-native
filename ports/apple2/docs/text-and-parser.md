@@ -29,9 +29,15 @@ moves the text position to row 20, column 0 (`$57EF`). So each room starts with 
 empty text window and the prompt on row 20. (Until 2026-11-08 the port kept the old
 text, which differed visibly from the original.)
 
-**Disk swaps.** When the next room's data is on the other side of a disk, the original
-prints "Please insert side B and press RETURN." and waits. The port reads every disk
-image up front, so it has no swap prompts.
+**Disk swaps (`$6009`, `$6075`).** Each read names a disk (volume; 0 for the tracks
+shared by all three). When it differs from the one last read (`$6F3E`), the original
+prints "Please insert side " with the disk's letter (`$6CD0`: A, B, C) and " and press
+RETURN." (`$6CDC`, `$6CF1`), and waits for RETURN; the save disk (volume 10) has its own
+message (`$6D05`). The port reads every disk image up front, so it shows these only
+with `kqplay --swap-prompts` (`World::swap_prompts`); it tracks the disk "in the drive"
+either way. Over the max-score run the port changes disk 27 times, each on a pass where
+the original waited at its prompt (test `swap_prompts_match_the_original`, which also
+checks the game still matches the original on every pass with the prompts on).
 
 **The text screen.** Opcode `$3C` and the inventory switch to the Apple text page
 (`$56E6`); `$3D`/`$3E` then print on it through the ROM, and `$3F` returns to
