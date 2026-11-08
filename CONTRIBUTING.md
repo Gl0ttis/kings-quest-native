@@ -83,6 +83,9 @@ which depends on it (release-please's `cargo-workspace` plugin bumps dependents)
 
 ## Adding a port
 
+[docs/porting-guide.md](docs/porting-guide.md) describes the whole process. In the
+repository:
+
 1. Create `ports/<platform>/` with its crate (`kq1-<platform>`) and add it to the
    workspace `members` in the root `Cargo.toml`.
 2. Add it to `release-please-config.json` and `.release-please-manifest.json`, and

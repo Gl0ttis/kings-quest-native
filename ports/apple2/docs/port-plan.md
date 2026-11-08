@@ -47,7 +47,8 @@ The unknowns that blocked M2–M4 (the room entry sequence, the parser, text out
 opcode `$2B`) are resolved and implemented, and so are the details that were left
 (2026-11-08): the collision rules (aux `$12C7`, read in full and identical to
 `World::collide`; see [motion.md](motion.md)), the erase and redraw order (`$4DD7`–`$4E69`;
-order-independent, see motion.md), the purpose of `v31` (ducking; see
+order-independent, though a block goes back at the actor's current position, see
+motion.md), the purpose of `v31` (ducking; see
 [text-and-parser.md](text-and-parser.md)) and the room count (none is stored; see
 [disk-layout.md](disk-layout.md)).
 
