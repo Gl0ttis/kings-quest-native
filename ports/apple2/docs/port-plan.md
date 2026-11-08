@@ -309,7 +309,9 @@ format work.
   including the dwarf's theft and the death), [routes/giant_sling.route](../routes/giant_sling.route)
   (the giant killed with the sling; 16,692 passes, 153 points) and
   [routes/magic_ring.route](../routes/magic_ring.route) (invisibility and the lost
-  ring; 18,451 passes, 155 points). All three match. They found the room 64
+  ring; 18,451 passes, 155 points). All three match, and so do three short routes
+  that end in a death (the rolling rock, the stream, the river bank; test
+  `death_routes`). They found the room 64
   difference above, and taught the autopilot about scripted entry positions (see
   [route.md](route.md)). Tests: `gold_key_route`, `giant_sling_route`,
   `magic_ring_route`.
