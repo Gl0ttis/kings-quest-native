@@ -2,6 +2,11 @@
 # versions and changelogs (from the conventional commits), and kq is built for
 # Windows and Linux (downloadable from the run). Merging the release pull request tags
 # the release; the builds are then attached to the GitHub release too.
+#
+# GitHub starts no workflows for a pull request this workflow's token opens or
+# updates, except through workflow_dispatch. So when the release pull request changes,
+# CI and the title check are dispatched on its branch, which gives its commit the
+# required checks.
 name: Release
 
 on:
@@ -11,6 +16,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 jobs:
   release-please:
@@ -24,6 +30,14 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+      - name: Run the checks on the release pull request
+        if: steps.rp.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ fromJSON(steps.rp.outputs.pr).headBranchName }}
+        run: |
+          gh workflow run ci.yml -R "$GITHUB_REPOSITORY" --ref "$BRANCH"
+          gh workflow run pr-title.yml -R "$GITHUB_REPOSITORY" --ref "$BRANCH"
 
   build:
     name: kq (${{ matrix.name }})
