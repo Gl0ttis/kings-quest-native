@@ -21,7 +21,7 @@ engine draws.
 |---|---|
 | 1. Disk image | **Done.** The original as dumped (HxC `.mfm`: MFM decoded, CRCs checked) and the cracked 360K `.img`. The copy protection, 1 KB-sector tracks holding the engine, is worked out, and the two give the same engine and data (tested). |
 | 2. Disk layout | **Done** ([disk-layout.md](disk-layout.md)): boot chain, the engine's position, the resource table, its entry format, the read routine. |
-| 3. Static formats | **Mostly done.** Pictures: all 79 draw cleanly (Apple decoder, IBM colours). Scripts: the PCjr operand table, read from the handlers; all 84 well-formed scripts parse. Views: the PCjr reader; all 88 decode. Colours: the default IBM palette. Left: sounds, the picture size the PCjr shows, and room 64. |
+| 3. Static formats | **Done.** Pictures: all 79 draw cleanly (Apple decoder, IBM colours); the PCjr shows them in full, 160 × 168. Scripts: the PCjr operand table, read from the handlers; all 84 well-formed scripts parse. Rules: the Apple format, with the PCjr's word and variable numbers. Views: all 88 decode. Sounds: all 40 parse and render. Vocabulary: all 358 words decode. Colours: the default IBM palette. Left for the engine phase: a PCjr painter for the full picture, and room 64. |
 | 4. Measuring tool | Not started. An 8088 PCjr emulator, with the BIOS calls the game makes substituted. |
 | 5–10. Engine onwards | Not started. |
 
@@ -51,17 +51,14 @@ engine draws.
 
 ## Next
 
-1. **Sounds.** Work out the format from the `INT 1Ch` handler the engine installs
-   (`$808`; it writes the sound chip at `$85B`) and the code that starts a sound.
-2. **The picture on screen.** Read the PCjr plotting code for the picture size it
-   keeps and how a picture pixel maps to mode 9's 320×200, and compare fills with the
-   Apple painter (the Apple's colour table merges two colours; the PCjr's doesn't).
-3. **The rule matchers.** Check that the cycle and parser rule formats match the
-   Apple's (the dispatch tables at `$2958` and `$2B3B` look like them).
-4. **The measuring tool**, before the engine: an 8088 PCjr that boots the original
+1. **The measuring tool**, before the engine: an 8088 PCjr that boots the original
    from the `.mfm`, with the BIOS calls the game makes substituted, recording traces
    and frames as refemu does.
-5. **The 86F format**, so the `.86f` dump can be read too.
+2. **A PCjr painter** for the full 160 × 168 picture, from the PCjr's 15 picture
+   handlers (`$3534`), checked against the measuring tool's frames.
+3. **The variable renumbering** between the versions, so the Apple port's knowledge of
+   each variable carries over.
+4. **The 86F format**, so the `.86f` dump can be read too.
 
 ## Repository notes
 

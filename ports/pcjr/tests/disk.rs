@@ -62,6 +62,21 @@ fn every_script_parses_with_the_pcjr_operands() {
 }
 
 #[test]
+fn every_sound_and_the_vocabulary_decode() {
+    for (path, d) in images() {
+        let mut sounds = 0;
+        for s in 0..kq1_pcjr::disk::SOUNDS {
+            let four = kq1_pcjr::sound::parse(d.sound(s).unwrap()).unwrap_or_else(|e| panic!("{path:?}: {e}"));
+            sounds += four.iter().flatten().count();
+        }
+        assert_eq!(sounds, 40, "{path:?}");
+        let words = kq1_pcjr::vocab::read(&d.code_segment()).unwrap();
+        assert_eq!(words.len(), 358, "{path:?}");
+        assert!(words.iter().any(|w| w.word == "dagger"));
+    }
+}
+
+#[test]
 fn the_original_and_the_crack_hold_the_same_game() {
     let imgs = images();
     let (Some(orig), Some(crack)) = (imgs.iter().find(|x| x.1.original), imgs.iter().find(|x| !x.1.original)) else {

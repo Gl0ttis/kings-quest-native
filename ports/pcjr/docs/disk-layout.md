@@ -132,9 +132,16 @@ Each room's resource is its **script** followed directly by its **picture**.
   are the same. The PCjr interpreter is at `$3534`: commands `$F0`–`$FE` through 15
   handlers at `DS:$199A`, with the picture at linear `$F000`. The picture's colour
   numbers are IBM colours (below).
-- **Picture size.** The Apple painter keeps x 10–149 and y 3–162 of the picture
-  coordinates, because double hi-res can't show more. The PCjr draws to video pages,
-  and may show the whole picture. To confirm from its plotting code.
+- **Picture size: 160 × 168, all of it shown.** The engine keeps the picture in two
+  PCjr video pages: the visual picture at `1800:0` (page 6, the one displayed) and the
+  priorities at `1000:0` (page 4). Mode 9's layout is four interleaved banks of
+  `0x2000`, 160 bytes a row. A picture pixel is one byte holding its colour in both
+  halves, two of mode 9's 320 pixels. The row table at `DS:$1828` has exactly 168
+  rows, so pictures are drawn in full. The Apple version keeps x 10–149 and y 3–162
+  (double hi-res can't show more), so it crops these same pictures by 20 columns and
+  8 rows. The fill (`$6F7`) spreads over bytes still `FF` (visual) or `11`
+  (priority). Below the picture, mode 9's last 32 rows (four text rows) hold the
+  status and input lines.
 - **Rooms 81–84** are empty stubs: four section lengths of 1, then `FF FF FF FF`.
 
 ### Views (confirmed)
@@ -167,11 +174,65 @@ numbers. The Apple version maps picture colours through a table when it draws
 colours), and its views were converted when it was made. The ego's colour `4` (red)
 here is the Apple's `1`, which is `COLOR_TABLE[4]`.
 
-### Sounds (to confirm)
+### Sounds (confirmed)
 
-The ten resources at numbers 90–99 are SN76496 data. Each starts with four `u16`
-offsets, likely one per channel (three tones and noise), and the streams contain the
-chip's latch bytes (`9F`/`BF`/`DF`/`FF`: silence a channel; `8x`/`Ax`/`Cx`: tone).
+**40 sounds, four to a resource.** The ten resources at room-table numbers 90–99 each
+hold four sounds: an 8-byte header of four `u16` sizes, then the four streams.
+- **Numbering.** Sound *n* (from 1) is stream `(n − 1) mod 4` of resource `(n − 1) /
+  4` (`$41D5` loads it; the stream pointers go in a table at `$DD4`).
+- **A stream** is records of: a count *k*; *k* bytes written to the SN76496 at port
+  `C0h`; and a duration in 18.2 Hz BIOS timer ticks. A duration of `0` ends the sound
+  and starts the next queued one; `FF` starts it again (`$853`–`$892`).
+- **Playing.** The `INT 1Ch` handler (`$808`) plays one record whenever its countdown
+  runs out. Before sound starts, `$B15` sets bits 5–6 of port `61h`, the PCjr's
+  multiplexer, so the chip reaches the speaker. Silence is the 5 bytes at `$D24`
+  (`$B1C`). A flag at `$E26` turns sound off, but the timing keeps running.
+- **Contents.** Every record sets all four channels: volume and tone for the three
+  tones, then the noise channel's volume and control.
+
+[src/sound.rs](../src/sound.rs) parses all 40 streams, each ending on its end marker at
+exactly its size. It also synthesises the chip (3.579545 MHz clock, three square
+tones, a 15-bit noise register, 2 dB volume steps), and `kqextract-pcjr` writes
+each sound to `extracted/sounds/NN.wav`. The synthesis is still to check against
+real hardware recordings; the chip writes and their timing are exact.
+
+## The rule matcher (confirmed)
+
+`$47EE` matches the cycle rules (pointer `$FB6`, mode flag `[$1F13]` = 0), and `$47E1`
+the parser rules (`$FB8`, flag 1). The rule format is the Apple version's
+(ports/apple2/docs/script-format.md):
+- **The rule bytes** are the same: `FF`, `FE`, `FC`, `FB`, `FD`.
+- **Conditions** are (variable, value) pairs, with bit 7 meaning "not equal"
+  (`$48CD`). Variables are at `DS:$1003`.
+- **The ego rectangle** (`$48B7`) is taken from actor 0's x and y at `$11F9`, which is
+  offset `$18`/`$19`, as in the Apple version.
+- **On failure**, the matcher scans forward to the next `FE`, and a following `FE`
+  offset after an action is a jump.
+
+The differences are in the numbering:
+- **Word ids** are the PCjr vocabulary's (below), not the Apple's.
+- **Variable numbers** are often one lower than the Apple version's in the same rule
+  (room 1's `3C`/`3B` are the Apple's `3D`/`3C`). The Apple conversion renumbered
+  them. To map in full.
+- **Words in parser rules.** A rule's verb or noun matches the typed one, or `FA`
+  (`$4842`). With no noun typed, the parser sets the noun to 2 (`$E7A`). The Apple
+  version instead treats noun 1 in a rule as any noun. To check against the data.
+
+## The vocabulary (confirmed)
+
+The Apple format (a word, NUL, then position, type and id; ending with an empty word),
+with **every byte rotated right one bit**. It's in the engine's data segment (DS =
+CS + `$4E3`) at `$16`, the start of the parser's word list (`[$CD6]`, walked from
+`$E10`).
+
+[src/vocab.rs](../src/vocab.rs) decodes all 358 words; the Apple version has 345.
+- **Only on the PCjr:** "say", "copy", "number", "under", "handle", and "not".
+- **The original authors' names**, words with no use in play: "arthur",
+  "abraham", "charles", "tingley", "ken", "macneill", "doug", "greg", "rowland",
+  "chris", "teresa", "hal", "schwab".
+- **Typos** the Apple version fixed: "swiming", "torchh".
+- **Only on the Apple:** "condor", "scepter", "gingerbread", "duck", "torch",
+  "burn", "leave", "message", "restart", "init".
 
 ### Saves (seen; to confirm)
 

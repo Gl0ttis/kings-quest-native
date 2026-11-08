@@ -5,4 +5,6 @@ pub mod color;
 pub mod disk;
 pub mod mfm;
 pub mod script;
+pub mod sound;
 pub mod view;
+pub mod vocab;

@@ -6,7 +6,9 @@
 //!   (drawn to its end; rendered to OUT/pics/NNN.png in the IBM colours, through the
 //!   Apple painter's 140x160 window for now);
 //! - views: loops and cels;
-//! - sounds and the engine are written as they are.
+//! - sounds: parsed, and each rendered to OUT/sounds/NN.wav (the sound chip
+//!   synthesised, the sound played once);
+//! - the engine is written as it is.
 //!
 //! Prints one line per resource and a summary; exits non-zero if anything fails to
 //! decode.
@@ -27,7 +29,7 @@ fn main() {
         eprintln!("{path}: {e}");
         std::process::exit(1)
     });
-    for d in ["res/room", "res/view", "res/sound", "pics"] {
+    for d in ["res/room", "res/view", "res/sound", "pics", "sounds"] {
         fs::create_dir_all(out.join(d)).unwrap();
     }
     fs::write(out.join("res/engine.bin"), disk.code_segment()).unwrap();
@@ -129,13 +131,62 @@ fn main() {
         }
     }
 
+    let mut sounds = 0;
     for s in 0..SOUNDS {
-        if let Some(data) = disk.sound(s) {
-            fs::write(out.join(format!("res/sound/{s:03}.bin")), data).unwrap();
+        let Some(data) = disk.sound(s) else { continue };
+        fs::write(out.join(format!("res/sound/{s:03}.bin")), data).unwrap();
+        match kq1_pcjr::sound::parse(data) {
+            Ok(four) => {
+                for (k, snd) in four.iter().enumerate() {
+                    let n = 4 * s + k + 1;
+                    match snd {
+                        Some(x) => {
+                            sounds += 1;
+                            let pcm = kq1_pcjr::sound::render(x, 22050);
+                            fs::write(out.join(format!("sounds/{n:02}.wav")), kq1_pcjr::sound::wav(&pcm, 22050))
+                                .unwrap();
+                            println!(
+                                "sound {n:2}: {} records, {} chip writes, {:.1} s, {:?}",
+                                x.records.len(),
+                                x.records.iter().map(|r| r.writes.len()).sum::<usize>(),
+                                x.ticks() as f64 / 18.2065,
+                                x.end
+                            );
+                        }
+                        None => println!("sound {n:2}: none"),
+                    }
+                }
+            }
+            Err(e) => {
+                failures += 1;
+                println!("sound resource {s}: SOUND ERROR: {e}");
+            }
         }
     }
     fs::write(out.join("res/manifest.txt"), manifest).unwrap();
-    println!("{scripts} scripts and {pictures} pictures decode cleanly, {views} views; {failures} failures");
+    match kq1_pcjr::vocab::read(&disk.code_segment()) {
+        Ok(words) => {
+            let text: String = words
+                .iter()
+                .map(|e| {
+                    format!(
+                        "{:<16} position {} type {} id {}
+",
+                        e.word, e.position, e.kind, e.id
+                    )
+                })
+                .collect();
+            fs::write(out.join("res/vocab.txt"), text).unwrap();
+            println!("vocabulary: {} words", words.len());
+        }
+        Err(e) => {
+            failures += 1;
+            println!("VOCABULARY ERROR: {e}");
+        }
+    }
+    println!(
+        "{scripts} scripts and {pictures} pictures decode cleanly, {views} views, {sounds} sounds; {failures} failures"
+    );
     if failures > 0 {
         std::process::exit(1);
     }
