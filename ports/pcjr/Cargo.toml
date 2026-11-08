@@ -1,0 +1,25 @@
+[package]
+name = "kq1-pcjr"
+version = "0.1.0"
+description = "Native port of the 1984 IBM PCjr King's Quest (in progress): disk reader and tools. Runs on the user's own disk image."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "kq1_pcjr"
+path = "src/lib.rs"
+
+[dependencies]
+# For now, the Apple port's decoders for pictures, views and scripts: the PCjr resources
+# use the same formats (docs/disk-layout.md). Shared code moves to crates/ once the
+# PCjr engine needs it (docs/porting-guide.md).
+kq1-apple2 = { path = "../apple2", default-features = false }
+
+[[bin]]
+name = "kqextract"
+path = "src/bin/kqextract.rs"

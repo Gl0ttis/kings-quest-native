@@ -35,6 +35,7 @@ jobs:
             revert
           scopes: |
             apple2
+            pcjr
             refemu
             workspace
             ci

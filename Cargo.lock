@@ -437,6 +437,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "kq1-pcjr"
+version = "0.1.0"
+dependencies = [
+ "kq1-apple2",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

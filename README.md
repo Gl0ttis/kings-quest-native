@@ -16,7 +16,7 @@ release, each behaving as that release did: same rules, same timing, same quirks
 | Port | Original | Status | Crates |
 |---|---|---|---|
 | [Apple IIe](ports/apple2/README.md) | 1984, Sierra, Apple version by Jeff Stephenson (double hi-res, 128K) | Playable start to finish; matches the original on every pass of a 158-point playthrough | `kq1-apple2`, `kq1-apple2-refemu` |
-| IBM PCjr | 1984, Sierra/IBM | Planned | |
+| [IBM PCjr](ports/pcjr/README.md) | 1984, Sierra/IBM (self-booting; PCjr only) | In progress: disk layout done, resources extract | `kq1-pcjr` |
 
 ## Layout
 
@@ -30,6 +30,7 @@ ports/
     reference/          traces measured from the original (numbers only), for the tests
     original/           your disk images (not in git)
     extracted/          decoded game data (not in git)
+  pcjr/                 the IBM PCjr port (in progress): crate kq1-pcjr
 .github/                CI, PR title check, release-please, Dependabot
 ```
 
