@@ -84,7 +84,9 @@ window. That trace matches the original on every pass.
 Route steps: `room N [goal rect]`, `goto`, `area`, `edge`, `enter ROOM rect [water]`,
 `hold U|D|L|R`, `say`, `key`, `wait`, `waitvar`, `require V VALUE`, `jumpuntil V VALUE MAX`,
 `keepin rect…` (confine the planner in this room; no arguments lifts it), `final rect`
-(walk into the game-ending rectangle), `expect score` and `expect room`.
+(walk into the game-ending rectangle; deadly zones and water count as ground, and dying
+on the way counts as arriving), `dies N` (wait up to N passes for Graham to die: the
+end of a death route), `expect score` and `expect room`.
 
 **Debugging aids** (environment variables):
 
@@ -197,15 +199,20 @@ passes. `REFEMU_RNG=1` logs each RNG call with the byte it reads, and
 
 ## Alternative routes
 
-Three more routes branch off the maximum-score route, each replayed into the original in
-refemu and compared on every pass (tests `gold_key_route`, `giant_sling_route` and
-`magic_ring_route` in tests/reference_trace.rs, against `extracted/reference/*.csv`):
+Three more routes branch off the maximum-score route, and three short ones end in a
+death; each is replayed into the original in refemu and compared on every pass,
+through 200 passes past its end (tests `gold_key_route`, `giant_sling_route`,
+`magic_ring_route` and `death_routes` in tests/reference_trace.rs, against
+`extracted/reference/*.csv`):
 
 | Route | Branch | Ends | Passes compared |
 |---|---|---|---|
 | [gold_key.route](../routes/gold_key.route) | Three wrong guesses for the gnome (an unknown word counts as one); the gold key opens room 19's door; the stairs (rooms 66 to 68) lead into the clouds; room 56's west edge, with no beanstalk, drops Graham into room 64 | the fall and "Thank you for playing", 113 points | 14,400 |
 | [giant_sling.route](../routes/giant_sling.route) | The sling first, then the giant killed with it (+3, −1 for the pebble) and the chest taken from him | the coronation, 153 points | 16,692 |
 | [magic_ring.route](../routes/magic_ring.route) | After the golden egg, the ring put on and rubbed: invisible until the spell runs out, then the ring is gone (−3) | the coronation, 155 points | 18,451 |
+| [death_rock.route](../routes/death_rock.route) | From power-on: room 3's rock moved while standing below it | run over by the rock | 496 |
+| [death_stream.route](../routes/death_stream.route) | From power-on: into room 25's stream | swept away | 610 |
+| [death_river.route](../routes/death_river.route) | From power-on: onto the water at room 40's river bank | slips into the river | 474 |
 
 The gold-key route also crosses the thieving dwarf on the stairs, and it reached room
 64, whose script carries the original's data defect: the original prints its fall

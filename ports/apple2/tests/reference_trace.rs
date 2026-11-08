@@ -213,6 +213,15 @@ fn gold_key_route() {
     compare_keys("gold_key.csv", "routes/gold_key.keys");
 }
 
+/// Deaths: the rolling rock (room 3), the stream's current (room 25) and the river bank
+/// (room 40), each through to the game-over screen.
+#[test]
+fn death_routes() {
+    for r in ["death_rock", "death_stream", "death_river"] {
+        compare_keys(&format!("{r}.csv"), &format!("routes/{r}.keys"));
+    }
+}
+
 /// The giant killed with the sling instead of left to fall asleep (153 points).
 #[test]
 fn giant_sling_route() {

@@ -905,11 +905,16 @@ fn run_line(d: &mut Driver, line: &str) -> Result<(), String> {
             // final X1 Y1 X2 Y2: walk into the rectangle that ends the game; the death flag
             // it leads to is the end of the story, so deadly zones don't count.
             let (x1, y1, x2, y2) = (nums[0], nums[1], nums[2], nums[3]);
+            // Water counts as ground here too: walking into it can be the ending.
             d.ignore_deadly = true;
+            let (water, rooms) = (d.water_room, std::mem::take(&mut d.water_rooms));
+            d.water_room = false;
             let r =
                 d.walk(&|x, y| x >= x1 && x <= x2 && y >= y1 && y <= y2, &format!("final area [{x1},{y1},{x2},{y2}]"));
             d.ignore_deadly = false;
-            r
+            (d.water_room, d.water_rooms) = (water, rooms);
+            // Dying on the way in is the ending too.
+            r.or_else(|e| if d.dead() { Ok(()) } else { Err(e) })
         }
         "keepin" => {
             // keepin X1 Y1 X2 Y2 [...]: confine the planner to these rectangles in this room.
@@ -965,6 +970,19 @@ fn run_line(d: &mut Driver, line: &str) -> Result<(), String> {
             },
             None,
         ),
+        "dies" => {
+            // dies MAX: let passes go by until Graham dies (the end of a death route).
+            let max = *nums.first().unwrap_or(&500) as usize;
+            for _ in 0..max {
+                if d.dead() {
+                    return Ok(());
+                }
+                if let Err(e) = d.step(None) {
+                    return if d.dead() { Ok(()) } else { Err(e) };
+                }
+            }
+            Err(format!("Graham did not die within {max} passes"))
+        }
         "say" => d.say(rest.trim()),
         "key" => d.step(Some(u8::from_str_radix(rest.trim(), 16).unwrap())),
         "wait" => d.wait(nums[0] as usize),
