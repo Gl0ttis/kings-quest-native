@@ -19,7 +19,7 @@ jobs:
       apple2-released: ${{ steps.rp.outputs['ports/apple2--release_created'] }}
       apple2-tag: ${{ steps.rp.outputs['ports/apple2--tag_name'] }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         id: rp
         with:
           config-file: release-please-config.json
