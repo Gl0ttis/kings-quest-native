@@ -1,6 +1,7 @@
-# Semantic versioning from conventional commits: release-please keeps a release pull
-# request open per change set, with the version bumps (per crate) and changelogs. Merging
-# it tags each released crate (kq1-apple2-v0.2.0, ...) and creates the GitHub release.
+# Every push to main: release-please keeps a release pull request open with the next
+# versions and changelogs (from the conventional commits), and kqplay is built for
+# Windows and Linux (downloadable from the run). Merging the release pull request tags
+# the release; the builds are then attached to the GitHub release too.
 name: Release
 
 on:
@@ -14,8 +15,55 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    outputs:
+      apple2-released: ${{ steps.rp.outputs['ports/apple2--release_created'] }}
+      apple2-tag: ${{ steps.rp.outputs['ports/apple2--tag_name'] }}
     steps:
       - uses: googleapis/release-please-action@v4
+        id: rp
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  build:
+    name: kqplay (${{ matrix.name }})
+    needs: release-please
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            exe: kqplay.exe
+          - name: linux-x64
+            os: ubuntu-latest
+            exe: kqplay
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Linux window and sound libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxkbcommon-dev libwayland-dev libxcursor-dev libxrandr-dev libasound2-dev libudev-dev
+      - name: Build
+        run: cargo build --release --locked -p kq1-apple2 --bin kqplay
+      - name: Package
+        shell: bash
+        run: |
+          dir="kqplay-apple2-${{ matrix.name }}"
+          mkdir "$dir"
+          cp "target/release/${{ matrix.exe }}" "$dir/"
+          cp LICENSE "$dir/"
+          cp ports/apple2/README.md "$dir/README.md"
+          if [ "$RUNNER_OS" = "Windows" ]; then 7z a "$dir.zip" "$dir" > /dev/null; else tar czf "$dir.tar.gz" "$dir"; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kqplay-apple2-${{ matrix.name }}
+          path: kqplay-apple2-${{ matrix.name }}.*
+      - name: Attach to the release
+        if: needs.release-please.outputs.apple2-released == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ needs.release-please.outputs.apple2-tag }}" kqplay-apple2-${{ matrix.name }}.* --clobber

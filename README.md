@@ -45,6 +45,11 @@ cargo run --release --bin kqplay -- "original/<disk 1>.nib" "original/<disk 2>.n
 
 See [ports/apple2/README.md](ports/apple2/README.md) for keys, options and tools.
 
+## Licence
+
+The code is under the [MIT licence](LICENSE). King's Quest itself is Sierra's and
+is not part of this repository: the ports read your own copy.
+
 ## Contributing
 
 Conventional commits, semantic versioning per crate, and the checks every pull
