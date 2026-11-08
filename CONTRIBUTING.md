@@ -74,12 +74,12 @@ conventional commits on `main` and keeps a release pull request open with the ne
 versions and changelogs (`ports/<port>/CHANGELOG.md`). Its checks are started by the
 release workflow (GitHub doesn't start them for a pull request a workflow opened).
 Merging it tags the release, and the release workflow attaches the builds of `kq`.
-`kq1-apple2-refemu` gets versions and a changelog but no GitHub release: it is
-a measuring tool, not something to download.
+The measuring emulators (`kq1-apple2-refemu`) are not released: they are tools for
+checking the ports, never published, so release-please leaves them out and their
+version stays as it is.
 
-A change under `ports/apple2/refemu/` releases `kq1-apple2-refemu` only; anything
-else under `ports/apple2/` releases `kq1-apple2`, and with it `kq1-apple2-refemu`,
-which depends on it (release-please's `cargo-workspace` plugin bumps dependents).
+A change under `ports/apple2/` releases `kq1-apple2`, except under
+`ports/apple2/refemu/`, which releases nothing.
 
 ## Adding a port
 
