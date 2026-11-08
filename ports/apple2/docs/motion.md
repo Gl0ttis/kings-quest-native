@@ -211,11 +211,37 @@ For example, in room 1 walking into the moat switches to the drowning view 93, a
 the re-fit moves Graham fully onto the water. This matches the original pass for
 pass (`tests/reference_trace.rs`, `fall_into_the_moat`).
 
-## Still open
+## Collision with the picture (aux `$12C7`, read in full)
 
-- The exact collision rules for priorities 1 and 15 in aux `$12C7` (which flags
-  enable water and the conditional barriers).
-- How the erase and redraw order (`$4DD7`–`$4E69`) handles overlapping actors.
+Before an actor moves, each pixel under its new bottom row (`$F2` wide) is checked
+against the priority buffer, with the actor's priority for its new y (`$1374`) in `$14`.
+`$135E` decides a pixel of priority 2 or more: 15 blocks unless flag bit 1 is set;
+otherwise a pixel equal to the actor's own priority blocks (unless both are 15).
+
+- **Other actors** (`[$13] != 0`): priority 1 is free; priority 0 blocks unless flag
+  bit 2 is set; the rest go through `$135E`.
+- **The ego** (`[$13] = 0`): priorities 0 and 1 never block; the rest go through
+  `$135E`. Then `v4` (water) is set when, with `v4` clear, no pixel of the row is
+  non-zero, or, with `v4` set, no pixel is priority 1 (so he stays in the water until
+  a priority-1 shore pixel is under him).
+- **Blocked:** the position goes back to `[$18]`/`[$19]` (`$12FC`). **Not blocked:**
+  the priority is stored in `[$1D]`.
+
+These are the only conditions; `World::collide` implements exactly this.
+
+## Erasing and redrawing (`$4DD7`–`$4E69`)
+
+1. Restore every actor's saved background, in slot order (`$4DD7`).
+2. Clear `v3`, `v21`, `v22`; sort the actors into draw order (`$4E98`); move each in
+   that order, a blocked one keeping its old position (`$4DED`).
+3. Save every actor's background, in slot order (`$4E2C`).
+4. Draw every actor in draw order, then `v7` = the ego's "nothing drawn" field (`$4E42`).
+5. Update every actor's screen rectangle, in slot order (`$4E69`).
+
+All backgrounds are restored before any is saved again, and all are saved before any
+sprite is drawn, so each saved background is the bare picture and the restore order
+can't matter, however the actors overlap. The port does the same (`restore_all`,
+`move_all`, `save_all`, the draw pass, `commit_all`).
 
 ## The joystick (`$4817`, `$4846`)
 

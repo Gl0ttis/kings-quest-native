@@ -44,15 +44,16 @@ optional (feature `player`), so the engine library has none.
 ## What is still unknown
 
 The unknowns that blocked M2–M4 (the room entry sequence, the parser, text output,
-opcode `$2B`) are resolved and implemented. What remains is detail. Everything the
-traced runs exercise matches the original, so none of these is known to cause a
-difference.
+opcode `$2B`) are resolved and implemented, and so are the details that were left
+(2026-11-08): the collision rules (aux `$12C7`, read in full and identical to
+`World::collide`; see [motion.md](motion.md)), the erase and redraw order (`$4DD7`–`$4E69`;
+order-independent, see motion.md), the purpose of `v31` (ducking; see
+[text-and-parser.md](text-and-parser.md)) and the room count (none is stored; see
+[disk-layout.md](disk-layout.md)).
 
-| Unknown | Where to look |
-|---|---|
-| Collision rules for priorities 1 and 15: which flag combinations enable water and the conditional barriers, beyond those the scripts use | aux `$12C7`–`$1373` |
-| The erase and redraw order for overlapping actors in every case | engine `$4DD7`–`$4E69` |
-| The purpose of `v31` | text and parser code |
+What remains is behaviour the port knowingly simplifies: the memory past room 64's
+script that the original's parser can scan into (script-format.md), joystick buttons
+read mid-pass by the original's redraw (motion.md), and disk timing (below).
 
 **Sound.** The only sound is the Apple ROM bell (`$FBDD`, called at `$6618`): single
 beeps for the "more" pause, and a double beep (`$6625`) for save and restore disk errors.
@@ -258,7 +259,7 @@ format work.
 - **The parser's self-modified operand (`$523F`)** is tracked, and its value matches the original after each typed line ([motion.md](motion.md)).
 - **Death and restart.** Dying in the moat, pressing 5 and answering Y, then walking through rooms 16 and 9 matches the original for 375 passes (`restart_after_death`). This found one bug: a restart chosen from a typed command went on to set `v28` and `v13`, which the original never does, because its restart resets the stack.
 
-- **Script 064 is closed.** Room 64, the only room whose script has the defect, can't be reached in normal play (see [script-format.md](script-format.md#known-data-defect-script-064)). The corrected boundary stays, and no compatibility switch is needed.
+- **Script 064.** Room 64, the only room whose script has the defect, was first thought unreachable; the gold-key route reaches it (see below and [script-format.md](script-format.md#known-data-defect-script-064)). The port now reproduces the defect: the fall message loses its "S", as in the original.
 - **The text window on room entry.** `show_overlay_picture` clears the text rows and starts the prompt on row 20, as in the original. The port had kept the old text on screen.
 - **refemu fixes.** Its automatic RETURN no longer fires during long room loads, or twice for one pause. Those extra RETURNs had been typed into the original as empty lines.
 
@@ -299,6 +300,22 @@ format work.
   refuses the save disk or damaged images. Every tool uses it; `kqplay` needs no
   extraction step. The decoded images are byte-identical to extracted/disk1-3.do, and
   the max-score replay from the `.nib` files matches the original on every pass.
+
+- **Alternative routes (2026-11-08).** Three more playthroughs, each played by the
+  autopilot and compared with the original in refemu on every pass:
+  [routes/gold_key.route](../routes/gold_key.route) (the gnome's riddle failed, room
+  19's door, the stairs into the clouds and the fall into room 64; 14,400 passes,
+  including the dwarf's theft and the death), [routes/giant_sling.route](../routes/giant_sling.route)
+  (the giant killed with the sling; 16,692 passes, 153 points) and
+  [routes/magic_ring.route](../routes/magic_ring.route) (invisibility and the lost
+  ring; 18,451 passes, 155 points). All three match. They found the room 64
+  difference above, and taught the autopilot about scripted entry positions (see
+  [route.md](route.md)). Tests: `gold_key_route`, `giant_sling_route`,
+  `magic_ring_route`.
+- **Linux (2026-11-08).** Under WSL2 (Ubuntu 24.04, WSLg) the workspace builds without
+  warnings, all tests pass, kqplay opens its window and plays, and the max-score replay
+  matches the original on every pass. Sound, full screen and the joystick are
+  Windows only.
 
 - **The start-up screen.** As the original: black while DOS boots and loads the engine,
   then a white screen with "Please wait..." (row 9, column 13, `$4537`) while the
@@ -376,8 +393,11 @@ All four recommendations below were accepted on 2026-11-07; the outcomes follow 
    **Recommendation:** (b), with a compatibility switch that turns on (a) once
    the memory layout after the script is understood.
 
-   **Outcome (2026-11-08):** (b). Room 64 turned out to be unreachable in normal play,
-   so (a) would never show and the switch isn't needed.
+   **Outcome (2026-11-08):** first (b), on the belief that room 64 couldn't be reached.
+   The gold-key route reaches it, and the original's message shows the defect, so the
+   default is now (a), the data as it is on the disk; (b) remains as the `true`
+   setting of `Resources::load`. The memory past the script that (a) can scan into is
+   not modelled (see script-format.md).
 3. **Save format.** Choose between the port's own save files, which are
    simplest, and saves compatible with original disk-4 images, which needs the
    save-format work.

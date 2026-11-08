@@ -90,9 +90,11 @@ entry as `base + 3*index`.
 - **Every other resource is disjoint from the rest.** This is the main check
   that the format above is right.
 
-## Unresolved
+## No room count
 
-- Where the engine stores the number of rooms.
+The engine stores no number of rooms. `new_room` (`$4B19`) passes the number to the
+loader (`$429D`), and the directory lookup (`$4318`) computes `base + 3 * n` with no
+bounds check, so any number indexes the directory directly.
 
 The formats themselves are in [picture-format.md](picture-format.md),
 [view-format.md](view-format.md), [script-format.md](script-format.md),

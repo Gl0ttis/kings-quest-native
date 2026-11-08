@@ -176,4 +176,11 @@ are "dagger", "pouch", "pouch of diamonds" and "carrot".
 
 - **The exact Apple text-mode characters**: only with a user-supplied ROM dump
   (above).
-- **What `v31` controls** (toggled with `=`).
+
+## Ducking (`v31`)
+
+`v31` is ducking. Typing "duck" or pressing `=` toggles it (the global script's parser
+rules, and `$5312` for the key); pressing a direction or the joystick clears it. While
+it is set, the global script puts Graham in the crouching view (87), plays it, and sets
+`v30`, which holds his direction at 0; clearing it plays the view backwards and stands
+him up. Room scripts use it too (room 29, and ducking under the condor).

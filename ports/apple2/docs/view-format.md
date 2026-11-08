@@ -88,5 +88,5 @@ buffer. The rules (implemented in `World::collide`) are in
 [motion.md](motion.md): for other actors priority 1 is free, 0 blocks unless flag
 bit 2 is set, 15 blocks unless flag bit 1 is set, and a pixel of the actor's own
 priority blocks; for the ego, priority 0 never blocks, and `v4` records whether it
-stands on water. Still open: which flag combinations enable water and the
-conditional barriers, beyond those the scripts use.
+stands on water. Those are the only conditions (the routine is read in full; see
+motion.md).
