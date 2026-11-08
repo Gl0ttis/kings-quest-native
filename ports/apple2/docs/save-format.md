@@ -44,7 +44,7 @@ and the global script starts room 1 again.
 
 ## The port
 
-**Save files.** A save is a file, `saves/kq-a.sav` to `kq-z.sav` (`kqplay
+**Save files.** A save is a file, `saves/kq-a.sav` to `kq-z.sav` (`kq
 --saves DIR` changes the folder). It holds the same four blocks in the same
 layout, after an 8-byte tag `KQSAVE01`, 1,779 bytes in all. Because the
 file keeps the original layout, reading and writing real disk-4 save images (below)
@@ -80,7 +80,7 @@ scripts, and skips if the decoded disk images are missing. It checks:
 ## Save disks (confirmed with refemu)
 
 `src/savedisk.rs` reads and writes saves on an original save-disk image (`.nib`, which
-must be volume 10, or a DOS-order `.do`); `kqplay --savedisk FILE` uses one in place
+must be volume 10, or a DOS-order `.do`); `kq --savedisk FILE` uses one in place
 of the save files.
 
 **The format on disk.** The game writes through a 256-byte buffer at `$1600` ($5941,
@@ -105,7 +105,7 @@ carried on into the next sectors ($605E). Objects start in sector 1, actors in s
 1. The original replayed the max-score route and, at pass 2001, saved to letter A on a
    blank disk 4. The port reads it back (extracted/reference/save_disk_pass2001.nib).
 2. Play went on to pass 2300, then restored A, then ran 100 more passes
-   (extracted/reference/restore_pass2301.csv). That is the reference. The save-disk
+   (reference/restore_pass2301.csv). That is the reference. The save-disk
    image itself holds game data, so like the disks it stays local (not in git).
 3. The port restoring the original's save, the port restoring its own save, and the
    original restoring the port's save all match the reference on all 100 passes

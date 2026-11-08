@@ -268,12 +268,12 @@ only, so the thresholds survive a restart.
 The redraw polls the keyboard four more times (`$5D33`–`$5D45`, `$F8 = 0`): those
 calls read the buttons and set `$74 = 0`, and the main poll sets `$74` again before
 it is next used. The port computes a pass at once, so
-`kqplay` watches the buttons between passes instead and keeps any press until the next
+`kq` watches the buttons between passes instead and keeps any press until the next
 pass reads the joystick. A press the original catches in its redraw (pass N) is then
 set at the start of pass N + 1, and the scripts act on it in pass N + 1 either way.
 
 The port: `World::calibrate_joystick` and `poll_joystick` (src/engine/cycle.rs), with
-the front end supplying paddle counts through `IoImpl::joystick`. `kqplay` reads any
+the front end supplying paddle counts through `IoImpl::joystick`. `kq` reads any
 game controller (Windows: winmm; Linux: `/dev/input/js0`) as counts 1-255, about 128
 at rest; the hat pushes
 to the edges. tests/joystick.rs walks Graham with the stick and swims with button 0.

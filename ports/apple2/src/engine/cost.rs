@@ -148,7 +148,7 @@ impl Cost {
     }
 
     /// The duration without the disk reads, room-change bookkeeping and picture drawing
-    /// (kqplay's fast loads). Those are almost all of a room change's 10 s or so; the
+    /// (kq's fast loads). Those are almost all of a room change's 10 s or so; the
     /// rest of every pass keeps the original's pace. Only the real time changes: the
     /// game's state depends on passes, never on time (the Apple has no clock).
     pub fn seconds_fast_loads(&self) -> f64 {

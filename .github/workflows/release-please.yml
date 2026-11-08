@@ -1,5 +1,5 @@
 # Every push to main: release-please keeps a release pull request open with the next
-# versions and changelogs (from the conventional commits), and kqplay is built for
+# versions and changelogs (from the conventional commits), and kq is built for
 # Windows and Linux (downloadable from the run). Merging the release pull request tags
 # the release; the builds are then attached to the GitHub release too.
 name: Release
@@ -26,7 +26,7 @@ jobs:
           manifest-file: .release-please-manifest.json
 
   build:
-    name: kqplay (${{ matrix.name }})
+    name: kq (${{ matrix.name }})
     needs: release-please
     strategy:
       fail-fast: false
@@ -34,10 +34,10 @@ jobs:
         include:
           - name: windows-x64
             os: windows-latest
-            exe: kqplay.exe
+            exe: kq.exe
           - name: linux-x64
             os: ubuntu-latest
-            exe: kqplay
+            exe: kq
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -47,23 +47,23 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libx11-dev libxkbcommon-dev libxcursor-dev libxrandr-dev libasound2-dev
       - name: Build
-        run: cargo build --release --locked -p kq1-apple2 --bin kqplay
+        run: cargo build --release --locked -p kq1-apple2 --bin kq
       - name: Package
         shell: bash
         run: |
-          dir="kqplay-apple2-${{ matrix.name }}"
+          dir="kq-apple2-${{ matrix.name }}"
           mkdir "$dir"
           cp "target/release/${{ matrix.exe }}" "$dir/"
           cp LICENSE "$dir/"
-          cp ports/apple2/README.md "$dir/README.md"
+          cp ports/apple2/PLAYING.md "$dir/README.md"
           if [ "$RUNNER_OS" = "Windows" ]; then 7z a "$dir.zip" "$dir" > /dev/null; else tar czf "$dir.tar.gz" "$dir"; fi
       - uses: actions/upload-artifact@v4
         with:
-          name: kqplay-apple2-${{ matrix.name }}
-          path: kqplay-apple2-${{ matrix.name }}.*
+          name: kq-apple2-${{ matrix.name }}
+          path: kq-apple2-${{ matrix.name }}.*
       - name: Attach to the release
         if: needs.release-please.outputs.apple2-released == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ needs.release-please.outputs.apple2-tag }}" kqplay-apple2-${{ matrix.name }}.* --clobber
+        run: gh release upload "${{ needs.release-please.outputs.apple2-tag }}" kq-apple2-${{ matrix.name }}.* --clobber

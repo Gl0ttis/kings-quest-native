@@ -5,7 +5,7 @@
 //!
 //! A trace is recorded from the repository root with, for example:
 //!   refemu/target/release/refemu original/disk1.nib original/disk2.nib original/disk3.nib \
-//!     --plan "w5,D,w70" --passes 90 --trace extracted/reference/moat_fall.csv
+//!     --plan "w5,D,w70" --passes 90 --trace reference/moat_fall.csv
 //! The refemu plan "wN, X" corresponds to the port running N passes, then pressing X.
 use kq1_apple2::engine::{f, Resources, Scripted, World};
 use kq1_apple2::kq::Disks;
@@ -113,7 +113,7 @@ fn restart_after_death() {
 /// compare every pass with the original's trace.
 fn compare_keys(trace_file: &str, keys_file: &str) {
     let base = concat!(env!("CARGO_MANIFEST_DIR"), "/");
-    let Ok(trace) = fs::read_to_string(format!("{base}extracted/reference/{trace_file}")) else { return };
+    let Ok(trace) = fs::read_to_string(format!("{base}reference/{trace_file}")) else { return };
     let Ok(keys) = fs::read_to_string(format!("{base}{keys_file}")) else { return };
     let imgs: Option<Vec<Vec<u8>>> = (1..=3).map(|n| fs::read(format!("{base}extracted/disk{n}.do")).ok()).collect();
     let Some(imgs) = imgs else { return };
@@ -165,7 +165,7 @@ fn max_score_playthrough() {
 #[test]
 fn swap_prompts_match_the_original() {
     let base = concat!(env!("CARGO_MANIFEST_DIR"), "/");
-    let Ok(trace) = fs::read_to_string(format!("{base}extracted/reference/max_score.csv")) else { return };
+    let Ok(trace) = fs::read_to_string(format!("{base}reference/max_score.csv")) else { return };
     let Ok(keys) = fs::read_to_string(format!("{base}routes/max_score.keys")) else { return };
     let imgs: Option<Vec<Vec<u8>>> = (1..=3).map(|n| fs::read(format!("{base}extracted/disk{n}.do")).ok()).collect();
     let Some(imgs) = imgs else { return };
@@ -240,7 +240,7 @@ fn magic_ring_route() {
 #[test]
 fn speed_model_matches_original() {
     let base = concat!(env!("CARGO_MANIFEST_DIR"), "/");
-    let Ok(trace) = fs::read_to_string(format!("{base}extracted/reference/max_score.csv")) else { return };
+    let Ok(trace) = fs::read_to_string(format!("{base}reference/max_score.csv")) else { return };
     let Ok(keys) = fs::read_to_string(format!("{base}routes/max_score.keys")) else { return };
     let imgs: Option<Vec<Vec<u8>>> = (1..=3).map(|n| fs::read(format!("{base}extracted/disk{n}.do")).ok()).collect();
     let Some(imgs) = imgs else { return };

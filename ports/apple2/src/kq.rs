@@ -111,6 +111,42 @@ impl Disks {
         Ok(Disks { images: disks.into_iter().map(|d| d.1).collect() })
     }
 
+    /// Find the three game disk images in a folder: `.nib` files by the disk number they
+    /// record (volume 1-3; the save disk and damaged images are passed over), `.do`/`.dsk`
+    /// files by the disk number in their name ("disk 1", "side A", or the first digit
+    /// 1-3). Returns the paths in disk order, or why they couldn't all be found.
+    pub fn find(dir: &std::path::Path) -> Result<Vec<std::path::PathBuf>, String> {
+        let entries = std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        let mut found: [Option<std::path::PathBuf>; 3] = Default::default();
+        let mut files: Vec<std::path::PathBuf> = entries.filter_map(|e| Some(e.ok()?.path())).collect();
+        files.sort();
+        // .nib first: their disk numbers are certain.
+        for nib in [true, false] {
+            for p in &files {
+                let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+                let n = match ext.as_str() {
+                    "nib" if nib => std::fs::read(p).ok().and_then(|raw| Self::image(&raw).ok()?.0),
+                    "do" | "dsk" if !nib => p
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .and_then(disk_number)
+                        .filter(|_| std::fs::metadata(p).is_ok_and(|m| m.len() == 143_360)),
+                    _ => None,
+                };
+                if let Some(slot) = n.filter(|n| (1..=3).contains(n)).map(|n| &mut found[n as usize - 1]) {
+                    slot.get_or_insert_with(|| p.clone());
+                }
+            }
+        }
+        let missing: Vec<String> = (1..=3).filter(|&i| found[i - 1].is_none()).map(|i| i.to_string()).collect();
+        match missing.len() {
+            0 => {}
+            3 => return Err(format!("no game disks in {}", dir.display())),
+            _ => return Err(format!("game disk {} not found in {}", missing.join(" and "), dir.display())),
+        }
+        Ok(found.into_iter().map(|p| p.unwrap()).collect())
+    }
+
     /// One image as DOS order, with its volume number when the image records it.
     fn image(raw: &[u8]) -> Result<(Option<u8>, Vec<u8>), String> {
         match raw.len() {
@@ -178,6 +214,23 @@ impl Disks {
     }
 }
 
+/// The disk number in an image's file name: after "disk" or "side" (1-3 or A-C), else
+/// the first digit 1-3 in the name.
+fn disk_number(name: &str) -> Option<u8> {
+    let name = name.to_ascii_lowercase();
+    for word in ["disk", "side"] {
+        if let Some(i) = name.find(word) {
+            let c = name[i + word.len()..].chars().find(|c| c.is_ascii_alphanumeric())?;
+            return match c {
+                '1'..='3' => Some(c as u8 - b'0'),
+                'a'..='c' => Some(c as u8 - b'a' + 1),
+                _ => None,
+            };
+        }
+    }
+    name.chars().find(|c| c.is_ascii_digit()).filter(|c| ('1'..='3').contains(c)).map(|c| c as u8 - b'0')
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,5 +239,14 @@ mod tests {
         let a = DiskAddr::from_record(&[18, 0x16, 0x00]);
         assert_eq!(a, DiskAddr { disk: 1, track: 18, sector: 6, offset: 0 });
         assert_eq!(a.linear(), (18 * 16 + 6) * 256);
+    }
+
+    #[test]
+    fn disk_numbers_from_names() {
+        assert_eq!(disk_number("King's Quest - Disk 2 of 3"), Some(2));
+        assert_eq!(disk_number("kq1 side C"), Some(3));
+        assert_eq!(disk_number("kq-3"), Some(3));
+        assert_eq!(disk_number("disk4"), None);
+        assert_eq!(disk_number("saves"), None);
     }
 }

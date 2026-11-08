@@ -10,7 +10,7 @@ The route scores **158 of 158** and plays from power-on to the coronation in 17,
 passes (the test compares all 17,339 passes recorded from the original). The original, given the same keys, does the same thing on every pass. The key
 log is kept in [routes/max_score.keys](../routes/max_score.keys), and the test
 `max_score_playthrough` (tests/reference_trace.rs) replays it against the original's
-trace, `extracted/reference/max_score.csv`.
+trace, `reference/max_score.csv`.
 
 Run these from `ports/apple2` (kqroute reads `routes/room_exits.json`); the built
 binaries are in the workspace's `target/release`.
@@ -28,14 +28,14 @@ speed, or start faster with `--speed N`; `--fast-loads` or F9 skips the 10 s or 
 room change, 26 of the run's 60 minutes):
 
 ```
-kqplay extracted/disk1.do extracted/disk2.do extracted/disk3.do --keys routes/max_score.keys
+kq extracted/disk1.do extracted/disk2.do extracted/disk3.do --keys routes/max_score.keys
 ```
 
-kqplay also takes the `.nib` images directly, in any order (each records its disk
+kq also takes the `.nib` images directly, in any order (each records its disk
 number), so nothing needs extracting first:
 
 ```
-kqplay "original/King Quest (1983)(Sierra)(Disk 1 of 3)[nib].nib" "original/...(Disk 2 of 3)[nib].nib" "original/...(Disk 3 of 3)[nib].nib"
+kq "original/King Quest (1983)(Sierra)(Disk 1 of 3)[nib].nib" "original/...(Disk 2 of 3)[nib].nib" "original/...(Disk 3 of 3)[nib].nib"
 ```
 
 While the log plays, typed keys are ignored; the front-end keys (F6 to F9, F11, F12, Alt+Enter)
@@ -203,7 +203,7 @@ Three more routes branch off the maximum-score route, and three short ones end i
 death; each is replayed into the original in refemu and compared on every pass,
 through 200 passes past its end (tests `gold_key_route`, `giant_sling_route`,
 `magic_ring_route` and `death_routes` in tests/reference_trace.rs, against
-`extracted/reference/*.csv`):
+`reference/*.csv`):
 
 | Route | Branch | Ends | Passes compared |
 |---|---|---|---|

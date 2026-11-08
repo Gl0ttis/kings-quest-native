@@ -15,7 +15,7 @@ IIe ([src/engine/cost.rs](src/engine/cost.rs)).
 ## What you need
 
 Your own images of the three game disks, as `.nib` (232,960 bytes) or DOS-order
-`.do`/`.dsk` (143,360 bytes), in `original/`. Optionally:
+`.do`/`.dsk` (143,360 bytes). Optionally:
 
 - a blank save disk image (disk 4, volume 10) for `--savedisk`;
 - an Apple IIe video ROM dump (342-0265 or 342-0133 in its name) for the Apple's own
@@ -25,12 +25,18 @@ Nothing from the game or the Apple is included in the repository.
 
 ## Playing
 
+Players download `kq` from the releases page; [PLAYING.md](PLAYING.md) is their guide
+(and the README in the release archive). From source:
+
 ```
-cargo run --release --bin kqplay -- "original/<disk 1>.nib" "original/<disk 2>.nib" "original/<disk 3>.nib"
+cargo run --release --bin kq -- [FOLDER | disk1 disk2 disk3]
 ```
 
-`.nib` images may come in any order (each records its disk number); `.do`
-images must be in order 1, 2, 3.
+With no disks given, `kq` looks for them next to the executable, then in the current
+folder ([`Disks::find`](src/kq.rs)): `.nib` images by the disk number each records,
+`.do`/`.dsk` by the disk number in the file name. Given as three files, `.nib` images
+may come in any order and `.do` images must be in order 1, 2, 3. For development,
+keep them in `original/` (git ignores it) and run `kq original`.
 
 **Keys, as on the Apple:** arrows, and `'` `/` `.` `;` for the diagonals, move Graham
 (press again to stop). Type commands and press RETURN. Tab shows the inventory, Esc
@@ -50,7 +56,7 @@ Debian and Ubuntu).
 
 **Options:** `--speed N`, `--fast-loads`, `--fullscreen`, `--mute`, `--ntsc`,
 `--fill-specks`, `--savedisk FILE` (save to an original save disk image instead of
-`saves/`), `--saves DIR` (where save files go), `--swap-prompts` (the original's "Please insert
+save files), `--saves DIR` (where save files go; by default `saves/` next to the disks), `--swap-prompts` (the original's "Please insert
 side B" prompts, off by default), `--charrom FILE` / `--no-charrom`,
 `--no-joystick`, `--keys FILE` (replay a key log, such as
 [routes/max_score.keys](routes/max_score.keys)), `--rate N` (a fixed rate),
@@ -86,7 +92,7 @@ cargo test -p kq1-apple2
 With the disks decoded as `extracted/disk1.do` to `disk3.do` (`nibdecode` names its
 output after its input, so name the `.nib` files `disk1.nib` to `disk3.nib`, or
 rename the output), the tests replay the reference runs and compare them with
-traces measured from the original (`extracted/reference/*.csv`). Without the game
+traces measured from the original (`reference/*.csv`). Without the game
 data those tests skip themselves. Two use further local-only files, since they
 hold game data: `save_disk.rs` (`original/disk4.nib` and the original's save disk
 `extracted/reference/save_disk_pass2001.nib`) and `text_page.rs`
