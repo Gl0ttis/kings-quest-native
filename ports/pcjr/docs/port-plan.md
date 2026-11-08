@@ -19,9 +19,9 @@ engine draws.
 
 | Phase | Status |
 |---|---|
-| 1. Disk image | **Done.** A plain 360K sector image; `Disk::new` checks its size and every directory entry. |
+| 1. Disk image | **Done.** The original as dumped (HxC `.mfm`: MFM decoded, CRCs checked) and the cracked 360K `.img`. The copy protection, 1 KB-sector tracks holding the engine, is worked out, and the two give the same engine and data (tested). |
 | 2. Disk layout | **Done** ([disk-layout.md](disk-layout.md)): boot chain, the engine's position, the resource table, its entry format, the read routine. |
-| 3. Static formats | **Started.** Pictures: all 79 that follow a well-formed script draw cleanly with the Apple port's decoder. Scripts: 44 of 81 parse with the Apple opcode table. Views: layout worked out on view 0; reader to write. Sounds: identified, format to work out. |
+| 3. Static formats | **Mostly done.** Pictures: all 79 draw cleanly (Apple decoder, IBM colours). Scripts: the PCjr operand table, read from the handlers; all 84 well-formed scripts parse. Views: the PCjr reader; all 88 decode. Colours: the default IBM palette. Left: sounds, the picture size the PCjr shows, and room 64. |
 | 4. Measuring tool | Not started. An 8088 PCjr emulator, with the BIOS calls the game makes substituted. |
 | 5–10. Engine onwards | Not started. |
 
@@ -43,18 +43,25 @@ engine draws.
   in the 4-bank interleaved layout. Mode 9 is shown and the pages are switched with
   `INT 10h` AX=0583h.
 - **Saves go to a "Play diskette"** that the game formats and fills itself.
+- **The copy protection** is only the 1 KB-sector tracks the engine loads from. The
+  engine has no other check that I've found, and the crack changes no engine code.
+- **Room 64** may show no picture on the PCjr: the engine starts the picture a byte
+  early because of the script header defect (disk-layout.md). To confirm.
+- **More animation frames than the Apple version:** 722 cels to its 674.
 
 ## Next
 
-1. **Scripts.** Read the PCjr action interpreter's opcode table, and list the
-   opcodes and operand counts that differ from the Apple's (start from the failing
-   rooms: `kqextract` reports the first bad opcode in each).
-2. **Views.** Write the PCjr view reader (sizes, 8 loop slots), and check all 111.
-3. **Colours.** Find the engine's palette handling and the picture colour numbering,
-   then render pictures and views in the PCjr's own 16 colours.
-4. **Sounds.** Work out the format from the `INT 1Ch` player (`$5608` onwards in the
-   engine).
-5. **The measuring tool**, before the engine.
+1. **Sounds.** Work out the format from the `INT 1Ch` handler the engine installs
+   (`$808`; it writes the sound chip at `$85B`) and the code that starts a sound.
+2. **The picture on screen.** Read the PCjr plotting code for the picture size it
+   keeps and how a picture pixel maps to mode 9's 320×200, and compare fills with the
+   Apple painter (the Apple's colour table merges two colours; the PCjr's doesn't).
+3. **The rule matchers.** Check that the cycle and parser rule formats match the
+   Apple's (the dispatch tables at `$2958` and `$2B3B` look like them).
+4. **The measuring tool**, before the engine: an 8088 PCjr that boots the original
+   from the `.mfm`, with the BIOS calls the game makes substituted, recording traces
+   and frames as refemu does.
+5. **The 86F format**, so the `.86f` dump can be read too.
 
 ## Repository notes
 

@@ -1,17 +1,23 @@
-//! The game disk: a 360K self-booting image (40 tracks, 2 sides, 9 sectors of 512 bytes;
-//! sectors in the usual order, track by track and side 0 before side 1). There is no DOS
-//! filesystem. The boot sector loads the engine from the end of the disk, and the
-//! engine finds every resource through a table at the start of its code segment.
-//! See docs/disk-layout.md.
+//! The game disk: 40 tracks, 2 sides, 9 sectors of 512 bytes, with no DOS filesystem;
+//! except that on the original, tracks 0 side 1 to 3 side 0 hold 5 sectors of 1,024
+//! bytes each: the engine, which the boot sector loads from there (the copy
+//! protection). The engine finds every resource through a table at the start of its
+//! code segment. See docs/disk-layout.md.
+//!
+//! Two kinds of image are read: the original as dumped (an HxC `.mfm`, see mfm.rs),
+//! and the cracked 360K sector image (`.img`), which has the engine copied to sectors
+//! 648-707 instead (byte for byte the same) and a boot sector patched to load it there.
 
 /// Bytes in a 360K image.
 pub const IMAGE_LEN: usize = 368_640;
 pub const SECTOR: usize = 512;
 
-/// The boot sector moves itself to 0060:0000 and reads the engine to 0060:0200: 60
-/// sectors from sector 648 (boot sector `$90`-`$9A`, through its read routine `$9D`).
+/// The engine: 30 KB, loaded to 0060:0200. The original's boot sector reads it as 30
+/// sectors of 1,024 bytes from track 0 side 1 (`$90`, through its read routine `$9D`
+/// set for 5 sectors a track); the crack's reads 60 sectors of 512 from sector 648.
+pub const ENGINE_LEN: usize = 30 * 1024;
+/// Where the crack keeps the engine.
 pub const ENGINE_SECTOR: usize = 648;
-pub const ENGINE_SECTORS: usize = 60;
 /// Where the engine starts in its code segment (segment 0x60).
 pub const ENGINE_ADDR: usize = 0x200;
 
@@ -61,20 +67,66 @@ impl Entry {
 }
 
 pub struct Disk {
+    /// The 512-byte sectors, as a 360K image (the original's 1 KB-sector tracks are
+    /// left as the format filler there).
     pub image: Vec<u8>,
+    /// The engine, as loaded to 0060:0200.
+    pub engine: Vec<u8>,
+    /// Read from the original (an MFM dump) rather than the crack.
+    pub original: bool,
 }
 
 impl Disk {
-    /// A disk image: 368,640 bytes. Its directory must decode, every entry within the
-    /// image.
+    /// A disk image file: an HxC MFM dump of the original, or a 360K sector image.
+    pub fn from_file(raw: Vec<u8>) -> Result<Disk, String> {
+        if raw.starts_with(b"HXCMFM\0") {
+            Disk::from_tracks(&crate::mfm::decode(&raw)?)
+        } else {
+            Disk::new(raw)
+        }
+    }
+
+    /// A 360K sector image (the crack): the engine is in sectors 648-707.
     pub fn new(image: Vec<u8>) -> Result<Disk, String> {
         if image.len() != IMAGE_LEN {
             return Err(format!(
-                "not a 360K disk image ({} bytes; expected {IMAGE_LEN}, a sector image such as .img)",
+                "not a disk image of this game ({} bytes; expected an HxC .mfm dump or a {IMAGE_LEN}-byte .img)",
                 image.len()
             ));
         }
-        let disk = Disk { image };
+        let engine = image[ENGINE_SECTOR * SECTOR..ENGINE_SECTOR * SECTOR + ENGINE_LEN].to_vec();
+        Disk::checked(Disk { image, engine, original: false })
+    }
+
+    /// The original's tracks: 512-byte sectors into the image, and the engine from the
+    /// 1 KB sectors in disk order.
+    pub fn from_tracks(tracks: &[crate::mfm::Track]) -> Result<Disk, String> {
+        let mut image = vec![0xF6u8; IMAGE_LEN];
+        let mut big: Vec<(u8, u8, u8, &[u8])> = Vec::new();
+        for t in tracks {
+            for s in &t.sectors {
+                match s.size {
+                    2 if (1..=9).contains(&s.record) && t.cylinder < 40 && t.side < 2 => {
+                        let lin = (t.cylinder as usize * 2 + t.side as usize) * 9 + s.record as usize - 1;
+                        image[lin * SECTOR..(lin + 1) * SECTOR].copy_from_slice(&s.data);
+                    }
+                    3 => big.push((t.cylinder, t.side, s.record, &s.data)),
+                    _ => {}
+                }
+            }
+        }
+        big.sort_by_key(|b| (b.0, b.1, b.2));
+        let engine: Vec<u8> = big.iter().flat_map(|b| b.3.iter().copied()).collect();
+        if engine.len() != ENGINE_LEN {
+            return Err(format!(
+                "expected the engine as 30 sectors of 1,024 bytes, found {} bytes; not the original disk?",
+                engine.len()
+            ));
+        }
+        Disk::checked(Disk { image, engine, original: true })
+    }
+
+    fn checked(disk: Disk) -> Result<Disk, String> {
         for (what, n, e) in disk.entries() {
             let end = e.sector * SECTOR + e.sectors.max(1) * SECTOR;
             if end > IMAGE_LEN || e.start() >= IMAGE_LEN {
@@ -85,10 +137,11 @@ impl Disk {
     }
 
     /// The engine's code segment as loaded: the boot sector at 0, the engine from 0x200.
+    /// (The crack's boot sector differs from the original's in its loading code, before
+    /// `$100`; the resource table after it is the same.)
     pub fn code_segment(&self) -> Vec<u8> {
         let mut cs = self.image[..SECTOR].to_vec();
-        let e = ENGINE_SECTOR * SECTOR;
-        cs.extend_from_slice(&self.image[e..e + ENGINE_SECTORS * SECTOR]);
+        cs.extend_from_slice(&self.engine);
         cs
     }
 
@@ -144,10 +197,10 @@ impl Disk {
         Some(Room { script: &data[..len], picture: &data[len..] })
     }
 
-    /// View `v`: a u16 length, then the view.
+    /// View `v`: a u16 length (of what follows it), then the view; with the length.
     pub fn view(&self, v: usize) -> Option<&[u8]> {
         let data = self.resource(self.view_entry(v)?);
-        let len = u16::from_le_bytes([data[0], data[1]]) as usize;
+        let len = 2 + u16::from_le_bytes([data[0], data[1]]) as usize;
         Some(&data[..len.min(data.len())])
     }
 

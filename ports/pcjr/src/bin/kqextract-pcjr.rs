@@ -1,27 +1,29 @@
-//! kqextract DISK.img [OUT]: extract every resource from the PCjr game disk into OUT
+//! kqextract-pcjr DISK.img [OUT]: extract every resource from the PCjr game disk into OUT
 //! (default `extracted/`, which git ignores: it is game content), and check each one
 //! with the Apple port's decoders, which read the same formats:
 //!
 //! - rooms: the script (actions, cycle rules, parser rules, messages) and the picture
-//!   (drawn to its end; rendered to OUT/pics/NNN.png with the Apple's palette for now);
+//!   (drawn to its end; rendered to OUT/pics/NNN.png in the IBM colours, through the
+//!   Apple painter's 140x160 window for now);
 //! - views: loops and cels;
 //! - sounds and the engine are written as they are.
 //!
 //! Prints one line per resource and a summary; exits non-zero if anything fails to
 //! decode.
 
-use kq1_apple2::{pic, png, script, view};
+use kq1_apple2::{pic, png, script};
+use kq1_pcjr::color;
 use kq1_pcjr::disk::{Disk, ROOMS, SOUNDS, VIEWS};
 use std::{fs, path::PathBuf};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let Some(path) = args.first() else {
-        eprintln!("usage: kqextract DISK.img [OUT]");
+        eprintln!("usage: kqextract-pcjr DISK.img [OUT]");
         std::process::exit(2);
     };
     let out = PathBuf::from(args.get(1).map_or("extracted", |s| s.as_str()));
-    let disk = Disk::new(fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"))).unwrap_or_else(|e| {
+    let disk = Disk::from_file(fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"))).unwrap_or_else(|e| {
         eprintln!("{path}: {e}");
         std::process::exit(1)
     });
@@ -44,7 +46,7 @@ fn main() {
         let mut line = format!("room {r:3}: script {:5} bytes", room.script.len());
         match script::Script::new(room.script) {
             Ok(s) => {
-                let actions = s.actions();
+                let actions = s.actions_with(&kq1_pcjr::script::OPERANDS);
                 let cycle = s.rules(script::Mode::Cycle);
                 let parser = s.rules(script::Mode::Parser);
                 match (actions, cycle, parser) {
@@ -75,7 +77,7 @@ fn main() {
             }
         }
         if r > 0 && !room.picture.is_empty() {
-            let p = pic::draw(room.picture);
+            let p = pic::draw_with_colors(vec![0x1F; pic::WIDTH * pic::HEIGHT], room.picture, &color::IDENTITY);
             let data = &room.picture[..p.end.min(room.picture.len())];
             fs::write(out.join(format!("res/room/{r:03}.pic.bin")), data).unwrap();
             let clean = p.warnings.is_empty() && room.picture.get(p.end.wrapping_sub(1)) == Some(&0xFF);
@@ -90,14 +92,15 @@ fn main() {
                 p.plots,
                 if clean { String::new() } else { format!(" PICTURE WARNINGS: {:?}", p.warnings) }
             );
-            // 140x160 logical pixels, each drawn 4 wide (as the Apple's renderer does).
+            // The Apple painter's 140x160 window, each pixel 2x1 (the PCjr's 4:3 shape is
+            // still to confirm), in the IBM colours.
             let rgb: Vec<u8> = (0..pic::HEIGHT)
-                .flat_map(|y| (0..pic::WIDTH * 4).map(move |x| (x / 4, y)))
-                .flat_map(|(x, y)| pic::dhgr_rgb(p.visual(x, y)))
+                .flat_map(|y| (0..pic::WIDTH * 2).map(move |x| (x / 2, y)))
+                .flat_map(|(x, y)| color::rgb(p.visual(x, y)))
                 .collect();
             fs::write(
                 out.join(format!("pics/{r:03}.png")),
-                png::encode_rgb((pic::WIDTH * 4) as u32, pic::HEIGHT as u32, &rgb),
+                png::encode_rgb((pic::WIDTH * 2) as u32, pic::HEIGHT as u32, &rgb),
             )
             .unwrap();
         }
@@ -113,8 +116,7 @@ fn main() {
             println!("view {v:3}: empty ({} bytes)", data.len());
             continue;
         }
-        // After the u16 length, the Apple layout: loop count, then a u16 offset per loop.
-        match view::decode(&data[2..]) {
+        match kq1_pcjr::view::decode(data) {
             Ok(vw) => {
                 views += 1;
                 let cels: usize = vw.loops.iter().map(|l| l.cels.len()).sum();

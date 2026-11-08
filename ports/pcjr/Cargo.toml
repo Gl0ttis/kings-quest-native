@@ -21,5 +21,5 @@ path = "src/lib.rs"
 kq1-apple2 = { path = "../apple2", default-features = false }
 
 [[bin]]
-name = "kqextract"
-path = "src/bin/kqextract.rs"
+name = "kqextract-pcjr"
+path = "src/bin/kqextract-pcjr.rs"

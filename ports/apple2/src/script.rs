@@ -201,6 +201,12 @@ impl<'a> Script<'a> {
 
     /// Parse section 0 into $FF-terminated sequences, keyed by start offset.
     pub fn actions(&self) -> Result<Vec<(usize, Vec<Instr>)>, String> {
+        self.actions_with(&OPERANDS)
+    }
+
+    /// `actions` with another version's operand counts (the IBM PCjr release's differ
+    /// in a few opcodes).
+    pub fn actions_with(&self, operands: &[u8]) -> Result<Vec<(usize, Vec<Instr>)>, String> {
         let s = self.section(0);
         let mut out = Vec::new();
         let mut pos = 0;
@@ -213,7 +219,7 @@ impl<'a> Script<'a> {
                 if op == 0xFF {
                     break;
                 }
-                let n = *OPERANDS.get(op as usize).ok_or(format!("bad opcode ${op:02X} at {}", pos - 1))? as usize;
+                let n = *operands.get(op as usize).ok_or(format!("bad opcode ${op:02X} at {}", pos - 1))? as usize;
                 let args = s.get(pos..pos + n).ok_or(format!("operands of ${op:02X} run off section"))?.to_vec();
                 seq.push(Instr { offset: pos - 1, op, args });
                 pos += n;

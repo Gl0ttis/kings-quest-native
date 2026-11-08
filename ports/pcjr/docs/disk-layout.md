@@ -10,38 +10,56 @@ Corp. 1984". The engine runs only on a PCjr:
 
 It has no machine check and no CGA path.
 
-[src/disk.rs](../src/disk.rs) implements this document, and `kqextract` checks it on
+[src/disk.rs](../src/disk.rs) implements this document, and `kqextract-pcjr` checks it on
 every resource. Addresses are in the engine's code segment (segment `0060h`) unless
 marked otherwise.
 
-## The image (confirmed)
+## The disk and its copy protection (confirmed)
 
-- **Format.** 368,640 bytes: 40 tracks × 2 sides × 9 sectors × 512 bytes. Sectors are
-  in the usual order: track by track, side 0 before side 1. "Sector *n*" below is the
-  *n*th sector of the image, from 0. The engine converts it to track, side and
-  sector the same way (boot sector `$9D`, engine `$4DA3`).
+- **Format.** 40 tracks × 2 sides at 300 rpm, 250 kbit/s MFM. All but six track-sides
+  have 9 sectors of 512 bytes. "Sector *n*" below is the *n*th 512-byte sector in the
+  usual order (track by track, side 0 before side 1), from 0. The engine converts it
+  to track, side and sector the same way (boot sector `$9D`, engine `$4DA3`).
+- **The protection.** Track 0 side 1 to track 3 side 0 (six track-sides) each hold
+  **5 sectors of 1,024 bytes** (size code 3) instead. They are the engine, 30 KB,
+  which the boot sector reads from there. A sector copier of the time couldn't
+  reproduce them. Nothing else on the disk is unusual: every sector's CRC is good,
+  and there are no deleted-data marks.
 - **No filesystem.** Sector 1 starts like a DOS FAT (`FD FF FF`) and sector 2 repeats
-  the boot sector. Nothing uses them. Sectors 5–105 hold the format filler `F6`.
-- **The image holds sector contents only.** Whether the original disk had copy
-  protection can't be seen in it. The dump checked here has MD5
-  `bec03858f1d4ae20a74d37c84f52a49f`.
+  the boot sector. Nothing uses them. The sectors no resource uses hold the format
+  filler `F6`.
+- **The images people have.** Two kinds:
+  - **The original as dumped.** An HxC `.mfm` image (each track's raw bitstream) is
+    read directly: [src/mfm.rs](../src/mfm.rs) decodes it to sectors and checks
+    every CRC. The verified dump checked here, "[cp] [!]", has MD5
+    `95c63bfd099cdefad07f7daea078ece6`. Its `.86f` twin is not read yet.
+  - **The crack.** A 360K sector image ("[cr]", MD5
+    `bec03858f1d4ae20a74d37c84f52a49f`). It has the engine copied, byte for byte, to
+    sectors 648–707, and the boot sector's loading code patched to read it from there:
+    11 bytes before `$100`, the disk parameters and the read call. Every resource
+    sector is the same as the original's, and so is the engine. The test
+    `the_original_and_the_crack_hold_the_same_game` checks this.
 
 ## Boot (confirmed)
 
 1. **Boot sector.** The BIOS loads it to `0000:7C00`. It:
    - sets the equipment word to colour 80×25 and BIOS mode 4;
-   - points the diskette-parameter vector (`INT 1Eh`) at its own table;
+   - points the diskette-parameter vector (`INT 1Eh`) at its own table, which says
+     1,024-byte sectors, 5 to a track (`DF 02 25 03 05 …` at `$54`);
    - copies itself to `0060:0000` and continues there (`$90`).
-2. **The engine.** The boot sector reads 60 sectors from sector 648 to `0060:0200`, and
-   jumps to `$50D`.
+2. **The engine.** The boot sector reads 30 sectors of 1,024 bytes from track 0 side 1
+   (its read routine `$9D`, set for 5 sectors a track) to `0060:0200`, and jumps to
+   `$50D`.
 3. **Start-up.** The engine at `$50D`:
-   - patches the boot sector's read routine for its own use (the immediates at
-     `$A2`, `$C0`, `$D3`, `$FA`);
+   - points the parameter vector at its own table at `$500` (512-byte sectors, 9 to a
+     track);
+   - switches the boot sector's read routine to that layout by patching its
+     immediates at `$A2`, `$C0`, `$D3`, `$FA` (5 → 9 sectors, 6 → 10);
    - sets DS = ES = SS = CS + `$4E3`, with the stack in that segment;
    - stores DS at `cs:$50B`;
    - continues at `$C4C`.
 
-So engine address *a* is image offset `a − 0x200 + 0x51000` (sector 648 = `0x51000`).
+So engine address *a* is offset `a − 0x200` in the engine's 30 KB.
 
 ## The resource table (confirmed)
 
@@ -73,6 +91,10 @@ is offset 293 in sector 106, read as 4 sectors.
 **Reading** (`$4D93`): DX = first sector, CX = sector count, ES:BX = buffer, through
 `INT 13h` AH=02h, retried 3 times.
 
+**The table's first half is in the boot sector and its second half in the engine**
+(from `$200`). So reading the resources needs the engine, which on the original is in
+the 1 KB sectors.
+
 ## Resources
 
 ### Rooms: script and picture (confirmed)
@@ -84,20 +106,38 @@ Each room's resource is its **script** followed directly by its **picture**.
     rules, parser rules, messages;
   - a length of 1 means an empty section (`$4D74`).
 
-  43 of the 80 room scripts and the global script parse completely with the Apple
-  port's script reader. The rest stop at an opcode the Apple's table doesn't have
-  (`$44` and up), or at an operand count that differs. So the PCjr engine has some
-  opcodes of its own (sound is the likely difference) and some with other operands.
-  To be worked out from its interpreter.
-- **Room 64** shows the Apple disk's defect too: its header's section lengths don't
-  match its rules. The defect is in the data both versions share.
-- **The picture** starts where the script ends (8 + the section lengths). All 79 room
-  pictures that follow a well-formed script draw cleanly to their `$FF` end with the
-  Apple port's picture decoder (`kqextract`, pictures in `extracted/pics/`). The
-  picture commands are the same; the colour numbering may differ (below).
+- **The action opcodes** are the Apple version's, `$01`–`$43`. The interpreter
+  (`$1ABB`) jumps through a table at `$23F3` with opcode − 1, and `$00` does nothing.
+  The operand counts were read from each handler. Handlers fetch operands from the
+  script pointer at `[bp+6]`, directly or through a helper that returns the advanced
+  pointer. Three differ from the Apple's:
+  - `$05` takes 1 (a room number, read by the room loader `$4B35`); the Apple's 0;
+  - `$25` takes 1 (`$201F` → `$44FE`); the Apple's 0;
+  - `$31` takes none (`$21BD`); the Apple's 2.
+
+  With these ([src/script.rs](../src/script.rs)), every script but room 64's parses
+  completely. What each opcode does on the PCjr is still to compare with the Apple
+  version.
+- **Room 64** shows the Apple disk's defect too. Its header gives section lengths 68,
+  59, 1 and 103, but the parser section's real length is 0 and the messages start a
+  byte early. The PCjr loader counts a length of 1 as an empty section, so it takes
+  the script as 238 bytes, and the room's first message loses its "S" as on the Apple
+  disks. **The picture follows at byte 239, but the engine starts it at byte 238**,
+  on a stray `65`. The picture interpreter (`$354D`) stops at once on a first byte
+  below `$F0`. If nothing else handles this, the original draws no picture in room 64.
+  To confirm with the measuring tool.
+- **The picture** starts where the script ends. All 79 room pictures that follow a
+  well-formed script draw cleanly to their `$FF` end with the Apple port's picture
+  decoder (`kqextract-pcjr`, pictures in `extracted/pics/`). The picture commands
+  are the same. The PCjr interpreter is at `$3534`: commands `$F0`–`$FE` through 15
+  handlers at `DS:$199A`, with the picture at linear `$F000`. The picture's colour
+  numbers are IBM colours (below).
+- **Picture size.** The Apple painter keeps x 10–149 and y 3–162 of the picture
+  coordinates, because double hi-res can't show more. The PCjr draws to video pages,
+  and may show the whole picture. To confirm from its plotting code.
 - **Rooms 81–84** are empty stubs: four section lengths of 1, then `FF FF FF FF`.
 
-### Views (layout confirmed on view 0; the reader is still to write)
+### Views (confirmed)
 
 A view is a `u16` total length, then:
 
@@ -107,11 +147,25 @@ A view is a `u16` total length, then:
 | Loop | `[0..4]` header, as in the Apple version (x step, y step, delay, cel count), then a `u16` **size** per cel |
 | Cel | `[0]` height, `[1]` width, then the pixel stream |
 
-The Apple version keeps offsets where this keeps sizes, and has no fixed slot table.
-The cel streams match the Apple ones apart from the colour numbers. View 0, the ego,
-has 4 loops of 8 cels, with heights and widths as in the Apple version, but the
-PCjr's colour `4` where the Apple has `1`. The Apple version renumbered the colours
-(see `COLOR_TABLE` in ports/apple2/src/pic.rs). Empty views are 1 byte.
+The length counts the bytes after itself. Each loop and cel starts where the previous
+one ends. The Apple version keeps offsets where this keeps sizes, and has no fixed slot
+table. The cel streams use the Apple encoding.
+
+[src/view.rs](../src/view.rs) reads them. All 88 views decode:
+- every cel's stream ends within its listed size;
+- every loop ends exactly at its listed size.
+
+That's 138 loops and 722 cels; the Apple version has 674 cels. The other 23 entries
+are empty, `01 00 FF`.
+
+## Colours (confirmed)
+
+The engine never sets the PCjr's palette registers, so colours 0–15 are the standard
+IBM colours ([src/color.rs](../src/color.rs)). Pictures and views both use these
+numbers. The Apple version maps picture colours through a table when it draws
+(`COLOR_TABLE` in ports/apple2/src/pic.rs: the PC order, to the nearest double hi-res
+colours), and its views were converted when it was made. The ego's colour `4` (red)
+here is the Apple's `1`, which is `COLOR_TABLE[4]`.
 
 ### Sounds (to confirm)
 

@@ -5,22 +5,26 @@ published, from your own disk image, with no 8088 emulation. It follows
 [docs/porting-guide.md](../../docs/porting-guide.md), with the Apple IIe port in
 [ports/apple2/](../apple2/README.md) as the worked example.
 
-**Status:** the disk layout is worked out and every resource extracts. Pictures, and
-most scripts, already decode with the Apple port's readers. No engine or player yet.
+**Status:** the disk, its copy protection and its layout are worked out. Every
+resource extracts and decodes: pictures, scripts and views. No engine or player yet.
 See [docs/port-plan.md](docs/port-plan.md).
 
 ## What you need
 
-Your own image of the game disk as a 360K sector image (`.img`, 368,640 bytes), in
-`original/` (git ignores it).
+Your own image of the game disk, in `original/` (git ignores it):
+- the original as an HxC MFM dump (`.mfm`, the "[cp] [!]" dump), which is read
+  directly, copy protection and all; or
+- the cracked 360K sector image (`.img`, 368,640 bytes).
+
+Both give the same game.
 
 ## Tools
 
 ```
-cargo run --release -p kq1-pcjr --bin kqextract -- original/<disk>.img
+cargo run --release -p kq1-pcjr --bin kqextract-pcjr -- original/<disk>.img
 ```
 
-`kqextract` writes every resource to `extracted/` (git ignores it: it is game
+`kqextract-pcjr` writes every resource to `extracted/` (git ignores it: it is game
 content):
 - rooms as `res/room/NNN.script.bin` and `NNN.pic.bin`;
 - views and sounds;
