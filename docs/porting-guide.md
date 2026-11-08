@@ -66,8 +66,10 @@ crate is `kq1-pcjr`.
 2. **Releases.** Add the crates to `release-please-config.json` and
    `.release-please-manifest.json`.
    - Exclude the refemu folder from the port's package (`exclude-paths`).
-   - Give refemu `"skip-github-release": true`, so only the game shows on the releases
-     page.
+   - Leave refemu out of release-please altogether. It's a tool that is never
+     published, so it needs no versions or releases. Don't use `skip-github-release`
+     to hide it: release-please then can't find the package's last release, and keeps
+     proposing everything again.
 3. **Commit scopes.** Add the port's scope (`pcjr`) to `.commitlintrc.json` and
    `.github/workflows/pr-title.yml`.
 4. **CI.** `.github/workflows/ci.yml` builds and tests the whole workspace, so a new

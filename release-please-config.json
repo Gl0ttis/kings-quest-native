@@ -57,10 +57,6 @@
       "exclude-paths": [
         "ports/apple2/refemu"
       ]
-    },
-    "ports/apple2/refemu": {
-      "component": "kq1-apple2-refemu",
-      "skip-github-release": true
     }
   }
 }
