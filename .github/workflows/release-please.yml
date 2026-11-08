@@ -57,7 +57,7 @@ jobs:
           cp LICENSE "$dir/"
           cp ports/apple2/PLAYING.md "$dir/README.md"
           if [ "$RUNNER_OS" = "Windows" ]; then 7z a "$dir.zip" "$dir" > /dev/null; else tar czf "$dir.tar.gz" "$dir"; fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: kq-apple2-${{ matrix.name }}
           path: kq-apple2-${{ matrix.name }}.*
