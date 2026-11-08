@@ -52,8 +52,9 @@ order-independent, see motion.md), the purpose of `v31` (ducking; see
 [disk-layout.md](disk-layout.md)).
 
 What remains is behaviour the port knowingly simplifies: the memory past room 64's
-script that the original's parser can scan into (script-format.md), joystick buttons
-read mid-pass by the original's redraw (motion.md), and disk timing (below).
+script that the original's parser can scan into (script-format.md), and disk timing
+(below). (The joystick buttons the original also reads during its redraw are now
+caught between passes; see motion.md.)
 
 **Sound.** The only sound is the Apple ROM bell (`$FBDD`, called at `$6618`): single
 beeps for the "more" pause, and a double beep (`$6625`) for save and restore disk errors.
@@ -314,8 +315,11 @@ format work.
   `magic_ring_route`.
 - **Linux (2026-11-08).** Under WSL2 (Ubuntu 24.04, WSLg) the workspace builds without
   warnings, all tests pass, kqplay opens its window and plays, and the max-score replay
-  matches the original on every pass. Sound, full screen and the joystick are
-  Windows only.
+  matches the original on every pass. kqplay's Linux front end now has the bell
+  (cpal, through ALSA; checked under WSLg through PulseAudio), full screen (X11's
+  `_NET_WM_STATE_FULLSCREEN`; the window manager applied it) and the joystick
+  (`/dev/input/js0`; WSL can't pass a controller through, so untested). minifb is
+  built for X11 only, which needs fewer libraries and makes full screen possible.
 
 - **The start-up screen.** As the original: black while DOS boots and loads the engine,
   then a white screen with "Please wait..." (row 9, column 13, `$4537`) while the

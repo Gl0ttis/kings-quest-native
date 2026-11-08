@@ -45,7 +45,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Linux window and sound libraries
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxkbcommon-dev libwayland-dev libxcursor-dev libxrandr-dev libasound2-dev libudev-dev
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxkbcommon-dev libxcursor-dev libxrandr-dev libasound2-dev
       - name: Build
         run: cargo build --release --locked -p kq1-apple2 --bin kqplay
       - name: Package

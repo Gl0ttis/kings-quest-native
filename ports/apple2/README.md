@@ -36,12 +36,17 @@ images must be in order 1, 2, 3.
 (press again to stop). Type commands and press RETURN. Tab shows the inventory, Esc
 pauses, Ctrl-E recalls the last line. `1` saves, `3` restores, `5` restarts (after a
 death too). A joystick or game controller connected at start-up works as the Apple
-joystick; its buttons 1 and 2 are the Apple's two buttons (Windows only).
+joystick; its buttons 1 and 2 are the Apple's two buttons.
 
 **Front-end keys:** F11/F12 slower/faster, F9 fast loads (skips the disk and
 picture-drawing time of room changes), F8 sound, F7 NTSC colour fringing, F6 fill the
-white specks the picture fills miss, Alt+Enter full screen. Sound, full screen and
-the joystick are Windows only for now.
+white specks the picture fills miss, Alt+Enter full screen.
+
+**Linux:** the window uses X11 (XWayland on Wayland desktops), which also provides full
+screen; the bell goes through ALSA (and so PulseAudio or PipeWire); the joystick is
+read from `/dev/input/js0`. Building needs the X11 and ALSA development packages
+(`libx11-dev libxkbcommon-dev libxcursor-dev libxrandr-dev libasound2-dev` on
+Debian and Ubuntu).
 
 **Options:** `--speed N`, `--fast-loads`, `--fullscreen`, `--mute`, `--ntsc`,
 `--fill-specks`, `--savedisk FILE` (save to an original save disk image instead of
