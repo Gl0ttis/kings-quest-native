@@ -182,3 +182,29 @@ fn the_joystick_walks_graham() {
     let (a2, by_stick) = ego_walk(&disk, true, false);
     assert_eq!((a2, by_stick), (a, by_arrow), "the stick");
 }
+
+/// The title's credits (no key pressed): each line's colour from the original's code,
+/// XORed onto the picture (attribute bit 7), so the scroll under them stays as it is
+/// (white, FF), as on IBM's BIOS in 86Box: headings 8 (grey on the white), names 15
+/// (black).
+#[test]
+fn the_credits_are_xored_onto_the_scroll() {
+    use kq1_pcjr::engine::screen::WIDTH;
+    let Some(disk) = original() else { return };
+    let clock = StickClock { ticks: 0, keys: Vec::new(), push_at: u64::MAX, cycles: 0 };
+    let mut w = World::new(&disk, Box::new(clock)).expect("engine");
+    w.on_frame = Some(Box::new(|w: &mut World| {
+        if w.cycles >= (10.0 * CPU_HZ) as u64 {
+            w.stop("10 s".into());
+        }
+    }));
+    w.run();
+    let g = w.text.grid();
+    assert_eq!(w.text.row(9).trim(), "Roberta Williams");
+    assert_eq!(g.attrs[9][14], 0x8F, "a name");
+    assert_eq!(g.attrs[7][13], 0x88, "a heading");
+    // The cell of Roberta's R: the scroll's white, not cleared.
+    let cell: Vec<u8> =
+        (72..80).flat_map(|y| (56..60).map(move |x| (y, x))).map(|(y, x)| w.screen.shown[y * WIDTH + x]).collect();
+    assert!(cell.iter().all(|&b| b == 0xFF), "{cell:02X?}");
+}

@@ -294,11 +294,28 @@ fn render(w: &World, font: &Font, out: &mut [u8]) {
     for r in 0..25 {
         for c in 0..40 {
             let ch = grid.cells[r][c];
-            let fg = grid.attrs[r][c] & 0x0F;
-            if r >= 21 {
-                cell(out, font, r, c, ch, fg, Some(0));
+            let a = grid.attrs[r][c];
+            if a & 0x80 != 0 {
+                // The BIOS's XOR (the title's credits): the glyph's pixels XORed in the
+                // colour onto the picture, the rest left as it is.
+                if r >= 21 || grid.visible[r][c] {
+                    xor_cell(out, font, r, c, ch, a & 0x0F);
+                }
+            } else if r >= 21 {
+                cell(out, font, r, c, ch, a & 0x0F, Some(0));
             } else if grid.visible[r][c] && ch != b' ' {
-                cell(out, font, r, c, ch, fg, None);
+                cell(out, font, r, c, ch, a & 0x0F, None);
+            }
+        }
+    }
+}
+
+/// Character `ch` in cell (r, c), its ink XORed in `colour` onto what is there.
+fn xor_cell(out: &mut [u8], font: &Font, r: usize, c: usize, ch: u8, colour: u8) {
+    for (dy, row) in font.glyph(ch).iter().enumerate() {
+        for dx in 0..8 {
+            if row & (0x80 >> dx) != 0 {
+                out[(r * 8 + dy) * 320 + c * 8 + dx] ^= colour;
             }
         }
     }

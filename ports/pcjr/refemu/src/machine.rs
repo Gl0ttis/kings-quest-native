@@ -385,11 +385,17 @@ impl Machine {
     }
 
     /// Draw a character in graphics mode. The glyph would come from the BIOS ROM's
-    /// font, which isn't here: the cell is cleared to the background and the character
-    /// recorded in `text`, where the comparison reads it.
-    fn draw_char(&mut self, row: u8, col: u8, ch: u8, _attr: u8) {
+    /// font, which isn't here: the cell is cleared to the background (the BIOS writes
+    /// the whole cell, the glyph in the colour and the rest 0) and the character
+    /// recorded in `text`, where the comparison reads it. With attribute bit 7 the BIOS
+    /// XORs the glyph onto the cell instead (the title's credits), and the cell is left
+    /// as it is.
+    fn draw_char(&mut self, row: u8, col: u8, ch: u8, attr: u8) {
         if row < 25 && col < 40 {
             self.text[row as usize][col as usize] = ch;
+        }
+        if attr & 0x80 != 0 {
+            return;
         }
         let width = if self.video_mode == 9 { 4 } else { 2 };
         for line in 0..8 {

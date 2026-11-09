@@ -3,7 +3,8 @@
 //! and the front end draws them.
 //!
 //! Two screens: the graphics screen's character cells (the input line and the messages,
-//! rows 21-24, and the title's credits), and the text screen (mode 1, page 7) of the
+//! rows 21-24, and the title's credits, whose attributes have bit 7 set: the BIOS XORs
+//! them onto the picture), and the text screen (mode 1, page 7) of the
 //! inventory, the Play diskette and ops 3C-3F. The BIOS cursor is one, as the game uses
 //! it (it keeps the graphics cursor itself while the text screen is up, at DS:1EF4).
 

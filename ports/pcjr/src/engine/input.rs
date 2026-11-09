@@ -165,25 +165,28 @@ impl World {
             self.draw_room_picture();
             self.play_sound(0x15);
             let mut row = 7u8;
-            for (col, text) in [
-                (13, &b"designed and\n"[..]),
-                (16, b"written by:\n"),
-                (14, b"Roberta Williams\n\n"),
-                (13, b"programming:\n"),
-                (14, b"Charles Tingley\n"),
-                (13, b"Ken MacNeill\n\n"),
-                (12, b"artwork:\n"),
-                (13, b"Doug MacNeill\n"),
-                (12, b"Greg Rowland\n"),
+            // Each line's colour, column and text follow its call (`$4998`-`$4A35`).
+            for (colour, col, text) in [
+                (8, 13, &b"designed and\n"[..]),
+                (8, 16, b"written by:\n"),
+                (15, 14, b"Roberta Williams\n\n"),
+                (8, 13, b"programming:\n"),
+                (15, 14, b"Charles Tingley\n"),
+                (15, 13, b"Ken MacNeill\n\n"),
+                (8, 12, b"artwork:\n"),
+                (15, 13, b"Doug MacNeill\n"),
+                (15, 12, b"Greg Rowland\n"),
             ] {
-                // $4A95: at (row, col), drawn one character at a time.
+                // $4A95: at (row, col), one character at a time, XORed onto the
+                // picture (attribute bit 7): on the white scroll, colour 8 shows grey (7)
+                // and 15 black.
                 let mut c = col;
                 self.text.cursor = (row, c);
                 for &b in text {
                     if b == b'\n' {
                         row += 1;
                     } else {
-                        self.put_char(b);
+                        self.put_char_attr(b, colour | 0x80);
                         c += 1;
                     }
                     self.text.cursor = (row, c);
@@ -218,13 +221,23 @@ impl World {
         }
     }
 
-    /// INT 10h AH=9 in graphics mode: the character at the cursor. Its cell on the
-    /// displayed page is cleared (the glyph would come from the ROM's font; the
-    /// characters are kept in [`super::text::Text`]).
+    /// INT 10h AH=9 in graphics mode: the character at the cursor, in attribute 7.
     pub fn put_char(&mut self, b: u8) {
+        self.put_char_attr(b, 7);
+    }
+
+    /// INT 10h AH=9 in graphics mode, attribute `attr`. The BIOS writes the whole cell:
+    /// the glyph's pixels in the colour, the rest 0; with bit 7 set it XORs the glyph's
+    /// pixels in the colour onto what is there instead. The glyphs come from the ROM's
+    /// font, which the port hasn't got: the characters and their attributes are kept in
+    /// [`super::text::Text`] for a front end to draw, and the cell on the displayed page
+    /// is cleared (not for XOR).
+    pub fn put_char_attr(&mut self, b: u8, attr: u8) {
         let (r, c) = self.text.cursor;
-        self.clear_cell(r, c);
-        self.text.put(b);
+        if attr & 0x80 == 0 {
+            self.clear_cell(r, c);
+        }
+        self.text.put_attr(b, attr);
     }
 
     fn clear_cell(&mut self, r: u8, c: u8) {
