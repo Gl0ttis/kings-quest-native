@@ -18,6 +18,11 @@ fn original() -> Option<Disk> {
     })
 }
 
+/// The user's BIOS image (original/bios.rom: the IBM PC's, for its font), if there.
+fn bios() -> Option<Vec<u8>> {
+    std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("original").join("bios.rom")).ok()
+}
+
 /// Replay route `name` and compare every pass; the number compared.
 fn replay(disk: &Disk, name: &str) -> usize {
     replay_with(disk, name, None).0
@@ -30,10 +35,15 @@ fn replay_with(disk: &Disk, name: &str, play: Option<Vec<u8>>) -> (usize, World)
     let trace = std::fs::read_to_string(dir.join(format!("{name}.csv"))).expect("the trace");
     let reference: Vec<Vec<&str>> = trace.lines().skip(1).map(|l| l.split(',').collect()).collect();
     // The screen at each pass (refemu's kqframes-pc --hashes), where recorded.
+    // The screens were recorded with the BIOS's font (refemu-pc, bios.rom next to the
+    // disk); without the player's own BIOS image in original/ they are left out.
+    let font = bios().map(|b| std::rc::Rc::new(kq1_pc::font::Font::from_bios(&b).expect("bios.rom")));
     let frames: Option<Vec<u64>> = std::fs::read_to_string(dir.join(format!("{name}.frames")))
         .ok()
+        .filter(|_| font.is_some())
         .map(|t| t.lines().map(|l| u64::from_str_radix(l, 16).expect("a frame hash")).collect());
     let mut w = World::new(disk, Box::new(Replay::parse(&events))).expect("engine");
+    w.font = font;
     if let Some(img) = play {
         w.disks[1].image = img;
     }
@@ -217,16 +227,18 @@ fn the_joystick_walks_graham() {
     assert_eq!((a2, by_stick), (a, by_arrow), "the stick");
 }
 
-/// The title's credits (no key pressed): each line's colour from the original's code,
-/// XORed onto the picture (attribute bit 7), so the scroll under them stays as it is
-/// (white, FF), as on IBM's BIOS in 86Box: headings 8 (grey on the white), names 15
-/// (black).
+/// The title's credits (no key pressed), from the original's code (`$4F36`): every line
+/// in colour 0Fh (the headings' 10h stands for DS:1167, 0Fh), XORed onto the picture
+/// (attribute bit 7) as the BIOS does. With the BIOS's font, the frame has the glyph's
+/// dots XORed onto the picture's bytes there.
 #[test]
-fn the_credits_are_xored_onto_the_scroll() {
+fn the_credits_are_xored_onto_the_picture() {
     use kq1_pc::engine::screen::WIDTH;
     let Some(disk) = original() else { return };
     let clock = StickClock { ticks: 0, keys: Vec::new(), push_at: u64::MAX, cycles: 0 };
     let mut w = World::new(&disk, Box::new(clock)).expect("engine");
+    let font = bios().map(|b| std::rc::Rc::new(kq1_pc::font::Font::from_bios(&b).expect("bios.rom")));
+    w.font = font.clone();
     w.on_frame = Some(Box::new(|w: &mut World| {
         if w.cycles >= (14.0 * CPU_HZ) as u64 {
             w.stop("14 s".into());
@@ -236,9 +248,17 @@ fn the_credits_are_xored_onto_the_scroll() {
     let g = w.text.grid();
     assert_eq!(w.text.row(9).trim(), "Roberta Williams");
     assert_eq!(g.attrs[9][14], 0x8F, "a name");
-    assert_eq!(g.attrs[7][13], 0x88, "a heading");
-    // The cell of Roberta's R: the scroll's white, not cleared.
-    let cell: Vec<u8> =
-        (72..80).flat_map(|y| (56..60).map(move |x| (y, x))).map(|(y, x)| w.screen.shown[y * WIDTH + x]).collect();
-    assert!(cell.iter().all(|&b| b == 0xFF), "{cell:02X?}");
+    assert_eq!(g.attrs[7][13], 0x8F, "a heading");
+    let Some(font) = font else { return };
+    // The cell of Roberta's R (row 9, column 14): the picture's dot patterns there, the
+    // glyph's dots in colour 3 XORed onto them.
+    let f = w.frame();
+    for line in 0..8 {
+        let y = 9 * 8 + line;
+        let p = |x: usize| kq1_pc::composite::PATTERN[(w.screen.shown[y * WIDTH + x] & 15) as usize];
+        let picture = [p(56) << 4 | p(57), p(58) << 4 | p(59)];
+        let glyph = kq1_pc::font::expand(font.row(b'R', line), 3);
+        let at = 1 + y * 80 + 14 * 2;
+        assert_eq!([f[at], f[at + 1]], [picture[0] ^ glyph[0], picture[1] ^ glyph[1]], "line {line}");
+    }
 }

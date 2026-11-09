@@ -1,4 +1,6 @@
-//! The 1984 IBM PCjr King's Quest engine, reimplemented natively.
+//! The 1984 IBM PC King's Quest engine (the CGA release), reimplemented natively: the
+//! PCjr port's engine (ports/pcjr/src/engine), the same design, with the PC's
+//! differences found against the original (docs/engine.md, "How the PC differs").
 //!
 //! The original is a C program with some hand-written assembly, in segment 0060h. This
 //! follows its behaviour routine by routine, as the Apple port follows its 6502 engine
@@ -302,9 +304,6 @@ pub struct Globals {
     pub text_cursor: (u8, u8),
     /// 1EF4: the graphics cursor, kept while the text screen is up.
     pub gfx_cursor: (u8, u8),
-    /// The BIOS's horizontal screen position (0040:0089), and the graphics and text
-    /// screens' (1EF3, 1EF6); 127B: the one in a save.
-    pub bios_hpos: u8,
     pub hpos_gfx: u8,
     pub hpos_text: u8,
     pub hpos: u8,
@@ -422,6 +421,10 @@ pub struct World {
     /// last told; those of the passes before this one.
     pub loading_cycles: u64,
     loading_before: f64,
+    /// The BIOS's font, for drawing the text into the frame as the BIOS does (the
+    /// player's own, from its BIOS image); without it the text's cells are blank, as in
+    /// refemu-pc without one.
+    pub font: Option<Rc<crate::font::Font>>,
     /// The whole frame at the start of pass N (`frame_at`), once reached.
     pub frame_at: Option<u64>,
     pub frame: Option<Vec<u8>>,
@@ -509,10 +512,6 @@ impl World {
             text_attr: res.ds[0x1135],
             text_cursor: (res.ds[0x1134], res.ds[0x1133]),
             gfx_cursor: (0, 0),
-            // The engine's start writes SP's high byte there (`PCjr $0554`).
-            // What the BIOS leaves after the game's mode 9 at start-up (PCjr $07C3): its
-            // CRTC table's register 2 (F000:F0D6).
-            bios_hpos: 0x56,
             hpos_gfx: res.ds[0x112F],
             hpos_text: res.ds[0x1132],
             hpos: res.ds[0x1881],
@@ -570,6 +569,7 @@ impl World {
             loading_before: 0.0,
             on_frame: None,
             next_frame: 0,
+            font: None,
             frame_at: None,
             frame: None,
             cps: std::env::var("KQ_CPS").ok().and_then(|v| {
@@ -748,16 +748,41 @@ impl World {
     }
 
     /// The screen as the player sees it, as refemu-pc's runner gives it (`frame`): 1
-    /// and the 40 × 25 characters when a text mode is up; else 0, the CGA's picture area
-    /// in its 640-dot mode (168 lines of 80 bytes: each picture pixel its colour's dot
-    /// pattern, two to a byte, as the copy to the screen makes them, `$1966`) and the
-    /// characters.
+    /// and the 40 × 25 characters when a text mode is up; else 0, the CGA's memory in its
+    /// 640-dot mode (200 lines of 80 bytes) and the characters. The picture's 168 lines:
+    /// each pixel its colour's dot pattern, two to a byte, as the copy to the screen makes
+    /// them (`$1966`); over them, and in text rows 21-24, the characters as the BIOS draws
+    /// them in mode 4 (the font's dots in the attribute's colour, over the cell, or XORed
+    /// onto it with attribute bit 7), where they are still shown.
     pub fn frame(&self) -> Vec<u8> {
-        let mut f = Vec::with_capacity(1 + 80 * screen::HEIGHT + 1000);
+        let mut f = Vec::with_capacity(1 + 80 * 200 + 1000);
         f.push(self.text.text_mode as u8);
         if !self.text.text_mode {
             let p = |c: u8| crate::composite::PATTERN[(c & 15) as usize];
-            f.extend(self.screen.shown.chunks(2).map(|c| p(c[0]) << 4 | p(c[1])));
+            let mut cga: Vec<u8> = self.screen.shown.chunks(2).map(|c| p(c[0]) << 4 | p(c[1])).collect();
+            cga.resize(80 * 200, 0);
+            let g = &self.text.graphics;
+            for r in 0..25 {
+                for c in 0..40 {
+                    if r < 21 && !g.visible[r][c] {
+                        continue;
+                    }
+                    let (ch, attr) = (g.cells[r][c], g.attrs[r][c]);
+                    for line in 0..8 {
+                        let glyph = self.font.as_ref().map_or(0, |f| f.row(ch, line));
+                        let [hi, lo] = crate::font::expand(glyph, attr);
+                        let at = (r * 8 + line) * 80 + c * 2;
+                        if attr & 0x80 != 0 {
+                            cga[at] ^= hi;
+                            cga[at + 1] ^= lo;
+                        } else {
+                            cga[at] = hi;
+                            cga[at + 1] = lo;
+                        }
+                    }
+                }
+            }
+            f.extend(cga);
         }
         f.extend(self.text.grid().cells.iter().flatten());
         f

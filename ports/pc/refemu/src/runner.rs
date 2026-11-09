@@ -143,14 +143,14 @@ impl Runner {
     }
 
     /// The screen as the player sees it: 1 and the 40 × 25 characters when a text mode
-    /// is up; else 0, the CGA's picture area (80 bytes × 168 lines, in the 640-dot
-    /// mode) and the characters.
+    /// is up; else 0, the CGA's memory (80 bytes × 200 lines, in the 640-dot mode: the
+    /// picture's 168 lines, then text rows 21-24) and the characters.
     pub fn frame(&self) -> Vec<u8> {
         let text_mode = !matches!(self.m.video_mode, 4..=6);
-        let mut f = Vec::with_capacity(1 + 80 * 168 + 1000);
+        let mut f = Vec::with_capacity(1 + 80 * 200 + 1000);
         f.push(text_mode as u8);
         if !text_mode {
-            for y in 0..168 {
+            for y in 0..200 {
                 let row = 0xB8000 + (y & 1) * 0x2000 + (y >> 1) * 80;
                 f.extend_from_slice(&self.m.ram[row..row + 80]);
             }

@@ -1,12 +1,13 @@
 //! When the timer interrupt fires.
 //!
-//! On the PCjr the timer interrupt (INT 08h, chained to the game's INT 1Ch handler
-//! `$1A18`) comes 18.2 times a second, between any two instructions. The handler reads
-//! the keys into the game's key ring, prints queued messages a word at a time and plays
-//! the music, so the game's state depends on where in its code each tick falls.
+//! The timer interrupt (INT 08h, chained to the game's INT 1Ch handler `$1A04`) comes
+//! 18.2 times a second, between any two instructions. The handler reads the keys into
+//! the game's key ring, prints queued messages a word at a time, plays the music and
+//! ends the pass's wait (`$3FE7`), so the game's state depends on where in its code each
+//! tick falls.
 //!
 //! **Checkpoints.** Both sides count the checkpoints passed, in order: the routine
-//! entries and loop heads in [`CHECKPOINTS`]. refemu-pcjr (`--events`) logs each tick,
+//! entries and loop heads in [`CHECKPOINTS`]. refemu-pc (`--events`) logs each tick,
 //! key press and disk swap with the count at that moment, and for a tick the address
 //! it interrupted.
 //!
@@ -29,32 +30,9 @@ use std::collections::VecDeque;
 
 /// Code-segment addresses that are checkpoints: routine entries, and the heads of the
 /// rule and action loops (`$115A`, `$2F03`), whose visits the port repeats exactly.
-/// None is the head of a busy wait (as `$0F91` and `PCjr $4191` are), whose count of turns
+/// None is the head of a busy wait (as `$0F91` and `$0B14` are), whose count of turns
 /// the port can't know; `$0785` loops once per key read, which it can.
-pub const CHECKPOINTS: [u16; 22] = [
-    0x12A0, // poll_key_bios: INT 16h, bypassing the ring
-    0x2209, // next_parse
-    0x24B1, // read_line
-    0x2816, // wait_key: one game cycle per loop
-    0x293A, // game_cycle: one pass
-    0x2AAD, // update_actor
-    0x2EB4, // key_ring_pop
-    0x2EF4, // run_action
-    0x2F03, // run_action: each opcode
-    0x3FB7, // countdowns and the draw pass
-    0x48E3, // draw_room_picture
-    0x4CA3, // save_restore_dialog
-    0x078E, // save_slot
-    0x0867, // load_slot
-    0x08D4, // key_poll (INT 16h AH=1)
-    0x08DF, // key_wait (INT 16h AH=0)
-    0x0785, // wait_enter
-    0x1143, // match_parser_rules
-    0x1150, // match_cycle_rules
-    0x115A, // the matcher: each rule
-    0x5018, // title_wait
-    0x1FB6, // read_sectors
-];
+pub use crate::checkpoints::CHECKPOINTS;
 
 /// Something that happens to the machine from outside the game's code.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

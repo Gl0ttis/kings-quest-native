@@ -140,3 +140,18 @@ original's (tests/engine.rs), then implemented in the port.
   lands in the buffer the same way, at the start of row y + 4.
 - **Op 0A's record** before a message, the cursor to the start of row 24, is at
   DS:1E26.
+- **The title's lines** are in the engine's code after the calls that print them
+  (`$4EA7`): "(c)Copyright SIERRA On-Line Inc 1984" (CS:4EAD; the PCjr's adds IBM's),
+  "Press any key to play" (CS:4F06), and the credits' records from CS:4F36 (colour,
+  column, text), all in colour 0Fh XORed (a colour of 10h or more is DS:1167's, 0Fh).
+- **Moving the screen:** Ctrl+Left and Ctrl+Right (scans 73h, 74h) move the picture a
+  character right or left (`$1480`: the screen position DS:1881, the CRTC's register 2,
+  within 21h-2Fh), during play (`$1C05`; any other scan past the keypad ends the key
+  read) and at the text screen's key wait (`$0B0F`), which has no colour key (the
+  PCjr's takes `c` and two hex digits). Code 8Bh (Ctrl+V) does nothing (the PCjr's turns
+  a debug mode on).
+- **The text screen** (`$0A3E`) is BIOS mode 1, not cleared, page 7, at the text
+  screen's position (DS:1132); back to graphics (`$194C`) the picture is copied back and
+  the position is the graphics screen's (DS:112F). Its clear writes to 1F80:0000, where
+  the PCjr's page 7 is: on the PC that is ordinary memory. The screen position is the
+  game's own throughout (DS:1881); the PCjr's comes from its BIOS (0040:0089).

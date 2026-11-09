@@ -17,13 +17,14 @@ use kq1_pc::engine::clock::Replay;
 use kq1_pc::engine::{frame_hash, World};
 use kq1_pc_refemu::runner::{Runner, Stopped};
 
-/// The CGA's picture area in a frame: 168 lines of 80 bytes.
+/// The CGA's memory in a frame: 200 lines of 80 bytes.
 const LINE: usize = 80;
-const LINES: usize = 168;
+const LINES: usize = 200;
 
 /// The port's frame hashes for every pass, or its whole frame at pass `at`.
-fn port(disk: &Disk, events: &str, passes: u64, at: Option<u64>) -> (Vec<u64>, Option<Vec<u8>>) {
+fn port(disk: &Disk, font: Option<&[u8]>, events: &str, passes: u64, at: Option<u64>) -> (Vec<u64>, Option<Vec<u8>>) {
     let mut w = World::new(disk, Box::new(Replay::parse(events))).expect("engine");
+    w.font = font.map(|b| std::rc::Rc::new(kq1_pc::font::Font::from_bios(b).expect("bios.rom")));
     w.max_passes = passes;
     w.frame_hashes = at.is_none().then(Vec::new);
     w.frame_at = at;
@@ -92,8 +93,13 @@ fn main() {
     let passes = log.lines().filter(|l| l.starts_with("P ")).count() as u64;
     let game = Disk::from_file(raw.clone()).expect("the game disk");
     let compare = hashes.is_none();
-    let port_hashes = if compare { port(&game, &log, passes, None).0 } else { Vec::new() };
+    let bios = kq1_pc_refemu::bios_next_to(disk);
+    let port_hashes = if compare { port(&game, bios.as_deref(), &log, passes, None).0 } else { Vec::new() };
     let mut r = Runner::new(&raw).unwrap_or_else(|e| panic!("{e}"));
+    // The BIOS's font, from bios.rom next to the disk, if it is there.
+    if let Some(b) = kq1_pc_refemu::bios_next_to(disk) {
+        r.m.set_font(&b).unwrap_or_else(|e| panic!("bios.rom: {e}"));
+    }
     let mut out = String::new();
     while r.passes < passes {
         match r.follow(&log) {
@@ -114,7 +120,7 @@ fn main() {
         match port_hashes.get(n as usize - 1) {
             Some(&p) if p == h => {}
             Some(_) => {
-                let (_, pf) = port(&game, &log, n, Some(n));
+                let (_, pf) = port(&game, bios.as_deref(), &log, n, Some(n));
                 show_diff(n, &f, &pf.expect("the port's frame"));
                 return;
             }

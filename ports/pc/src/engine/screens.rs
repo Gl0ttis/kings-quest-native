@@ -14,35 +14,39 @@ const WITH_A: usize = 0x110C;
 const PENALTY: usize = 0x1116;
 
 impl World {
-    /// `PCjr $4043`: to the text screen: the graphics cursor kept, the screen cleared in the
-    /// text attribute. Coming this way, the text cursor isn't reset (the original
-    /// writes it with DS pointing at video memory).
+    /// To the text screen: the graphics cursor kept, the screen cleared in the text
+    /// attribute. Coming this way, the text cursor isn't reset (the original writes it
+    /// with DS pointing at video memory).
     pub fn enter_text_mode(&mut self) {
         self.g.gfx_cursor = self.text.cursor;
-        self.g.hpos_gfx = self.g.bios_hpos;
         self.clear_text_screen(false);
     }
 
-    /// `$0A3E`: the text screen cleared in the text attribute, the cursor home; the
-    /// text cursor too, if `reset` (when called directly).
+    /// `$0A3E`: the text screen (BIOS mode 1, not cleared, page 7) cleared in the text
+    /// attribute, the cursor home; the text cursor too, if `reset` (when called
+    /// directly). The screen position is the text screen's (DS:1132, through `$1994`).
+    /// (The original clears the page by writing to 1F80:0000, where the PCjr's page 7
+    /// is; on the PC that is ordinary memory, and the screen keeps what was in the
+    /// CGA's last 2 KB. The port's text screen holds the characters only.)
     pub fn clear_text_screen(&mut self, reset: bool) {
         self.text.text_mode = true;
         self.text.text = super::text::Grid::default();
         for r in 0..25 {
             self.text.text.attrs[r] = [self.g.text_attr; 40];
         }
-        self.g.bios_hpos = self.g.hpos_text;
+        self.g.hpos = self.g.hpos_text;
         self.text.cursor = (0, 0);
         if reset {
             self.g.text_cursor = (0, 0);
         }
     }
 
-    /// `PCjr $40A6`: back to graphics, the graphics cursor back.
+    /// `$194C`: back to graphics (mode 4, the 640-dot mode, the picture copied back), the
+    /// graphics cursor back; the screen position the graphics screen's (DS:112F; the
+    /// text screen's kept at DS:1166, which nothing reads).
     pub fn leave_text_mode(&mut self) {
-        self.g.hpos_text = self.g.bios_hpos;
         self.text.text_mode = false;
-        self.g.bios_hpos = self.g.hpos_gfx;
+        self.g.hpos = self.g.hpos_gfx;
         self.text.cursor = self.g.gfx_cursor;
     }
 
@@ -141,63 +145,61 @@ impl World {
     }
 
     /// `$08E6`: op 31: the inventory: the objects carried (bit 7 of their room), two to a
-    /// row, or "nothing"; the score; and with v20, the time penalty. Then a key (`c`
-    /// and two hex digits changes the colours, which the redraw sets back).
+    /// row, or "nothing"; the score; and with v20, the time penalty. Then a key.
     pub fn inventory_screen(&mut self) {
-        loop {
-            self.g.text_attr = 0x1F;
-            self.enter_text_mode();
-            self.print_ds_at(CARRYING, 5, 8);
-            let (mut row, mut col, mut other) = (7u8, 3u8, 0x15u8);
-            for o in 0..110 {
-                let ob = self.objects[o];
-                if ob.room < 0x80 {
-                    continue;
-                }
-                let ds = self.res.ds.clone();
-                self.print_wrapped(&ds, ob.name as usize, row, col);
-                std::mem::swap(&mut col, &mut other);
-                if col <= 0x10 {
-                    row += 1;
-                }
-            }
-            if row == 7 && col == 3 {
-                self.print_ds_at(NOTHING, 7, 3);
-                col = 0x10;
-            }
-            if col >= 0x10 {
-                row += 1;
-            }
-            row += 2;
-            self.print_ds_at(SCORE, row, 9);
-            let n = Self::number(self.vars[19]);
-            let r = self.g.text_cursor.0;
-            self.print_wrapped(&n, 0, r, 0x18);
-            if self.vars[20] != 0 {
-                let r = self.g.text_cursor.0 + 2;
-                self.print_ds_at(WITH_A, r, 3);
-                let n = Self::number(self.vars[20]);
-                let r = self.g.text_cursor.0;
-                self.print_wrapped(&n, 0, r, 10);
-                let (r, c) = self.g.text_cursor;
-                self.print_ds_at(PENALTY, r, c.wrapping_add(1));
-            }
-            // PCjr $4191: a key; 'c' and two hex digits set the colours, and the screen is
-            // drawn again (in its own colours).
-            self.g.keys_on = false;
-            self.site_keys();
-            self.wait_until("a key", |w| !w.keys.is_empty());
-            if self.keys.front().map(|&k| k as u8) == Some(b'c') {
-                self.keys.pop_front();
-                let hi = Self::hex(self.blocking_key() as u8);
-                let lo = Self::hex(self.blocking_key() as u8);
-                self.g.text_attr = hi << 4 | lo;
-                self.leave_text_mode();
+        self.g.text_attr = 0x1F;
+        self.enter_text_mode();
+        self.print_ds_at(CARRYING, 5, 8);
+        let (mut row, mut col, mut other) = (7u8, 3u8, 0x15u8);
+        for o in 0..110 {
+            let ob = self.objects[o];
+            if ob.room < 0x80 {
                 continue;
             }
-            self.g.keys_on = true;
-            return;
+            let ds = self.res.ds.clone();
+            self.print_wrapped(&ds, ob.name as usize, row, col);
+            std::mem::swap(&mut col, &mut other);
+            if col <= 0x10 {
+                row += 1;
+            }
         }
+        if row == 7 && col == 3 {
+            self.print_ds_at(NOTHING, 7, 3);
+            col = 0x10;
+        }
+        if col >= 0x10 {
+            row += 1;
+        }
+        row += 2;
+        self.print_ds_at(SCORE, row, 9);
+        let n = Self::number(self.vars[19]);
+        let r = self.g.text_cursor.0;
+        self.print_wrapped(&n, 0, r, 0x18);
+        if self.vars[20] != 0 {
+            let r = self.g.text_cursor.0 + 2;
+            self.print_ds_at(WITH_A, r, 3);
+            let n = Self::number(self.vars[20]);
+            let r = self.g.text_cursor.0;
+            self.print_wrapped(&n, 0, r, 10);
+            let (r, c) = self.g.text_cursor;
+            self.print_ds_at(PENALTY, r, c.wrapping_add(1));
+        }
+        // $0B0F: wait for a key, left waiting for the caller; Ctrl+Left and Ctrl+Right
+        // are taken, and move the screen (`$1480`). (The PCjr's wait here has a
+        // colour key, 'c' and two hex digits; the PC's has none.)
+        self.g.keys_on = false;
+        loop {
+            self.site_keys();
+            self.wait_until("a key", |w| !w.keys.is_empty());
+            let k = self.keys[0];
+            if k as u8 == 0 && matches!(k >> 8, 0x73 | 0x74) {
+                self.keys.pop_front();
+                self.shift_screen((k >> 8) as u8);
+                continue;
+            }
+            break;
+        }
+        self.g.keys_on = true;
     }
 
     /// `$09F2`: a number in decimal, without leading zeros, ended by 0.
@@ -205,15 +207,5 @@ impl World {
         let mut s = n.to_string().into_bytes();
         s.push(0);
         s
-    }
-
-    /// `$0B2A`: a hex digit's value (`a`-`f` after `9`).
-    fn hex(c: u8) -> u8 {
-        let v = c.wrapping_sub(b'0');
-        if v > 9 {
-            v.wrapping_sub(0x27)
-        } else {
-            v
-        }
     }
 }

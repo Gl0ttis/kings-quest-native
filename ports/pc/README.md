@@ -43,13 +43,20 @@ its colours and its timing.
 
 ## Tests
 
-The reference the port will be compared with is in `reference/`: ten runs of the
-original in refemu-pc, from `routes/` (numbers only: the event logs, the traces, the
-screens' hashes).
+The reference the port is compared with is in `reference/`: ten runs of the original in
+refemu-pc, from `routes/` (numbers only: the event logs, the traces, the screens'
+hashes).
 
 `cargo test -p kq1-pc`. The tests that need the disk image skip themselves without it.
-They check that every resource decodes (the colour table included), that the original and the crack hold the same
-game, and the original's protection sector.
+They check that every resource decodes (the colour table included), that the original
+and the crack hold the same game, the original's protection sector, and that every route
+matches the original on every pass, in state and on screen.
+
+The screens were recorded with the IBM PC BIOS's font, the characters drawn as the BIOS
+draws them. The font is in IBM's ROM, which isn't shipped: put your own BIOS image in
+`original/` as `bios.rom` (the IBM PC's 8 KB ROM, as in 86Box's ROM set,
+`roms/machines/ibmpc82/BIOS_5150_27OCT82_1501476_U33.BIN`; git ignores it). Without it the
+screens are left out of the tests, and refemu-pc leaves the characters' cells blank.
 
 ## Documentation
 

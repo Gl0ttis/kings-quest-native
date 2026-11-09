@@ -77,6 +77,10 @@ fn main() {
         .filter(|s| !s.is_empty())
         .collect();
     let mut r = Runner::new(&raw).unwrap_or_else(|e| panic!("{e}"));
+    // The BIOS's font, from bios.rom next to the disk, if it is there.
+    if let Some(b) = kq1_pc_refemu::bios_next_to(disk) {
+        r.m.set_font(&b).unwrap_or_else(|e| panic!("bios.rom: {e}"));
+    }
     if let Some(p) = &play {
         r.m.disks[1] = Disk::from_image(&std::fs::read(p).unwrap_or_else(|e| panic!("{p}: {e}")));
     }

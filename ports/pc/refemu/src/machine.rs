@@ -83,6 +83,10 @@ pub struct Machine {
     pub keys: VecDeque<u16>,
     /// The character in each text cell (25 rows of 40), as the BIOS last wrote it.
     pub text: [[u8; 40]; 25],
+    /// The BIOS's 8 × 8 font for characters 0-7Fh (F000:FA6E), from the user's BIOS
+    /// image (`set_font`): characters are then drawn as the BIOS draws them; without it
+    /// their cells are left blank.
+    pub font: Option<Vec<u8>>,
     /// The text row the BIOS last drew a character in. The game clears its message box
     /// by writing memory, which `text` doesn't see, so the current message is the one
     /// round this row.
@@ -134,6 +138,7 @@ impl Machine {
             keys: VecDeque::new(),
             text: [[b' '; 40]; 25],
             last_row: 0,
+            font: None,
             cursor: (0, 0),
             next_tick: CYCLES_PER_TICK,
             calls: HashMap::new(),
@@ -343,7 +348,6 @@ impl Machine {
         let (ah, al) = ((cpu.r[AX] >> 8) as u8, cpu.r[AX] as u8);
         let (bh, bl) = ((cpu.r[BX] >> 8) as u8, cpu.r[BX] as u8);
         let (dh, dl) = ((cpu.r[DX] >> 8) as u8, cpu.r[DX] as u8);
-        let _ = bh;
         match ah {
             0 => {
                 self.video_mode = al & 0x7F;
@@ -369,7 +373,7 @@ impl Machine {
             5 => self.ram[0x462] = al,
             6 => {
                 let (ch, cl) = ((cpu.r[CX] >> 8) as u8, cpu.r[CX] as u8);
-                self.scroll(al, (ch, cl), (dh, dl));
+                self.scroll(al, bh, (ch, cl), (dh, dl));
             }
             9 => {
                 let n = cpu.r[CX];
@@ -397,21 +401,44 @@ impl Machine {
         Some(CGA + (y & 1) * 0x2000 + (y >> 1) * 80 + col as usize * 2)
     }
 
-    /// Draw a character in graphics mode. The glyph would come from the BIOS ROM's
-    /// font, which isn't here: the cell is cleared (the BIOS writes the whole cell) and
-    /// the character recorded in `text`. With attribute bit 7 the BIOS XORs the glyph
-    /// onto the cell instead, and the cell is left as it is.
+    /// The font from a BIOS image: the IBM PC's 8 KB ROM (F000:E000-FFFF) or a 64 KB
+    /// one (F000:0000-FFFF), the font at F000:FA6E; or a dump of the font itself (1,024
+    /// bytes, or 2,048 with characters 80h-FFh).
+    pub fn set_font(&mut self, rom: &[u8]) -> Result<(), String> {
+        let at = match rom.len() {
+            0x2000 => 0x1A6E,
+            0x10000 => 0xFA6E,
+            0x400 | 0x800 => 0,
+            n => return Err(format!("not a BIOS image or a font dump ({n} bytes)")),
+        };
+        self.font = Some(rom[at..at + 0x400].to_vec());
+        Ok(())
+    }
+
+    /// Draw a character in graphics mode, as the BIOS does in mode 4: each row of the
+    /// glyph 8 pixels of 2 bits, the attribute's colour (its low 2 bits) where the glyph
+    /// has a dot and 0 elsewhere, written over the cell; with attribute bit 7, XORed onto
+    /// it instead. The character is recorded in `text` too. Without the font, the cell
+    /// is cleared (left as it is for XOR).
     fn draw_char(&mut self, row: u8, col: u8, ch: u8, attr: u8) {
         if row < 25 && col < 40 {
             self.text[row as usize][col as usize] = ch;
             self.last_row = row;
         }
-        if attr & 0x80 != 0 {
-            return;
-        }
+        let xor = attr & 0x80 != 0;
         for line in 0..8 {
-            if let Some(a) = self.cell_row(row, col, line) {
-                self.ram[a..a + 2].fill(0);
+            let Some(a) = self.cell_row(row, col, line) else { continue };
+            let glyph = match &self.font {
+                Some(f) if ch < 0x80 => f[ch as usize * 8 + line as usize],
+                _ => 0,
+            };
+            let [hi, lo] = expand(glyph, attr & 3).to_be_bytes();
+            if xor {
+                self.ram[a] ^= hi;
+                self.ram[a + 1] ^= lo;
+            } else {
+                self.ram[a] = hi;
+                self.ram[a + 1] = lo;
             }
         }
     }
@@ -433,14 +460,15 @@ impl Machine {
             }
         }
         if r >= 25 {
-            self.scroll(1, (0, 0), (24, 39));
+            self.scroll(1, 0, (0, 0), (24, 39));
             r = 24;
         }
         self.cursor = (r, c);
     }
 
-    /// INT 10h AH=6: scroll a window up `lines` (0: clear it), filling with 0.
-    fn scroll(&mut self, lines: u8, (top, left): (u8, u8), (bottom, right): (u8, u8)) {
+    /// INT 10h AH=6: scroll a window up `lines` (0: clear it), the new rows in colour
+    /// `fill` (BH: in mode 4 its low 2 bits, in every pixel).
+    fn scroll(&mut self, lines: u8, fill: u8, (top, left): (u8, u8), (bottom, right): (u8, u8)) {
         let (bottom, right) = (bottom.min(24), right.min(39));
         if top > bottom || left > right {
             return;
@@ -457,7 +485,7 @@ impl Machine {
                         let tmp = [self.ram[s], self.ram[s + 1]];
                         self.ram[d..d + 2].copy_from_slice(&tmp);
                     } else {
-                        self.ram[d..d + 2].fill(0);
+                        self.ram[d..d + 2].fill((fill & 3) * 0x55);
                     }
                 }
                 self.text[r as usize][c as usize] =
@@ -617,6 +645,12 @@ impl Machine {
         }
         dots
     }
+}
+
+/// A glyph's row as mode 4 draws it: 8 pixels of 2 bits, the leftmost highest; `colour`
+/// where the row's bit is set.
+fn expand(row: u8, colour: u8) -> u16 {
+    (0..8).fold(0u16, |w, k| w << 2 | if row >> (7 - k) & 1 != 0 { colour as u16 } else { 0 })
 }
 
 impl Bus for Machine {

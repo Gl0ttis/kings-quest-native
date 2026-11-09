@@ -27,9 +27,12 @@ copies.
   - `INT 13h`: read, write, format.
   - `INT 16h`: AH=00h, 01h.
   - `INT 1Ah`: AH=00h.
-- **Text:** characters are drawn by the BIOS from its ROM font, which isn't here. The
-  emulator records the character in each of the 25 × 40 cells instead, and leaves the
-  cell blank on screen.
+- **Text:** characters are drawn as the BIOS draws them in mode 4: the font's dots in
+  the attribute's colour, written over the cell, or XORed onto it with attribute bit 7.
+  The font is in IBM's ROM, which isn't here: the user's own BIOS image, `bios.rom` next
+  to the disk image (the IBM PC's 8 KB ROM, the font at F000:FA6E), gives it; without
+  it the cells are left blank. The character in each of the 25 × 40 cells is recorded
+  too. The frame (`Runner::frame`) is the whole screen, 200 lines.
 - **Keyboard:** keys from a plan, returned by `INT 16h`. A game held at a prompt (a
   blocking read with nothing typed, or the title screens' polling) for 3 million cycles
   gets Enter.

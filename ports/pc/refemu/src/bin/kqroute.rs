@@ -1350,7 +1350,7 @@ fn main() {
         disk,
     };
     let route = std::fs::read_to_string(&args[1]).expect("the route");
-    let d = Driver {
+    let mut d = Driver {
         r: Runner::new(&raw).expect("refemu"),
         g: Rc::new(g),
         water_room: true,
@@ -1366,7 +1366,9 @@ fn main() {
         wade: false,
         mourning: false,
     };
-    let mut d = d;
+    if let Some(b) = kq1_pc_refemu::bios_next_to(&args[0]) {
+        d.r.m.set_font(&b).unwrap_or_else(|e| panic!("bios.rom: {e}"));
+    }
     let mut from = 1;
     if let Some((events, pass, line)) = &resume {
         // The run is repeated as it went (Runner::follow): its stops, its keys there.

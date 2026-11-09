@@ -20,6 +20,13 @@ const CANNED: [usize; 3] = [0x12E2, 0x12ED, 0x12FB];
 const RESTART_PROMPT: usize = 0x1DF5;
 /// The silence the music starts with (DS:1328).
 const SILENCE: usize = 0x1328;
+/// The title's lines in the engine's code (`$4EA7`): the copyright, "Press any key to
+/// play", and the credits' records (call, colour, column, text, 0); the credits' colour
+/// for a colour of 10h or more (DS:1167).
+const COPYRIGHT: u16 = 0x4EAD;
+const PRESS_ANY_KEY: u16 = 0x4F06;
+const CREDITS: u16 = 0x4F36;
+const CREDIT_COLOUR: usize = 0x1167;
 
 /// A parser cursor: nothing, a place in the vocabulary, or a place in the typed line.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -123,7 +130,7 @@ impl World {
     /// cycle rules once (which go to room 1).
     fn game_start(&mut self) {
         if self.g.first_start {
-            // PCjr $07C3: mode 9, which clears the pages.
+            // The start-up's mode 4 (`$2F`) clears the screen.
             self.screen.shown.fill(0);
             self.text = super::text::Text::default();
         }
@@ -158,10 +165,13 @@ impl World {
     }
 
     /// `$4EA7`: the title: the copyright, the Sierra logo (picture 82), then the title
-    /// picture (83) with its tune and the credits; a key skips it.
+    /// picture (83) with its tune and the credits; a key skips it. Its lines are in the
+    /// engine's code, after the calls that print them: the copyright (CS:4EAD) and "Press
+    /// any key to play" (CS:4F06) through the BIOS teletype, then the credits.
     fn title(&mut self) {
         self.title_clear_rows();
-        self.teletype_str(b"\n\n  (c)Copyright Sierra On-Line Inc 1984\r\n      (c)Copyright IBM Corp. 1984");
+        let copyright = self.code_string(COPYRIGHT);
+        self.teletype_str(&copyright);
         self.load_picture(0x52);
         self.g.keys_on = false;
         self.draw_room_picture();
@@ -171,28 +181,24 @@ impl World {
             self.load_sound_group(0x15);
             self.load_picture(0x53);
             self.title_clear_rows();
-            self.teletype_str(b"\n\n\n        Press any key to play");
+            let press = self.code_string(PRESS_ANY_KEY);
+            self.teletype_str(&press);
             self.draw_room_picture();
             self.play_sound(0x15);
+            // From row 7 (DS:20D6), each credit's colour, column and text follow its
+            // call (`$4F36`-`$4FE5`). `$5033`: a colour of 10h or more is DS:1167's (0Fh);
+            // the line is drawn at (row, column), one character at a time, XORed onto the
+            // picture (attribute bit 7); a new line goes down a row.
             let mut row = 7u8;
-            // Each line's colour, column and text follow its call (`$4F36`-`$4FD3`).
-            for (colour, col, text) in [
-                (8, 13, &b"designed and\n"[..]),
-                (8, 16, b"written by:\n"),
-                (15, 14, b"Roberta Williams\n\n"),
-                (8, 13, b"programming:\n"),
-                (15, 14, b"Charles Tingley\n"),
-                (15, 13, b"Ken MacNeill\n\n"),
-                (8, 12, b"artwork:\n"),
-                (15, 13, b"Doug MacNeill\n"),
-                (15, 12, b"Greg Rowland\n"),
-            ] {
-                // $5038: at (row, col), one character at a time, XORed onto the
-                // picture (attribute bit 7): on the white scroll, colour 8 shows grey (7)
-                // and 15 black.
-                let mut c = col;
+            let mut at = CREDITS;
+            for _ in 0..9 {
+                let colour = self.res.code_byte(at + 3);
+                let colour = if colour >= 0x10 { self.res.ds[CREDIT_COLOUR] } else { colour };
+                let mut c = self.res.code_byte(at + 4);
+                let text = self.code_string(at + 5);
+                at += 5 + text.len() as u16 + 1;
                 self.text.cursor = (row, c);
-                for &b in text {
+                for &b in &text {
                     if b == b'\n' {
                         row += 1;
                     } else {
@@ -220,6 +226,11 @@ impl World {
     fn title_clear_rows(&mut self) {
         self.text.scroll(0, 0x15, 0x18);
         self.text.cursor = (0x15, 0);
+    }
+
+    /// The 0-ended string at `at` in the engine's code.
+    fn code_string(&self, at: u16) -> Vec<u8> {
+        (at..).map(|a| self.res.code_byte(a)).take_while(|&b| b != 0).collect()
     }
 
     /// `$5074`: a string through the BIOS teletype.

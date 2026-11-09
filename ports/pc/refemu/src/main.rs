@@ -136,6 +136,9 @@ fn main() {
     };
     disk.write_protected = true;
     let mut m = Machine::new(disk);
+    if let Some(b) = kq1_pc_refemu::bios_next_to(path) {
+        m.set_font(&b).unwrap_or_else(|e| panic!("bios.rom: {e}"));
+    }
     if let Some(f) = fetch_cycles {
         m.fetch_quarters = (f * 4.0).round() as u64;
     }

@@ -222,6 +222,23 @@ impl World {
         self.vars[23] = 1;
     }
 
+    /// `$1480`: Ctrl+Left (scan 73h) moves the screen right a character, Ctrl+Right
+    /// (74h) left: the screen position (DS:1881, the CRTC's register 2, horizontal sync)
+    /// one more or less, kept within 21h-2Fh. Whether it was moved.
+    pub fn shift_screen(&mut self, scan: u8) -> bool {
+        let step = match scan {
+            0x73 => 1u8,
+            0x74 => 0xFF,
+            _ => return false,
+        };
+        let h = self.g.hpos.wrapping_add(step);
+        if !(0x21..=0x2F).contains(&h) {
+            return false;
+        }
+        self.g.hpos = h;
+        true
+    }
+
     /// `$0F91`: wait until the queued messages are printed.
     pub fn wait_print_done(&mut self) {
         self.wait_until("the messages to print", |w| w.vars[23] == 0);
@@ -260,6 +277,14 @@ impl World {
                     }
                     return;
                 }
+                if ah > 0x51 {
+                    // $1C05: Ctrl+Left or Ctrl+Right moves the screen; then the next key.
+                    // Any other key past the keypad ends the read.
+                    if self.shift_screen(ah) {
+                        continue;
+                    }
+                    return;
+                }
                 if (0x10..=0x32).contains(&ah) && self.res.ds[ALT_CODES + (ah - 0x10) as usize] != 0xFF {
                     return;
                 }
@@ -293,7 +318,8 @@ impl World {
                     self.vars[17] = 1;
                 }
                 0x8C => self.g.sound_on = !self.g.sound_on,
-                0x8B => self.g.debug = !self.g.debug,
+                // 8Bh (Ctrl+V's) has no case on the PC (`$1BB4`), where the PCjr's turns a
+                // debug mode on.
                 0x8A => self.vars[27] = 1,
                 _ => {}
             }

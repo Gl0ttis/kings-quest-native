@@ -1,14 +1,16 @@
-//! The two video pages and the picture drawing (`$14B1`, `PCjr $064C`, `$48E3`, `$491E`).
+//! The picture and the screen (`$14B1`, `$48E3`, `$491E`), in two planes, as the PCjr
+//! port keeps them:
 //!
-//! - **The displayed page** (segment 1800h): the colours, each picture pixel a byte
-//!   with the colour in both nibbles.
-//! - **The work page** (segment 1000h): while a picture is drawn, its priorities (in
-//!   both nibbles); after `PCjr $064C`, the colour in the high nibble and the priority in the
-//!   low one. The actors are drawn into it, and changed rectangles copied from it to
-//!   the displayed page.
+//! - **The displayed plane:** what the screen shows of the picture, a colour a pixel
+//!   (the frame turns each into its dot pattern, as the PC's CGA holds it: `World::frame`).
+//! - **The work plane:** the PC's picture buffer (segment 1400h, its byte the pattern and
+//!   the priority), here the colour in the high nibble and the priority in the low one;
+//!   while a picture is drawn, its priorities. The actors are drawn into it, and changed
+//!   rectangles copied from it to the screen (`$1875`).
 //!
 //! Both are 160 × 168, the picture's size. The painter (pic.rs) addresses them in the
-//! PCjr's mode-9 layout; [`Screen`] maps that to rows and columns.
+//! buffer's layout (four banks, 160 bytes a row); [`Screen`] maps that to rows and
+//! columns.
 
 use super::clock;
 use super::cost::Cost;

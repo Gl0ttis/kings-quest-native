@@ -600,11 +600,11 @@ impl World {
                 break;
             }
         }
-        // PCjr $3CBE: back to graphics (mode 9 clears the displayed page), at the graphics
-        // screen's horizontal position; "ready".
+        // $0591: back to graphics (mode 4 clears the screen, `$19A4`), at the graphics
+        // screen's position (DS:112F, `$059C`); "ready".
         self.screen.shown.fill(0);
         self.text.text_mode = false;
-        self.g.bios_hpos = self.g.hpos_gfx;
+        self.g.hpos = self.g.hpos_gfx;
         self.text.graphics = Default::default();
         self.text.cursor = (0, 0);
         for b in self.res.ds_bytes(PLAY_READY, 0) {
@@ -646,7 +646,7 @@ impl World {
         }
     }
 
-    /// `PCjr $3DD6`: a write, retried (after "Disk Write Error!" and Enter) until it works.
+    /// `$062C`: a write, retried (after "Disk Write Error!" and Enter) until it works.
     fn write_retrying(&mut self, lba: usize, count: usize, data: &mut Vec<u8>) {
         loop {
             self.cost.sectors += count as u32;

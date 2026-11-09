@@ -1,8 +1,8 @@
-//! The actors on screen (`$3FFC`-`PCjr $34F4`, `PCjr $0679`): the trial step and collisions,
+//! The actors on screen (`$3FFC`-`$48E2`, `$1875`): the trial step and collisions,
 //! drawing and erasing, the background saved under each actor, and the changed
 //! rectangles copied to the displayed page.
 //!
-//! Actors are drawn into the work page against its priorities; `PCjr $0679` copies a
+//! Actors are drawn into the work page against its priorities; `$1875` copies a
 //! rectangle of the work page to the displayed page. An actor is on screen while its
 //! room is v1, off at FF; room 0 ends the table.
 
@@ -566,7 +566,7 @@ impl World {
     }
 
     /// `$4865`: the rectangle the actor was in and now is in copied to the displayed
-    /// page (`PCjr $0679`: each pixel's colour), then its new position and cel committed.
+    /// page (`$1875`: each pixel's colour), then its new position and cel committed.
     /// The rectangle takes the larger cel and adds the step on an axis it moved along
     /// (not the distance), its width rounded up to even.
     fn blit_and_commit(&mut self, a: usize) {
