@@ -50,7 +50,7 @@ Put the disk images in `ports/apple2/original/` (git ignores it), then:
 
 ```
 cd ports/apple2
-cargo run --release --bin kq -- original
+cargo run --release --bin kq-apple2 -- original
 ```
 
 See [ports/apple2/README.md](ports/apple2/README.md) for the tools, tests and documentation.
