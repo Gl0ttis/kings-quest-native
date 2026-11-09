@@ -7,10 +7,7 @@ evidence for checking the port.
 
 ## What it emulates
 
-- **CPU:** an 8086 core with 8088 cycle counts. The counts are approximate (the Intel
-  base counts, effective-address time, and 4 cycles per word on the 8-bit bus), and the
-  PCjr's video memory contention isn't modelled yet, so timings are provisional until
-  they are calibrated.
+- **CPU:** an 8086 core with 8088 cycle counts (see "Timing").
 - **Memory:** 128 KB, shared with the video as on the PCjr. The Video Gate Array's CRT
   page (what is shown) and CPU page (the B800 window) are set through `INT 10h` AH=05h
   or port 3DFh.
@@ -39,6 +36,38 @@ evidence for checking the port.
   gets RETURN, as refemu does for the Apple. So do the title screens, which only poll.
   The game's timer handler polls the keyboard every tick, so polling alone isn't a
   prompt.
+
+## Timing
+
+Each instruction costs:
+- its Intel count, plus effective-address time and 4 cycles per word on the 8-bit bus;
+- plus 4 cycles for each instruction byte fetched. Intel's counts assume a full prefetch
+  queue, so the 8088's fetches are left out of them.
+- plus, optionally, the Video Gate Array's wait states on every shared-RAM access
+  (`--wait-states`, default 0).
+
+The BIOS services, answered natively, are given estimated times.
+
+**Against 86Box** ([../tools/86box/](../tools/86box/README.md)), with the original from
+power-on, Up pressed in room 1:
+
+| | refemu-pcjr | 86Box |
+|---|---|---|
+| Walking up (one row a pass) | 13.8 rows a second | 12.5 |
+| Up to leaving room 1 | 6.5 s | about 6.6 s |
+| Up to room 16 shown | 10.0 s | 9.1 s |
+| Of which loading and drawing | 3.5 s | about 2.4 s |
+
+Two simpler rules were tried. An instruction taking the longer of its count and its bus
+time made walking 19.2 rows a second. Count plus 4 cycles for every byte moved fitted
+walking exactly but loaded the room in 4.2 s, because it counts the data transfers twice.
+Closer agreement needs a cycle-level 8088 (the prefetch queue, string-instruction
+timing).
+
+**86Box is not the last word.** It adds no PCjr wait states for this game (only through
+the B800 window, which the game doesn't use), and a real PCjr does. The real figure needs
+real hardware. Until then the cycle counts are an estimate, good to about 10% against
+86Box.
 
 ## The game cycle
 
@@ -82,11 +111,12 @@ numbers can't say "at the next prompt", and the prompts hold the game cycle.
   written back if the game wrote to it. The Master is write-protected, as the original
   was, so saving to it fails as it did ("Games may only be saved on your Play
   diskette").
-- `--wait-states N`: wait states per access to the shared RAM (default 2, IBM's
-  average; Tandy's engineers claimed 6). The real figure, and the time the BIOS's own
-  routines take, are still to be measured against the original on real hardware or an
-  accurate emulator. The cycle counts are an estimate until then: at 2, room 1 runs at
-  about 290,000 cycles a pass, 12.6 passes a second; at 0, 18.6; at 6, 7.7.
+- `--wait-states N`: Video Gate Array wait states per access to the shared RAM (default
+  0, as 86Box; IBM gives 2 on average for real hardware). See "Timing".
+- `--sector-cycles N`: CPU cycles per sector read or written (default 100,000, about
+  21 ms: a 300 rpm drive with 9 sectors a track).
+- `--cost FILE`: per pass, the execution-unit cycles, memory accesses, disk cycles and
+  accesses through the B800 window, for calibrating.
 - `--pictures DIR`: once the engine has started, draw every room's picture with the
   engine's own routines (clear `$615`, frame `$353F`, picture `$3534`) and write the
   buffers to `DIR/NNN.bin` (168 rows of 160 bytes, priority << 4 | colour). They are

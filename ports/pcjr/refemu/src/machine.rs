@@ -77,6 +77,21 @@ pub struct Machine {
     pub wait_states: u64,
     /// Cycles added for wait states so far.
     pub wait_cycles: u64,
+    /// CPU cycles a sector read or write takes (the drive's time, not modelled in
+    /// detail: one figure, to calibrate).
+    pub sector_cycles: u64,
+    /// Cycles added because the bus, not the execution unit, set the pace.
+    pub bus_cycles: u64,
+    /// Clocks per instruction byte fetched (4: one 8088 bus cycle).
+    pub fetch_cycles: u64,
+    /// Totals for calibration: execution-unit cycles of the instructions, memory
+    /// accesses (fetches included), disk cycles.
+    pub eu_total: u64,
+    pub access_total: u64,
+    pub disk_total: u64,
+    /// Accesses through the B800 window (where 86Box applies the PCjr's wait states).
+    pub b800_total: u64,
+    pub sectors_read: u64,
 }
 
 impl Machine {
@@ -111,8 +126,16 @@ impl Machine {
             last_arrow: 0x4D00,
             joy_trigger: 0,
             shared_accesses: 0,
-            wait_states: 2,
+            wait_states: 0,
             wait_cycles: 0,
+            sector_cycles: 100_000,
+            bus_cycles: 0,
+            fetch_cycles: 4,
+            eu_total: 0,
+            access_total: 0,
+            disk_total: 0,
+            b800_total: 0,
+            sectors_read: 0,
         };
         // Interrupt vectors -> stubs; the diskette parameters; the BIOS data area.
         for n in 0..256u32 {
@@ -169,9 +192,19 @@ impl Machine {
             cpu.halted = false;
         } else {
             self.shared_accesses = 0;
+            let (before, fetched) = (cpu.cycles, cpu.fetched);
             cpu.step(self);
-            // The Video Gate Array shares the low 128 KB with the display and holds the
-            // CPU off with wait states: IBM gives an average of two per access.
+            // The 8088 fetches instructions a byte at a time, 4 clocks each. Intel's
+            // counts assume the prefetch queue is full, so they leave this out (data
+            // transfers are in them): the fetch time is added (README.md, "Timing").
+            let bus = (cpu.fetched - fetched) * self.fetch_cycles;
+            let ran = cpu.cycles - before;
+            self.eu_total += ran;
+            self.access_total += self.shared_accesses;
+            cpu.cycles += bus;
+            self.bus_cycles += bus;
+            // The Video Gate Array's wait states on shared-RAM accesses (0 by default,
+            // as 86Box has none outside the B800 window; IBM gives 2 on average).
             let w = self.shared_accesses * self.wait_states;
             cpu.cycles += w;
             self.wait_cycles += w;
@@ -429,7 +462,9 @@ impl Machine {
                     bx = bx.wrapping_add(len as u16);
                     done += 1;
                 }
-                cpu.cycles += done as u64 * 100_000; // about 20 ms a sector, for now
+                cpu.cycles += done as u64 * self.sector_cycles;
+                self.disk_total += done as u64 * self.sector_cycles;
+                self.sectors_read += done as u64;
                 (status, done)
             }
             5 => {
@@ -518,6 +553,7 @@ impl Bus for Machine {
             }
             // The B800 window: the CPU page (32 KB in the 32 KB modes).
             0xB8000..=0xBFFFF => {
+                self.b800_total += 1;
                 let page = (self.cpu_page & !1) as usize * 0x4000;
                 self.ram[(page + (a as usize - 0xB8000)) & 0x1FFFF]
             }
@@ -532,6 +568,7 @@ impl Bus for Machine {
                 self.ram[a as usize] = v
             }
             0xB8000..=0xBFFFF => {
+                self.b800_total += 1;
                 let page = (self.cpu_page & !1) as usize * 0x4000;
                 self.ram[(page + (a as usize - 0xB8000)) & 0x1FFFF] = v;
             }

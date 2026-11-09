@@ -44,6 +44,8 @@ pub struct Cpu {
     pub flags: u16,
     pub cycles: u64,
     pub halted: bool,
+    /// Instruction bytes fetched (for the 8088 bus time the counts leave out).
+    pub fetched: u64,
     /// Set when an instruction can't be run; the run stops.
     pub fault: Option<String>,
     seg_override: Option<usize>,
@@ -117,6 +119,7 @@ impl Cpu {
     fn fetch8<B: Bus>(&mut self, b: &mut B) -> u8 {
         let v = b.read(lin(self.s[CS], self.ip));
         self.ip = self.ip.wrapping_add(1);
+        self.fetched += 1;
         v
     }
     fn fetch16<B: Bus>(&mut self, b: &mut B) -> u16 {

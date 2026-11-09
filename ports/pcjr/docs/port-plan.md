@@ -22,7 +22,7 @@ engine draws.
 | 1. Disk image | **Done.** The original as dumped (HxC `.mfm`: MFM decoded, CRCs checked) and the cracked 360K `.img`. The copy protection, 1 KB-sector tracks holding the engine, is worked out, and the two give the same engine and data (tested). |
 | 2. Disk layout | **Done** ([disk-layout.md](disk-layout.md)): boot chain, the engine's position, the resource table, its entry format, the read routine. |
 | 3. Static formats | **Done.** Pictures: all 79 draw cleanly (Apple decoder, IBM colours); the PCjr shows them in full, 160 × 168. Scripts: the PCjr operand table, read from the handlers; all 84 well-formed scripts parse. Rules: the Apple format, with the PCjr's word and variable numbers. Views: all 88 decode. Sounds: all 40 parse and render. Vocabulary: all 358 words decode. Colours: the default IBM palette. Left for the engine phase: a PCjr painter for the full picture, and room 64. |
-| 4. Measuring tool | **Working** ([refemu/](../refemu/README.md)). An 8086 core with 8088 timing, on a PCjr with no IBM ROM. It boots the original from the `.mfm` (the 1 KB-sector engine included) and runs plans (routes) of keys, typed commands and prompt answers. It answers disk swaps, and makes, saves to and restores from a Play diskette. It records a trace per pass and the screen, and can draw every room picture with the engine's own code. Video Gate Array wait states are modelled at IBM's average (2 per shared-RAM access) and BIOS service times are estimated: **the timing is an estimate until calibrated against the original on real hardware or 86Box**. Still to do: that calibration, and a font for text in screenshots. |
+| 4. Measuring tool | **Working** ([refemu/](../refemu/README.md)). An 8086 core with 8088 timing, on a PCjr with no IBM ROM. It boots the original from the `.mfm` (the 1 KB-sector engine included) and runs plans (routes) of keys, typed commands and prompt answers. It answers disk swaps, and makes, saves to and restores from a Play diskette. It records a trace per pass and the screen, and can draw every room picture with the engine's own code. Timing: the 8088's instruction fetches are added to the core's counts, calibrated against 86Box (walking within 10%, a room change within 10%; [tools/86box/](../tools/86box/README.md)). 86Box adds no PCjr wait states for this game, which real hardware does, so a real PCjr measurement is still wanted. Still to do: that measurement, and a font for text in screenshots. |
 | Reference routes | `routes/walk_rooms_1_16.plan` (rooms 1 and 16) and `routes/save_restore.plan` (Play diskette, save, restore), recorded from the original as `reference/*.csv`. Compare the state columns; the cycles change with calibration. |
 | Picture painter | **Done** ([picture-format.md](picture-format.md)). The PCjr's own line, plot and fill routines, modelled literally; all 80 room pictures byte-identical to the engine's. |
 | 5–10. Engine onwards | Not started. |
@@ -69,9 +69,9 @@ engine draws.
 
 ## Next
 
-1. **Calibrate the timing.** Measure the original on real hardware or 86Box (with its
-   own PCjr BIOS), for example how long Graham takes to walk across room 1, and set
-   the wait states and service times to match.
+1. **Timing, if wanted:** a measurement on a real PCjr (the same test as
+   [tools/86box/](../tools/86box/README.md)) would set the Video Gate Array wait
+   states, which 86Box leaves out for this game.
 2. **The engine**, headless, following the guide's phase 5: the world state, the
    script VM with the PCjr operand table, the game cycle as the PCjr runs it (`$14F2`,
    parser rules from the main loop), checked pass by pass against the reference routes.

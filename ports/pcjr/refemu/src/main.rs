@@ -147,7 +147,8 @@ fn main() {
         args.drain(p..(p + 2).min(args.len()));
         v
     };
-    let wait_states: u64 = opt("--wait-states").map_or(2, |v| v.parse().expect("--wait-states"));
+    let wait_states: u64 = opt("--wait-states").map_or(0, |v| v.parse().expect("--wait-states"));
+    let sector_cycles: u64 = opt("--sector-cycles").map_or(100_000, |v| v.parse().expect("--sector-cycles"));
     let ticks: u64 = opt("--ticks").map_or(u64::MAX / CYCLES_PER_TICK, |v| v.parse().expect("--ticks"));
     let max_passes: u64 = opt("--passes").map_or(400, |v| v.parse().expect("--passes"));
     // --plan PLAN, or --plan @FILE: a route file, items separated by commas or lines,
@@ -179,6 +180,13 @@ fn main() {
         })
         .unwrap_or_default();
     let trace_path = opt("--trace");
+    // --cost FILE: per pass, the execution-unit cycles, memory accesses and disk cycles.
+    let cost_path = opt("--cost");
+    let mut cost = String::from(
+        "pass,eu,accesses,disk,b800
+",
+    );
+    let mut last_cost = (0u64, 0u64, 0u64, 0u64);
     // --play FILE: the Play diskette, a 360K sector image (read if it exists; written
     // back if the game wrote to it).
     let play_path = opt("--play");
@@ -218,6 +226,7 @@ fn main() {
     disk.write_protected = true;
     let mut m = Machine::new(disk);
     m.wait_states = wait_states;
+    m.sector_cycles = sector_cycles;
     let mut play = Disk::default();
     if let Some(raw) = play_path.as_ref().and_then(|p| std::fs::read(p).ok()) {
         for (i, s) in raw.chunks(512).enumerate() {
@@ -285,6 +294,17 @@ fn main() {
             if let Some(&k) = key_log.get(&passes) {
                 m.keys.push_back(k);
             }
+            let now = (m.eu_total, m.access_total, m.disk_total, m.b800_total);
+            cost += &format!(
+                "{},{},{},{},{}
+",
+                passes - 1,
+                now.0 - last_cost.0,
+                now.1 - last_cost.1,
+                now.2 - last_cost.2,
+                now.3 - last_cost.3
+            );
+            last_cost = now;
             let delta = last_pass_cycle.map_or(0, |l| cpu.cycles - l);
             if last_pass_cycle.is_some() {
                 deltas.push(delta);
@@ -418,10 +438,12 @@ fn main() {
         println!("unmodelled ports (bit 15 = write): {:?}", m.unknown_ports);
     }
     println!(
-        "video mode {} CRT page {}; {} sound chip writes; wait states {} a shared-RAM access, {:.0}% of the time",
+        "video mode {} CRT page {}; {} sound chip writes; {} sectors read or written; bus-bound {:.0}% of the time; wait states {} a shared-RAM access, {:.0}% of the time",
         m.video_mode,
         m.crt_page,
         m.sound.len(),
+        m.sectors_read,
+        100.0 * m.bus_cycles as f64 / cpu.cycles.max(1) as f64,
         m.wait_states,
         100.0 * m.wait_cycles as f64 / cpu.cycles.max(1) as f64
     );
@@ -450,6 +472,9 @@ fn main() {
             std::fs::write(p, img).expect("write the Play diskette");
             println!("Play diskette written to {p}");
         }
+    }
+    if let Some(p) = cost_path {
+        std::fs::write(p, cost).expect("write the cost file");
     }
     if let Some(p) = trace_path {
         std::fs::write(p, trace).expect("write trace");
