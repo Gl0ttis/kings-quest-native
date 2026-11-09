@@ -77,13 +77,16 @@ See [src/engine/clock.rs](../src/engine/clock.rs). The port passes the same
 `clock::CHECKPOINTS`), and fires the timer's ticks, the key presses and the disk swaps
 that refemu-pcjr logged (`--events`) in the same intervals: a tick that interrupted a
 disk read at the read; one that interrupted an action writing a variable before the
-write (`set 25` as a room starts turns the timer's key reading on); code reading the
-keyboard after the keys pressed before it; a
+write (`set 25` as a room starts turns the timer's key reading on); one at the game
+cycle's start before the keypad direction is read; one in wait_key's timer countdown
+(`$1445`-`$14A0`) before v23 is tested (the last message printed lets the loop return
+to the line editor); code reading the keyboard after the keys pressed before it; a
 busy wait (on v23, on v15) ticks one at a time until it is over; the rest at the next
 checkpoint. The replay example ([examples/replay.rs](../examples/replay.rs)) compares
 the checkpoint sequences and the per-pass state; with `KQ_PROBE=FROM-TO` the port
 prints the ego and the keys at each pass, and `kqprobe-pcjr` (refemu) prints the same
-from the original replaying the same log.
+from the original replaying the same log. `KQ_CPS=FROM-TO` prints the checkpoints
+numbered FROM-TO as they pass, in both (the first that differs is where to look).
 
 ## Routine index
 

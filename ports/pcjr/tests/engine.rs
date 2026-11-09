@@ -70,3 +70,20 @@ fn the_gold_key_route_matches_the_original() {
     let Some(disk) = original() else { return };
     assert_eq!(replay(&disk, "gold_key"), 21744);
 }
+
+/// The maximum-score route (routes/max_score.route, played by kqroute-pcjr): the whole
+/// game, crowned with 158 points, 21368 passes.
+#[test]
+fn the_max_score_route_matches_the_original() {
+    let Some(disk) = original() else { return };
+    assert_eq!(replay(&disk, "max_score"), 21368);
+}
+
+/// The magic-ring route (routes/magic_ring.route): the max-score route with the ring
+/// put on and rubbed (invisible until the spell runs out, -3), ending at 155; 22462
+/// passes.
+#[test]
+fn the_magic_ring_route_matches_the_original() {
+    let Some(disk) = original() else { return };
+    assert_eq!(replay(&disk, "magic_ring"), 22462);
+}

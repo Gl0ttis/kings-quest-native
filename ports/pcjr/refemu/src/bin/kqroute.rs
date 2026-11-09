@@ -166,7 +166,9 @@ impl Driver {
         let room = self.v(1);
         let score = self.v(19);
         loop {
-            match self.r.run(1_500_000, 2_000_000_000)? {
+            // A pass takes well under 20M cycles (a disk read's included); 200M is a hang
+            // (room 58's wandering giant boxed in by another actor loops for ever, $2D55).
+            match self.r.run(1_500_000, 200_000_000)? {
                 Stopped::Pass => break,
                 Stopped::Prompt => {
                     if self.prompt.is_empty() {
@@ -567,7 +569,12 @@ impl Driver {
             if dest_pic.is_none() {
                 return 1000;
             }
-            if !self.standable_in(&dpri, lx, ly, w) {
+            // The last steps to the edge can end a row (or column) off the plan: the
+            // landing's neighbours must be safe too (room 42's stream, a row above).
+            if !(-2..=2).all(|k| {
+                let (x, y) = if e <= 2 { (lx, ly + k) } else { (lx + k, ly) };
+                !(0..W).contains(&x) || !(0..H).contains(&y) || self.standable_in(&dpri, x, y, w)
+            }) {
                 return 0;
             }
             let mut seen = vec![false; (W * H) as usize];
@@ -810,7 +817,9 @@ fn deadly_zones(listings: &HashMap<u8, String>) -> HashMap<u8, Vec<Zone>> {
                 for t in tail.split([' ', '&']) {
                     let Some((v, val)) = t.strip_prefix('v').and_then(|t| t.split_once("==")) else { continue };
                     let (Ok(v), Ok(val)) = (v.parse::<u32>(), val.parse::<u32>()) else { continue };
-                    if v >= 32 && val != 0 && !deadly.contains(&(v, val)) {
+                    // v3 too: the edge code, which some rooms set themselves (room 57's
+                    // top band, `assign 3 3`, is the fall off the cloud).
+                    if (v >= 32 || v == 3) && val != 0 && !deadly.contains(&(v, val)) {
                         deadly.push((v, val));
                         added = true;
                     }
@@ -927,6 +936,25 @@ fn rect(nums: &[i32]) -> [i32; 4] {
 }
 
 fn run_line(d: &mut Driver, line: &str) -> Result<(), String> {
+    run_line_inner(d, line)?;
+    // Under `keepin` (the beanstalk, the clouds) a walk that ends on a zone's edge can
+    // carry on a step past it before the stop takes: a fall that shows a few passes
+    // later. Look then, so that the line that caused it is the one retried.
+    let walked = matches!(line.split_whitespace().next(), Some("area" | "goto"));
+    if let (true, Some((room, rects))) = (walked, d.keep_in.clone()) {
+        if room == d.v(1) {
+            d.wait(3)?;
+            let (x, y) = d.ego();
+            let inside = rects.iter().any(|r| x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3]);
+            if !inside || d.r.ds(0x1262) != 0 {
+                return Err(format!("fell out of the keepin zones in room {room} at ({x}, {y})"));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn run_line_inner(d: &mut Driver, line: &str) -> Result<(), String> {
     let (cmd, rest) = line.split_once(' ').unwrap_or((line, ""));
     let nums: Vec<i32> = rest.split_whitespace().filter_map(|x| x.parse().ok()).collect();
     match cmd {
@@ -977,7 +1005,11 @@ fn run_line(d: &mut Driver, line: &str) -> Result<(), String> {
             let res = d.walk(&|x, y| x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3], "the final area");
             d.ignore_deadly = false;
             d.wade = false;
-            res.or_else(|e| if d.dead() { Ok(()) } else { Err(e) })
+            let res = res.or_else(|e| if d.dead() { Ok(()) } else { Err(e) });
+            // The ending sets the game-over flag (DS:125A) as a death does: from here
+            // the passes are watched as after one.
+            d.mourning |= res.is_ok();
+            res
         }
         "map" => {
             // The planner's view of the room (stderr), as KQ_MAP shows it on a failure.
@@ -1141,8 +1173,11 @@ fn bounce(d: &mut Driver) -> Result<(), String> {
 /// or the line before it too, after 0-20 passes, then the line after 0-30 (`back` 1).
 fn retry_waits(snaps: &mut Vec<Driver>, lines: &[(usize, String)], i: usize, back: usize) -> Option<Driver> {
     let line = &lines[i].1;
-    for extra_prev in 0..=(if back == 1 { 20 } else { 0 }) {
-        for extra in 0..=30usize {
+    // Waiting before the line before as well: a bounded search (a travel line takes
+    // seconds a try).
+    let (prevs, extras) = if back == 1 { (8, 8) } else { (0, 30) };
+    for extra_prev in 0..=prevs {
+        for extra in 0..=extras {
             if back == 0 && extra == 0 {
                 continue;
             }
@@ -1170,6 +1205,8 @@ fn retryable(d: &Driver, e: &str) -> bool {
         || e.starts_with("required")
         || e.contains("going round in circles")
         || e.contains("no path to edge")
+        || e.contains("fell out of the keepin zones")
+        || e.starts_with("no pass for")
 }
 
 /// Play the route; each line from a snapshot, retried with 1-30 extra passes of waiting
@@ -1202,6 +1239,9 @@ fn play(d0: Driver, route: &str, from: usize) -> (Driver, Option<(usize, String)
         };
         if !retryable(&d, &e) {
             return (d, Some((*n, e)));
+        }
+        if std::env::var_os("KQ_RETRY").is_some() {
+            eprintln!("line {}: {e} (pass {}, room {}); retrying", n + 1, d.r.passes, d.v(1));
         }
         // Waiting 1-30 passes first (that keeps the random draws as they were), then
         // round trips, then the line before again with waits.
@@ -1323,13 +1363,30 @@ fn main() {
     let mut d = d;
     let mut from = 1;
     if let Some((events, pass, line)) = &resume {
-        d.r.replay(&std::fs::read_to_string(events).expect("the event log to resume"));
-        while d.r.passes < *pass {
-            if let Err(e) = d.r.run(u64::MAX, 4_000_000_000) {
+        // The run is repeated as it went: it stops where the autopilot stopped (each
+        // pass, each prompt), and the keys that follow in the old log are the ones typed
+        // there. (Pressing them at their checkpoints instead moves a prompt's key earlier
+        // than it was typed, and the log written would not be the original's.)
+        let old = std::fs::read_to_string(events).expect("the event log to resume");
+        loop {
+            let mut p = d.r.events().len();
+            assert!(old.as_bytes().starts_with(d.r.events().as_bytes()), "resuming: the run left the log at pass {}", d.r.passes);
+            while p < old.len() {
+                let end = old[p..].find('\n').map_or(old.len(), |i| p + i + 1);
+                let mut f = old[p..end].split_whitespace();
+                match (f.next(), f.nth(1)) {
+                    (Some("K"), Some(k)) => d.r.press(u16::from_str_radix(k, 16).expect("a key")),
+                    _ => break,
+                }
+                p = end;
+            }
+            if d.r.passes >= *pass {
+                break;
+            }
+            if let Err(e) = d.r.run(1_500_000, 2_000_000_000) {
                 panic!("resuming: {e}");
             }
         }
-        d.r.end_replay();
         d.water_room = d.g.water_rooms.contains(&d.v(1));
         from = *line;
     }

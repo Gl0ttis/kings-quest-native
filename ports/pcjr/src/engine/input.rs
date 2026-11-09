@@ -774,6 +774,7 @@ impl World {
                     self.vars[v] -= 1;
                 }
             }
+            self.site(super::clock::Site::WaitKeyTimers);
             if self.g.input_off {
                 self.g.play_disk = false;
                 self.g.key_flags[3] = false;

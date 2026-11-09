@@ -361,6 +361,9 @@ pub struct World {
     pub trace_ops: bool,
     /// Print the ego and the keys at the start of passes FROM-TO (KQ_PROBE=FROM-TO).
     pub probe: Option<(u64, u64)>,
+    /// Print the checkpoints numbered FROM-TO as they pass (KQ_CPS=FROM-TO, as
+    /// refemu-pcjr's).
+    pub cps: Option<(u64, u64)>,
 }
 
 impl World {
@@ -481,6 +484,10 @@ impl World {
                 let (a, b) = v.split_once('-')?;
                 Some((a.parse().ok()?, b.parse().ok()?))
             }),
+            cps: std::env::var("KQ_CPS").ok().and_then(|v| {
+                let (a, b) = v.split_once('-')?;
+                Some((a.parse().ok()?, b.parse().ok()?))
+            }),
         })
     }
 
@@ -493,6 +500,9 @@ impl World {
             self.event(e);
         }
         self.checkpoint += 1;
+        if self.cps.is_some_and(|(a, b)| (a..=b).contains(&self.checkpoint)) {
+            eprintln!("checkpoint {} at {at:04X}, v25 {}", self.checkpoint, self.vars[25]);
+        }
         if let Some(t) = self.checkpoint_trace.as_mut() {
             t.push(at);
         }

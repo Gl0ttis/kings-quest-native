@@ -217,6 +217,9 @@ say eat house
 expect score 98
 
 # The mushroom (room 47): on the east bank of the Raging River, reached from room 48.
+# By room 38 (south of 43), round to room 33 and up: room 42's overlay leaves its east
+# landing a pocket that the planner (picture only) cannot see.
+room 38
 room 48
 room 47 64 61 114 101
 area 64 61 114 101
@@ -333,11 +336,16 @@ wait 4
 # cloud banks he falls.
 keepin 46 94 113 115 112 68 158 124 65 50 74 166
 area 69 102 70 110
+# Along the stalk to mid-bank height first: climbing moves two rows a pass, and a
+# diagonal off the stalk reaches the bank's top line (y 94) and falls past it.
+area 71 103 75 109
 area 80 100 100 116
 
 # The giant (room 58). With the shield (a protection, v56 != 0) he only wanders; after
 # about three timer rounds (v12 = 250, v187 = 2) he lies down and sleeps (+7). Then the
-# chest by him (+8).
+# chest by him (+8). Off the bank with the cloud zones two pixels in (a walk along
+# its top line falls).
+keepin 46 96 113 113 114 70 156 122 65 50 74 166
 room 58
 waitvar 186 1 3000
 expect score 134
@@ -361,7 +369,9 @@ keepin
 # planted (v105). Step onto the stalk there and climb down through rooms 71 and 70
 # (the same band-priority detours as on the way up) to room 6.
 room 72
-keepin 46 94 113 115 112 68 158 124 65 50 74 166
+# The cloud zones two pixels in: the shortest way to the stalk runs along the
+# bank's lower line (y 115), and a late turn there is a fall.
+keepin 46 96 113 113 114 70 156 122 65 50 74 166
 area 66 100 70 110
 waitvar 107 1 50
 hold D

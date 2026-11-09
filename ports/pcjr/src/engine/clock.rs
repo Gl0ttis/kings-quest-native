@@ -80,6 +80,10 @@ pub enum Site {
     /// the jump back to `$1ABB`, for the actions that write a variable (08-12, 35, 36:
     /// set, reset, increment, decrement, assign, and the room tests).
     Op(u8),
+    /// wait_key's timer countdown (v2, v9-v12) and its tests up to v23's (`$1445`-
+    /// `$14A0`): a tick there that prints the last queued message (v23 = 0) lets this
+    /// loop return to the line editor.
+    WaitKeyTimers,
 }
 
 impl Site {
@@ -87,6 +91,7 @@ impl Site {
         match self {
             Site::Disk => (0x4D93..0x4E30).contains(&ip),
             Site::CycleStart => (0x14F2..0x14FE).contains(&ip),
+            Site::WaitKeyTimers => (0x1445..=0x14A0).contains(&ip),
             Site::Op(op) => {
                 let handler = match op {
                     0x08 => 0x1B7C..0x1B8D,
