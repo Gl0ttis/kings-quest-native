@@ -5,8 +5,10 @@
 //! - the disk's files (`files/`), the engine as it runs (`res/engine.bin`, the resource
 //!   table read over it) and the table (`res/manifest.txt`);
 //! - rooms: the script (actions, cycle rules, parser rules, messages) and the picture
-//!   (drawn with the PCjr port's painter, and rendered to OUT/pics/NNN.png in the IBM
-//!   colours);
+//!   (drawn with the PCjr port's painter, and rendered in composite colour: each
+//!   4-dot group's colour to OUT/pics/NNN.png, the decoded signal with its fringes to
+//!   OUT/pics/NNN.signal.png; its colour numbers, 168 rows of 160, to
+//!   OUT/res/room/NNN.visual.bin);
 //! - views: loops and cels;
 //! - sounds: parsed (in the PCjr's format);
 //! - the vocabulary (`res/vocab.txt`).
@@ -15,8 +17,9 @@
 //! decode.
 
 use kq1_formats::{png, script};
+use kq1_pc::composite::{self, Mode};
 use kq1_pc::disk::{Disk, ROOMS, SOUNDS, VIEWS};
-use kq1_pc::{color, pic, vocab};
+use kq1_pc::{pic, vocab};
 use std::{fs, path::PathBuf};
 
 /// Room 64's script header is off by one on every release's disk (the PCjr's
@@ -116,14 +119,22 @@ fn main() {
                 p.plots,
                 if clean { String::new() } else { format!(" PICTURE WARNINGS: {:?}", p.warnings) }
             );
-            // The whole 160 x 168 picture, each pixel 2 x 1, in the IBM colours.
+            // The whole 160 x 168 picture in composite colour, a pixel 4 dots of 640.
             use pic::{HEIGHT, WIDTH};
-            let rgb: Vec<u8> = (0..HEIGHT)
-                .flat_map(|y| (0..WIDTH * 2).map(move |x| (x / 2, y)))
-                .flat_map(|(x, y)| color::rgb(p.visual(x, y)))
-                .collect();
-            fs::write(out.join(format!("pics/{r:03}.png")), png::encode_rgb((WIDTH * 2) as u32, HEIGHT as u32, &rgb))
-                .unwrap();
+            let visual: Vec<u8> =
+                (0..HEIGHT).flat_map(|y| (0..WIDTH).map(move |x| (x, y))).map(|(x, y)| p.visual(x, y)).collect();
+            fs::write(out.join(format!("res/room/{r:03}.visual.bin")), visual).unwrap();
+            for (mode, name) in [(Mode::Groups, "png"), (Mode::Signal, "signal.png")] {
+                let rgb: Vec<u8> = (0..HEIGHT)
+                    .flat_map(|y| {
+                        let row: Vec<u8> = (0..WIDTH).map(|x| p.visual(x, y)).collect();
+                        composite::picture_row(&row, mode)
+                    })
+                    .flatten()
+                    .collect();
+                let png = png::encode_rgb((WIDTH * 4) as u32, HEIGHT as u32, &rgb);
+                fs::write(out.join(format!("pics/{r:03}.{name}")), png).unwrap();
+            }
         }
         println!("{line}");
     }

@@ -58,6 +58,10 @@ fn every_resource_decodes() {
         }
         assert_eq!((scripts, drawn, views, sounds), (80, 79, 88, 40), "{path:?}");
         assert_eq!(kq1_pc::vocab::read(&cs).unwrap().len(), 369, "{path:?}");
+        // The colour patterns are the engine's.
+        let t = kq1_pc::vocab::DATA_SEGMENT + kq1_pc::composite::PATTERN_TABLE;
+        let doubled: Vec<u8> = kq1_pc::composite::PATTERN.iter().map(|p| p << 4 | p).collect();
+        assert_eq!(&cs[t..t + 16], &doubled[..], "{path:?}");
     }
 }
 

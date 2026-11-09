@@ -128,7 +128,7 @@ same, and so are the empty stubs; the others differ in two ways:
 **The pictures** are the PCjr's byte for byte, but for eight rooms': 8, 18, 25, 28, 39,
 41, 52 and 65.
 
-## The display (to confirm in the engine)
+## The display (to confirm in the engine; the colours: [src/composite.rs](../src/composite.rs))
 
 The engine sets BIOS mode 4, then writes `1Ah` to the CGA's mode register (`3D8h`,
 `$19AA`): 640×200 graphics with the colour burst on, so that on a composite monitor

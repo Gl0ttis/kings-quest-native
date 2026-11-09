@@ -31,7 +31,8 @@ content):
 - the disk's files, and the engine's code segment as it runs;
 - rooms as `res/room/NNN.script.bin` and `NNN.pic.bin`;
 - views and sounds;
-- each room's picture as `pics/NNN.png`, in the IBM colours for now.
+- each room's picture in composite colour: `pics/NNN.png` with each 4-dot group in
+  its colour, `pics/NNN.signal.png` decoded from the signal, with its fringes.
 
 It checks every script, picture, view and sound, and the vocabulary, and reports each
 one.
@@ -39,7 +40,7 @@ one.
 ## Tests
 
 `cargo test -p kq1-pc`. The tests that need the disk image skip themselves without it.
-They check that every resource decodes, that the original and the crack hold the same
+They check that every resource decodes (the colour table included), that the original and the crack hold the same
 game, and the original's protection sector.
 
 ## Documentation

@@ -25,6 +25,7 @@ both have it working.
 | 1. Disk image | **Done.** The original as dumped (HxC `.mfm`, through the shared decoder, which now lists unreadable sectors) and the cracked 360K `.img`. The copy protection, one unreadable sector on track 6, is required on the original; the two images hold the same game (tested). The CGA+RGB edition is recognised and refused. |
 | 2. Disk layout | **Done** ([disk-layout.md](disk-layout.md)): a DOS disk with three files; the engine `MAIN.EXE`, run at 0060:0000, its data segment at CS + `$511`; the resource table on sectors 10-11, read over the code at CS:`$88`, in the PCjr's entry format; the read routine. |
 | 3. Static formats | **Done** (`kqextract-pc`). With the PCjr port's decoders: all 80 well-formed scripts parse, all 79 pictures draw cleanly, all 88 views decode (byte for byte the PCjr's), all 40 sounds parse, and the 369-word vocabulary. The scripts are a revision of the PCjr's (renumbered variables, some rooms changed); eight pictures and three sound resources differ. |
+| Composite colour | **Done** ([src/composite.rs](../src/composite.rs)). The engine draws only colours 0 and 7, so the signal is two levels a dot, and the colours are the monitor's decoding of the dot patterns. Two modes from one model: each 4-dot group in its own colour, and the signal decoded dot by dot with the fringes between colours. Its hue, saturation and level are measured from the original in 86Box (IBM's BIOS, the CGA's composite output; [tools/86box/](../tools/86box/README.md)): within 6/255 in flat areas. The engine's colour table (DS:`$12BA`) gives each PCjr colour's pattern. |
 | 4. Measuring tool | **Next.** |
 | 5-10 | To do. |
 
@@ -51,27 +52,29 @@ both have it working.
    design at other addresses; map each of the PCjr port's routines to the PC
    engine's (an address table in engine.md), then compare pass by pass. Expect the
    variable renumbering in the scripts to come from the engine's own variables.
-3. **The screen.** The PC's picture buffer and its copy to the CGA (`$1966`), the
-   text in 640-dot mode, and the composite colours (below).
+3. **The screen.** The PC's picture buffer and its copy to the CGA (`$1966`), and the
+   text in 640-dot mode, shown through the composite model.
 4. **Sound.** Find how the engine plays the sound-chip streams on the speaker (the
    timer's channel 2 at `$158B`-`$15C8`, port `61h`), and play them as it does.
 5. **Timing**, as on the PCjr: a cost model fitted to refemu-pc.
-6. **The player**: the PCjr's, with the composite display and the speaker.
+6. **The player**: the PCjr's, with the speaker, and the composite display in either
+   mode (the group colours by default, the signal with its fringes as an option).
 
 ## Decisions to make
 
-- **Composite colour.** The original shows 16 colours only on a composite monitor
-  (or a TV), as NTSC artefacts of the dot patterns. The port has to turn the dot
-  patterns into colours. Options: a table of 16 colours, one per 4-dot group (simple,
-  no fringes); or a model of the composite signal's decoding, which also gives the
-  fringes between groups as a monitor shows them. Both depend on the CGA's revision
-  (the 1981 and 1983 cards differ in their composite output) and on the foreground
-  colour the engine sets (7, not 15). Record the choice here.
 - **The protection's code in refemu.** As above: emulate the unreadable sector, or
   start as the crack does.
 - **What to share with the PCjr port.** The painter, views, sounds' format, the
   engine's structure: move into `crates/` once both ports have them working, not
   before.
+
+## Decisions
+
+- **Composite colour: both modes** (the user's choice), from one model of the signal.
+  Each 4-dot group's own colour is the default. The signal decoded with its fringes is
+  the option. The CGA's revision isn't a setting: with only colours 0 and 7 on
+  screen, the old and new cards differ only in the signal's overall level, which the
+  monitor's knobs set. The model's numbers are 86Box's old CGA.
 
 ## Findings so far
 
