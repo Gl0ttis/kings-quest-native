@@ -25,7 +25,8 @@ evidence for checking the port.
   - `INT 1Ah`: AH=00h.
 - **Text:** characters are drawn by the BIOS from its ROM font, which isn't here. The
   emulator records the character in each of the 25 × 40 cells instead, and leaves the
-  cell blank on screen. The frames carry those codes.
+  cell blank on screen; one drawn with attribute bit 7 (the BIOS XORs it onto the
+  picture: the title's credits) leaves the cell as it was. The frames carry the codes.
 - **Sound:** every write to the SN76496 (port C0h) is recorded with its cycle.
 - **Disk swaps:** the Master (the user's image, write-protected) and a Play diskette
   (`--play`). When the game is held at "Please insert your Play / Master diskette in
@@ -70,8 +71,9 @@ timing).
 
 **86Box is the timing reference.** No working PCjr is available to measure. 86Box adds
 no PCjr wait states for this game (only through the B800 window, which the game doesn't
-use), where a real PCjr would, so the port runs at 86Box's speed, the one a player of
-the game today sees. `--wait-states` stays for experiments.
+use), where a real PCjr would, so 86Box's speed, the one a player of the game today sees,
+is the target. The port's speed model is fitted to refemu's timing, which is within
+about 10% of it (above). `--wait-states` stays for experiments.
 
 ## The game cycle
 
@@ -158,11 +160,13 @@ numbers can't say "at the next prompt", and the prompts hold the game cycle.
   port's tests replay. `--resume EVENTS PASS LINE` follows an earlier run's log to pass
   PASS and carries on from route line LINE; it stops where that run stopped and types
   its keys there, so the log it writes is the original's run.
-- **`kqprobe-pcjr DISK EVENTS FROM TO [ADDR...]`:** the original's state at the start
-  of passes FROM-TO (the ego, the keys, any data-segment bytes asked for).
-  `KQ_CPS=FROM-TO` prints the checkpoints passed, as the port does with the same
-  variable.
-- **`kqframes-pcjr DISK EVENTS [--all] [--hashes OUT]`:** the screen, pass by pass, in
+- **`kqprobe-pcjr DISK EVENTS FROM TO [ADDR...] [--follow]`:** the original's state at
+  the start of passes FROM-TO (the ego, the keys, any data-segment bytes asked for).
+  It presses the log's keys at their checkpoints, which can type a prompt's keys
+  earlier and print a message a tick sooner; `--follow` follows the log as it was
+  recorded instead. `KQ_CPS=FROM-TO` prints the checkpoints passed, as the port does
+  with the same variable.
+- **`kqframes-pcjr DISK EVENTS [--from N] [--all] [--checkpoints] [--hashes OUT]`:** the screen, pass by pass, in
   the original and in the port. Both frames are taken at the start of each pass in the
   hardware's terms: the displayed page's picture area (160 bytes × 168 rows) and the
   25 × 40 character cells, or the cells alone when a text screen is up. The first pass
@@ -178,9 +182,6 @@ numbers can't say "at the next prompt", and the prompts hold the game cycle.
   route run again after a change to the emulator that moves its timing, and recorded
   anew: the old log's typed keys are typed at the same stops (pass n, the next prompt),
   whatever the timer's ticks do, and the new run's game state is compared with the old
-  trace pass by pass. When IBM's 0040:0089 behaviour came in (below), every route
-  played the same this way but magic-ring's last 900 passes, which kqroute-pcjr
-  `--resume` played again.
-- **`kqprobe-pcjr ... --follow`:** the original's state followed as the log was
-  recorded, rather than with its keys at their checkpoints (which can type a prompt's
-  keys earlier, and print a message a tick sooner).
+  trace pass by pass. When IBM's 0040:0089 behaviour came in ("What it emulates"),
+  every route played the same this way but magic-ring's last 900 passes, which
+  kqroute-pcjr `--resume` played again.

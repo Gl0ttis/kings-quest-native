@@ -31,6 +31,11 @@ all.
 - **Room 1 to room 16:** Up pressed at 45.13 s. The screen freezes at about 51.75 s,
   when Graham leaves, and room 16 appears at 54.19 s: 9.1 s from the key, about 2.4 s
   of it loading and drawing.
+- **A Play diskette from the port**, restored by the original with IBM's BIOS: the
+  PCjr has one drive, and changing disks in 86Box mid-game goes through its menus, so
+  the port's slot A save (sectors 282h-284h) went onto a copy of the cracked `.img`,
+  which leaves those sectors empty and boots as the original does. "restore game", A:
+  Graham was back where he had been saved, and the game went on.
 
 **86Box adds no PCjr wait states for this game.** It applies the Video Gate Array's
 wait states only to accesses through the B800 window, and the game draws into its pages

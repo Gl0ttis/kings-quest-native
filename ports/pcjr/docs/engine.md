@@ -89,7 +89,10 @@ See [src/engine/clock.rs](../src/engine/clock.rs). The port passes the same
 that refemu-pcjr logged (`--events`) in the same intervals: a tick that interrupted a
 disk read at the read; one that interrupted an action writing a variable before the
 write (`set 25` as a room starts turns the timer's key reading on); one at the game
-cycle's start before the keypad direction is read; one in wait_key's timer countdown
+cycle's start before the keypad direction is read (`$14F2`-`$14FE`); one that
+interrupted a message being queued (`$0A6F`-`$0A85`, or the print op before its first)
+before it goes in, since the timer's print countdown runs only while one waits; one in
+wait_key's timer countdown
 (`$1445`-`$14A0`) before v23 is tested (the last message printed lets the loop return
 to the line editor); code reading the keyboard after the keys pressed before it; a
 busy wait (on v23, on v15) ticks one at a time until it is over; the rest at the next
@@ -98,6 +101,9 @@ the checkpoint sequences and the per-pass state; with `KQ_PROBE=FROM-TO` the por
 prints the ego and the keys at each pass, and `kqprobe-pcjr` (refemu) prints the same
 from the original replaying the same log. `KQ_CPS=FROM-TO` prints the checkpoints
 numbered FROM-TO as they pass, in both (the first that differs is where to look).
+`kqprobe-pcjr --follow` follows the log as it was recorded, typing a prompt's keys
+where they were typed; without it, the keys go in at their checkpoints, which can
+type them earlier and move the message printing by a tick.
 
 ## Speed
 
@@ -154,7 +160,7 @@ through the share drawn is within 0.3 and 1.1 points of the original's. (With on
 cost per picture, fitted only on whole passes, it was 22% too long, and 9 points off
 part way.)
 
-**Start-up** is 4.1 s by the model to the first pass, 4.5 s in refemu. Most of the
+**Start-up** is 4.0 s by the model to the first pass, 4.5 s in refemu. Most of the
 difference is the title screen's wait, which in refemu is its own automatic RETURN
 after an idle stretch; in play it is the player's.
 

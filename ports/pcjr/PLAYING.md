@@ -60,7 +60,9 @@ The game's keys are the PCjr's:
 | `1` | Sound on or off (the game's own switch). |
 
 A joystick or game controller works as the PCjr's joystick: the stick (or the d-pad)
-walks Graham while you hold it, button 2 jumps, and button 1 is the `-` key held down.
+walks Graham while you hold it, button 2 jumps, and button 1 is the `-` key held down
+(on a PlayStation controller, Cross and Square). On Windows it is the first controller
+listed in "Set up USB game controllers" (`joy.cpl`), where Advanced picks which.
 
 These keys control `kq` itself:
 
