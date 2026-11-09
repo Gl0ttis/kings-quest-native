@@ -353,20 +353,17 @@ impl Machine {
             0 => {
                 self.video_mode = al & 0x7F;
                 self.ram[0x449] = self.video_mode;
-                // REFEMU_BIOS_HPOS=1: 0040:0089, the horizontal screen position, set to
-                // register 2 of the mode's CRTC table, as IBM's BIOS sets it (its
-                // tables at F000:F0A4, 16 bytes each: modes 0-1, 2-3, 4-8, 9 and up).
-                // Off by default: the game sets it itself when it finds 0 ($0554), and
-                // the recorded routes were measured that way (the 14 cycles that saves
-                // move the timer's ticks, so their logs no longer follow).
-                if std::env::var_os("REFEMU_BIOS_HPOS").is_some() {
-                    self.ram[0x489] = match self.video_mode {
-                        0 | 1 => 0x2C,
-                        2 | 3 => 0x5A,
-                        4..=8 => 0x2B,
-                        _ => 0x56,
-                    };
-                }
+                // 0040:0089, the horizontal screen position: register 2 of the mode's
+                // CRTC table, as IBM's BIOS sets it (its tables at F000:F0A4, 16 bytes
+                // each: modes 0-1, 2-3, 4-8, 9 and up): 2Bh after the game's mode 4 at
+                // boot, so it doesn't set its own ($0554); 56h after mode 9; the game
+                // saves it in DS:127B.
+                self.ram[0x489] = match self.video_mode {
+                    0 | 1 => 0x2C,
+                    2 | 3 => 0x5A,
+                    4..=8 => 0x2B,
+                    _ => 0x56,
+                };
                 // 32 KB modes use pages 6-7 on a 128 KB PCjr, 16 KB modes page 7.
                 let page = if matches!(self.video_mode, 9 | 10) { 6 } else { 7 };
                 self.crt_page = page;

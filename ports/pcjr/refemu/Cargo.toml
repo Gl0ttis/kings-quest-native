@@ -41,3 +41,7 @@ path = "src/bin/kqprofile.rs"
 [[bin]]
 name = "kqplotlog-pcjr"
 path = "src/bin/kqplotlog.rs"
+
+[[bin]]
+name = "kqrefollow-pcjr"
+path = "src/bin/kqrefollow.rs"

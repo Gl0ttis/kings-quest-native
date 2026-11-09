@@ -122,12 +122,12 @@ fn the_max_score_route_matches_the_original() {
 }
 
 /// The magic-ring route (routes/magic_ring.route): the max-score route with the ring
-/// put on and rubbed (invisible until the spell runs out, -3), ending at 155; 22462
+/// put on and rubbed (invisible until the spell runs out, -3), ending at 155; 22460
 /// passes.
 #[test]
 fn the_magic_ring_route_matches_the_original() {
     let Some(disk) = original() else { return };
-    assert_eq!(replay(&disk, "magic_ring"), 22462);
+    assert_eq!(replay(&disk, "magic_ring"), 22460);
 }
 
 /// The giant-with-the-sling route (routes/giant_sling.route): the giant killed with the

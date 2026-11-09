@@ -2,14 +2,17 @@
 //! original and print its state at the start of passes FROM-TO: the ego (x, y, motion,
 //! direction), the key direction (DS:1279), the joystick's (DS:1278), the BIOS buffer,
 //! and any other data-segment bytes asked for (hex addresses). For finding where the
-//! port parts from the original.
+//! port parts from the original. `--follow`: follow the log as it was recorded
+//! (`Runner::follow`: its keys typed at the stops where they were typed) instead of
+//! pressing its keys at their checkpoints, which can type a prompt's keys earlier.
 
 use kq1_pcjr_refemu::runner::{Runner, Stopped};
 
 fn main() {
-    let a: Vec<String> = std::env::args().skip(1).collect();
+    let mut a: Vec<String> = std::env::args().skip(1).collect();
+    let follow = a.iter().position(|x| x == "--follow").map(|p| a.remove(p)).is_some();
     if a.len() < 4 {
-        eprintln!("usage: kqprobe-pcjr DISK EVENTS FROM TO [ADDR...]");
+        eprintln!("usage: kqprobe-pcjr DISK EVENTS FROM TO [ADDR...] [--follow]");
         std::process::exit(2);
     }
     let raw = std::fs::read(&a[0]).expect("disk");
@@ -17,11 +20,14 @@ fn main() {
     let (from, to): (u64, u64) = (a[2].parse().expect("FROM"), a[3].parse().expect("TO"));
     let extra: Vec<u16> = a[4..].iter().map(|h| u16::from_str_radix(h, 16).expect("hex address")).collect();
     let mut r = Runner::new(&raw).expect("boot");
-    r.replay(&events);
+    if !follow {
+        r.replay(&events);
+    }
     while r.passes < to {
-        match r.run(u64::MAX, 4_000_000_000) {
+        let step = if follow { r.follow(&events) } else { r.run(u64::MAX, 4_000_000_000) };
+        match step {
             Ok(Stopped::Pass) => {}
-            Ok(Stopped::Prompt) => {}
+            Ok(Stopped::Prompt) => continue,
             Err(e) => {
                 eprintln!("stopped: {e}");
                 break;

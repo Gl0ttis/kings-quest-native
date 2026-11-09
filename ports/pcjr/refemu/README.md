@@ -31,6 +31,10 @@ evidence for checking the port.
   (`--play`). When the game is held at "Please insert your Play / Master diskette in
   the drive and press Enter", the emulator puts that disk in and presses Enter, as a
   player would.
+- **Video mode changes** set 0040:0089, the horizontal screen position, to the mode's
+  CRTC register 2, as IBM's BIOS does (its tables at F000:F0A4): 2Bh after the game's
+  mode 4 at boot, so the game doesn't set its own ($0554); 56h after mode 9. The game
+  saves it in DS:127B.
 - **Keyboard:** keys from a plan or a key log, returned by `INT 16h`. A game held at a
   prompt for 3 million cycles (no pass, and a blocking `INT 16h` read with nothing typed)
   gets RETURN, as refemu does for the Apple. So do the title screens, which only poll.
@@ -170,7 +174,13 @@ numbers can't say "at the next prompt", and the prompts hold the game cycle.
   following the log, every picture's start, the bytes it writes to the displayed page
   by cycle, and the colours merged (`REFEMU_PLOTLOG`, machine.rs). For timing the
   port's drawing (`examples/drawcmp.rs`, `tools/drawfit.py`).
-- **`REFEMU_BIOS_HPOS=1`:** a mode change sets 0040:0089, the horizontal screen
-  position, to the mode's CRTC register 2, as IBM's BIOS does (56h after mode 9; the
-  game saves it in DS:127B). Off by default: the routes were recorded without it, and
-  the timer's ticks fall elsewhere with it, so their logs don't follow.
+- **`kqrefollow-pcjr DISK OLD.events OUT.events OUT.csv [--checkpoints]`:** a recorded
+  route run again after a change to the emulator that moves its timing, and recorded
+  anew: the old log's typed keys are typed at the same stops (pass n, the next prompt),
+  whatever the timer's ticks do, and the new run's game state is compared with the old
+  trace pass by pass. When IBM's 0040:0089 behaviour came in (below), every route
+  played the same this way but magic-ring's last 900 passes, which kqroute-pcjr
+  `--resume` played again.
+- **`kqprobe-pcjr ... --follow`:** the original's state followed as the log was
+  recorded, rather than with its keys at their checkpoints (which can type a prompt's
+  keys earlier, and print a message a tick sooner).
