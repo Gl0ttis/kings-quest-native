@@ -364,6 +364,17 @@ pub struct World {
     /// Print the checkpoints numbered FROM-TO as they pass (KQ_CPS=FROM-TO, as
     /// refemu-pcjr's).
     pub cps: Option<(u64, u64)>,
+    /// Each pass's screen as the player sees it ([`World::frame`]), hashed, at the
+    /// start of the pass (as the trace rows), when Some.
+    pub frame_hashes: Option<Vec<u64>>,
+    /// The whole frame at the start of pass N (`frame_at`), once reached.
+    pub frame_at: Option<u64>,
+    pub frame: Option<Vec<u8>>,
+}
+
+/// A frame's hash (FNV-1a), as refemu's tools hash the original's.
+pub fn frame_hash(f: &[u8]) -> u64 {
+    f.iter().fold(1469598103934665603u64, |h, &b| (h ^ b as u64).wrapping_mul(1099511628211))
 }
 
 impl World {
@@ -484,6 +495,9 @@ impl World {
                 let (a, b) = v.split_once('-')?;
                 Some((a.parse().ok()?, b.parse().ok()?))
             }),
+            frame_hashes: None,
+            frame_at: None,
+            frame: None,
             cps: std::env::var("KQ_CPS").ok().and_then(|v| {
                 let (a, b) = v.split_once('-')?;
                 Some((a.parse().ok()?, b.parse().ok()?))
@@ -590,6 +604,21 @@ impl World {
                 Err(e) => std::panic::resume_unwind(e),
             },
         }
+    }
+
+    /// The screen as the player sees it, in the hardware's terms: 1 when the text
+    /// screen is up, then its 40 × 25 characters; else 0, the displayed page's picture
+    /// area (160 bytes, each two pixels, × 168 rows, as video memory holds it) and the
+    /// characters of the graphics screen's cells. (Text is compared as characters: the
+    /// port has no ROM font.)
+    pub fn frame(&self) -> Vec<u8> {
+        let mut f = Vec::with_capacity(1 + screen::WIDTH * screen::HEIGHT + 1000);
+        f.push(self.text.text_mode as u8);
+        if !self.text.text_mode {
+            f.extend_from_slice(&self.screen.shown);
+        }
+        f.extend(self.text.grid().cells.iter().flatten());
+        f
     }
 
     /// The trace row for the pass starting now (refemu-pcjr's columns).

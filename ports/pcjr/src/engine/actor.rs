@@ -135,6 +135,15 @@ impl World {
         if self.keep_vars {
             self.vars_trace.push(self.vars);
         }
+        if self.frame_hashes.is_some() || self.frame_at == Some(self.passes) {
+            let f = self.frame();
+            if let Some(h) = self.frame_hashes.as_mut() {
+                h.push(super::frame_hash(&f));
+            }
+            if self.frame_at == Some(self.passes) {
+                self.frame = Some(f);
+            }
+        }
         if self.probe.is_some_and(|(a, b)| (a..=b).contains(&self.passes)) {
             let e = &self.actors[0];
             eprintln!(

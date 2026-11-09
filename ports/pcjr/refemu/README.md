@@ -146,3 +146,23 @@ numbers can't say "at the next prompt", and the prompts hold the game cycle.
   then the 25 × 40 text cells.
 - **A summary:** cycles per pass, the BIOS calls made, ports nothing models, and the
   text on screen.
+
+## The other tools
+
+- **`kqroute-pcjr DISK ROUTE`:** the route autopilot. It plays a route file
+  (`routes/*.route`) on the original and writes the event log and trace that the
+  port's tests replay. `--resume EVENTS PASS LINE` follows an earlier run's log to pass
+  PASS and carries on from route line LINE; it stops where that run stopped and types
+  its keys there, so the log it writes is the original's run.
+- **`kqprobe-pcjr DISK EVENTS FROM TO [ADDR...]`:** the original's state at the start
+  of passes FROM-TO (the ego, the keys, any data-segment bytes asked for).
+  `KQ_CPS=FROM-TO` prints the checkpoints passed, as the port does with the same
+  variable.
+- **`kqframes-pcjr DISK EVENTS [--all] [--hashes OUT]`:** the screen, pass by pass, in
+  the original and in the port. Both frames are taken at the start of each pass in the
+  hardware's terms: the displayed page's picture area (160 bytes × 168 rows) and the
+  25 × 40 character cells, or the cells alone when a text screen is up. The first pass
+  that differs is shown (rows, columns, bytes, text). `--hashes` writes the original's
+  frame hash for every pass: `reference/*.frames`, which the port's tests check.
+  `--checkpoints` replays a log with its keys at their checkpoints instead (gold_key's,
+  recorded that way).

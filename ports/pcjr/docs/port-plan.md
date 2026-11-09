@@ -26,7 +26,10 @@ engine draws.
 | Reference routes | `routes/walk_rooms_1_16.plan` (rooms 1 and 16) and `routes/save_restore.plan` (Play diskette, save, restore), recorded from the original as `reference/*.csv`. Compare the state columns; the cycles change with calibration. |
 | Picture painter | **Done** ([picture-format.md](picture-format.md)). The PCjr's own line, plot and fill routines, modelled literally; all 80 room pictures byte-identical to the engine's. |
 | 5. The engine | **Running** ([src/engine/](../src/engine/mod.rs), [engine.md](engine.md)). A native reimplementation, routine by routine, in the Apple port's style: decoded resources, named state, native screen planes. The timer interrupt (messages, music, keys) is replayed from refemu-pcjr's event log at the same points in the code. **Both reference routes match the original on every pass**: the walk (900 passes) and the save/restore (1,000 passes: making a Play diskette, saving, restoring), with every checkpoint in the same order (tests in `tests/engine.rs`). Saves are written in the original's format. Not yet: the speed model and the player; the text screens and inventory are ported but no route uses them yet. |
-| 6–10. Comparison onwards | The comparison runs (`examples/replay.rs`); the rest not started. |
+| 6. Pass-by-pass comparison | **Done.** Nine routes, played on the original by refemu's autopilot (`kqroute-pcjr`), match on every pass: the walk, save/restore, three deaths, the gold key, the maximum score, the magic ring and the giant with the sling (about 89,000 passes; `tests/engine.rs`). |
+| 8. The screen | **Done.** `kqframes-pcjr` compares the screen at every pass in the hardware's terms (the displayed page's picture bytes and the character cells): every screen of the nine routes is the same. The original's frame hashes are in `reference/*.frames`, checked by the tests. |
+| 9. Timing | In progress. |
+| 10. The player | Not started. |
 
 ## Findings so far
 

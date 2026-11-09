@@ -26,6 +26,10 @@ path = "src/bin/kqroute.rs"
 name = "kqprobe-pcjr"
 path = "src/bin/kqprobe.rs"
 
+[[bin]]
+name = "kqframes-pcjr"
+path = "src/bin/kqframes.rs"
+
 [dependencies]
 kq1-pcjr = { path = ".." }
 kq1-apple2 = { path = "../../apple2", default-features = false }

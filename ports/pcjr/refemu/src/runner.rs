@@ -110,6 +110,46 @@ impl Runner {
         self.replay = Some(q);
     }
 
+    /// Follow a log this tool wrote (kqroute-pcjr `--events`) exactly: type the keys
+    /// that come next in it (those typed where the run now stands), then run to the next
+    /// stop (a pass, a prompt), as kqroute-pcjr ran. Stopping where it stopped and typing
+    /// there repeats its timing, which pressing the keys at their checkpoints doesn't
+    /// (a prompt's key would come early). Errors if the run leaves the log.
+    pub fn follow(&mut self, log: &str) -> Result<Stopped, String> {
+        if !log.as_bytes().starts_with(self.events().as_bytes()) {
+            return Err(format!("the run left the log at pass {}", self.passes));
+        }
+        let mut p = self.events().len();
+        while p < log.len() {
+            let end = log[p..].find('\n').map_or(log.len(), |i| p + i + 1);
+            let mut f = log[p..end].split_whitespace();
+            match (f.next(), f.nth(1)) {
+                (Some("K"), Some(k)) => self.press(u16::from_str_radix(k, 16).map_err(|e| e.to_string())?),
+                _ => break,
+            }
+            p = end;
+        }
+        self.run(1_500_000, 200_000_000)
+    }
+
+    /// The screen as the player sees it, as the port's `World::frame` gives it: 1 and
+    /// the 40 × 25 characters when a text mode is up; else 0, the displayed page's
+    /// picture area (160 bytes × 168 rows) and the characters.
+    pub fn frame(&self) -> Vec<u8> {
+        let text_mode = !matches!(self.m.video_mode, 9 | 10);
+        let mut f = Vec::with_capacity(1 + 160 * 168 + 1000);
+        f.push(text_mode as u8);
+        if !text_mode {
+            let base = self.m.crt_page as usize * 0x4000;
+            for y in 0..168 {
+                let row = base + (y & 3) * 0x2000 + (y >> 2) * 160;
+                f.extend_from_slice(&self.m.ram[row..row + 160]);
+            }
+        }
+        f.extend(self.m.text.iter().flatten());
+        f
+    }
+
     /// Stop replaying: the rest of the log is dropped.
     pub fn end_replay(&mut self) {
         self.replay = None;

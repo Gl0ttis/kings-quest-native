@@ -1,7 +1,8 @@
 //! The engine against the original, pass by pass: each reference route's event log
 //! (refemu-pcjr `--events`: the timer ticks and keys, against the checkpoints) is
 //! replayed in the port, and every pass's state must equal the original's trace
-//! (refemu-pcjr `--trace`). Skipped without the original's disk in original/.
+//! (refemu-pcjr `--trace`), and its screen the original's (kqframes-pcjr `--hashes`).
+//! Skipped without the original's disk in original/.
 
 use kq1_pcjr::disk::Disk;
 use kq1_pcjr::engine::clock::Replay;
@@ -23,8 +24,13 @@ fn replay(disk: &Disk, name: &str) -> usize {
     let events = std::fs::read_to_string(dir.join(format!("{name}.events"))).expect("the event log");
     let trace = std::fs::read_to_string(dir.join(format!("{name}.csv"))).expect("the trace");
     let reference: Vec<Vec<&str>> = trace.lines().skip(1).map(|l| l.split(',').collect()).collect();
+    // The screen at each pass (refemu's kqframes-pcjr --hashes), where recorded.
+    let frames: Option<Vec<u64>> = std::fs::read_to_string(dir.join(format!("{name}.frames")))
+        .ok()
+        .map(|t| t.lines().map(|l| u64::from_str_radix(l, 16).expect("a frame hash")).collect());
     let mut w = World::new(disk, Box::new(Replay::parse(&events))).expect("engine");
     w.max_passes = reference.len() as u64;
+    w.frame_hashes = frames.is_some().then(Vec::new);
     let why = w.run();
     assert!(w.trace.len() >= reference.len(), "{name}: stopped after {} passes: {why}", w.trace.len());
     for (row, r) in w.trace.iter().zip(&reference) {
@@ -37,6 +43,12 @@ fn replay(disk: &Disk, name: &str) -> usize {
             format!("{:016x}", row.vars_hash),
         ];
         assert_eq!(mine.as_slice(), &r[3..9], "{name}: pass {} differs", row.pass);
+    }
+    if let (Some(orig), Some(port)) = (&frames, &w.frame_hashes) {
+        assert_eq!(orig.len(), reference.len(), "{name}: a frame hash per pass");
+        for (k, (a, b)) in orig.iter().zip(port).enumerate() {
+            assert_eq!(a, b, "{name}: the screen at pass {} differs (kqframes-pcjr shows how)", k + 1);
+        }
     }
     reference.len()
 }

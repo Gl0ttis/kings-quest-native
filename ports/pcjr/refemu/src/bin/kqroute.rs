@@ -1363,27 +1363,10 @@ fn main() {
     let mut d = d;
     let mut from = 1;
     if let Some((events, pass, line)) = &resume {
-        // The run is repeated as it went: it stops where the autopilot stopped (each
-        // pass, each prompt), and the keys that follow in the old log are the ones typed
-        // there. (Pressing them at their checkpoints instead moves a prompt's key earlier
-        // than it was typed, and the log written would not be the original's.)
+        // The run is repeated as it went (Runner::follow): its stops, its keys there.
         let old = std::fs::read_to_string(events).expect("the event log to resume");
-        loop {
-            let mut p = d.r.events().len();
-            assert!(old.as_bytes().starts_with(d.r.events().as_bytes()), "resuming: the run left the log at pass {}", d.r.passes);
-            while p < old.len() {
-                let end = old[p..].find('\n').map_or(old.len(), |i| p + i + 1);
-                let mut f = old[p..end].split_whitespace();
-                match (f.next(), f.nth(1)) {
-                    (Some("K"), Some(k)) => d.r.press(u16::from_str_radix(k, 16).expect("a key")),
-                    _ => break,
-                }
-                p = end;
-            }
-            if d.r.passes >= *pass {
-                break;
-            }
-            if let Err(e) = d.r.run(1_500_000, 2_000_000_000) {
+        while d.r.passes < *pass {
+            if let Err(e) = d.r.follow(&old) {
                 panic!("resuming: {e}");
             }
         }
