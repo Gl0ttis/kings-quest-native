@@ -260,14 +260,17 @@ say get shield
 expect score 112
 say get sceptre   # the PCjr only knows this spelling (and rod, staff)
 expect score 118
-# West to room 78 (on the PCjr the exit is rule 00AD: x 2-8, y 60-85; the Apple's
-# works at y 78-102): eat the mushroom (+3) to shrink, and
+# West to room 78 (on the PCjr the exit is rule 00AD: x 2-8, y 60-85, of which only
+# y 78-85 is on Graham's side of the wall; the Apple's works at y 78-102): eat the
+# mushroom (+3) to shrink, and
 # leave west through the small hole (+1). Eating it scores +3 but the mushroom item's
 # point goes with it (net +2).
-area 12 68 16 78
-hold L
-waitvar 1 78 100
+enter 78 4 79 8 84
 wait 4
+# The mushroom lasts while timer v2 runs (150 passes; at 2 a cycle rule kills Graham in
+# the hole), not long enough to cross the room: walk to the hole first (x 9 is as far as
+# full size goes), then eat it.
+area 12 77 16 79
 say eat mushroom
 expect score 120
 edge L
@@ -276,6 +279,9 @@ expect score 121
 # The note (+1 for reading it).
 say read note
 expect score 122
+# Small, Graham can't leave room 36 (rule 0039 cancels the edge): wait until the
+# mushroom wears off (v45).
+waitvar 45 0 300
 
 # The condor (room 22) appears when the random bit v14 is 1 on entry and the beanstalk
 # hasn't been planted. If it touches Graham while he is in mid-jump, it carries him

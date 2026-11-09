@@ -1,4 +1,4 @@
-//! kqroute-pcjr DISK ROUTE [--events OUT] [--trace OUT] [--keys OUT]
+//! kqroute-pcjr DISK ROUTE [--events OUT] [--trace OUT] [--keys OUT] [--resume EVENTS PASS LINE]
 //!
 //! Plays a route through the original PCjr game, in refemu-pcjr, with an autopilot, and
 //! writes the event log and the trace of that run: the reference the port is replayed
@@ -903,16 +903,18 @@ fn run_line(d: &mut Driver, line: &str) -> Result<(), String> {
             }
         }
         "jumpuntil" => {
-            // jumpuntil V VALUE MAX: keep jumping ("jump" whenever Graham is in his own
-            // view, view 0, not in a jump) until vV == VALUE.
+            // jumpuntil V VALUE MAX: keep jumping (the '0' key, which sets v17 for the
+            // global script's jump, whenever Graham is in his own view, view 0, not in a
+            // jump) until vV == VALUE. The PCjr has no typed "jump".
             let (v, val, max) = (nums[0] as usize, nums[1] as u8, nums[2] as u64);
             let start = d.r.passes;
             while d.r.passes < start + max {
                 if d.v(v) == val {
                     return Ok(());
                 }
-                if d.r.ds(0x11E1 + 5) == 0 {
-                    d.say("jump")?;
+                if d.r.ds(0x11E1 + 5) == 0 && d.r.m.keys.is_empty() && d.v(17) == 0 {
+                    d.stop()?;
+                    d.step(Some(0x0B30))?;
                 } else {
                     d.step(None)?;
                 }
@@ -1114,10 +1116,11 @@ fn retryable(d: &Driver, e: &str) -> bool {
 
 /// Play the route; each line from a snapshot, retried with 1-30 extra passes of waiting
 /// (and then with the line before retried too) when chance goes against it.
-fn play(d0: Driver, route: &str) -> (Driver, Option<(usize, String)>) {
+/// Play the route from file line `from` (1 from the start; later when resuming).
+fn play(d0: Driver, route: &str, from: usize) -> (Driver, Option<(usize, String)>) {
     let mut d = d0;
     for _ in 0..30 {
-        if d.v(25) != 0 && d.r.ds(0x11E1) == d.v(1) {
+        if from > 1 || d.v(25) != 0 && d.r.ds(0x11E1) == d.v(1) {
             break;
         }
         d.step(None).expect("start");
@@ -1126,7 +1129,7 @@ fn play(d0: Driver, route: &str) -> (Driver, Option<(usize, String)>) {
         .lines()
         .enumerate()
         .map(|(n, l)| (n, l.split('#').next().unwrap().trim().to_string()))
-        .filter(|(_, l)| !l.is_empty())
+        .filter(|(n, l)| !l.is_empty() && n + 1 >= from)
         .collect();
     let mut snaps: Vec<Driver> = Vec::new();
     let mut i = 0;
@@ -1211,8 +1214,18 @@ fn main() {
     let events_out = opt("--events");
     let trace_out = opt("--trace");
     let keys_out = opt("--keys");
+    // --resume EVENTS PASS LINE: replay an earlier run's event log to the start of pass
+    // PASS (where that run began route line LINE), then play the route from LINE. The
+    // log and trace written are the whole run's.
+    let resume = args.iter().position(|a| a == "--resume").map(|p| {
+        let v: Vec<String> = args.drain(p..(p + 4).min(args.len())).skip(1).collect();
+        assert!(v.len() == 3, "--resume EVENTS PASS LINE");
+        (v[0].clone(), v[1].parse::<u64>().expect("PASS"), v[2].parse::<usize>().expect("LINE"))
+    });
     if args.len() != 2 {
-        eprintln!("usage: kqroute-pcjr DISK ROUTE [--events OUT] [--trace OUT] [--keys OUT]");
+        eprintln!(
+            "usage: kqroute-pcjr DISK ROUTE [--events OUT] [--trace OUT] [--keys OUT] [--resume EVENTS PASS LINE]"
+        );
         std::process::exit(2);
     }
     let raw = std::fs::read(&args[0]).unwrap_or_else(|e| panic!("{}: {e}", args[0]));
@@ -1247,7 +1260,20 @@ fn main() {
         wade: false,
         mourning: false,
     };
-    let (d, failed) = play(d, &route);
+    let mut d = d;
+    let mut from = 1;
+    if let Some((events, pass, line)) = &resume {
+        d.r.replay(&std::fs::read_to_string(events).expect("the event log to resume"));
+        while d.r.passes < *pass {
+            if let Err(e) = d.r.run(u64::MAX, 4_000_000_000) {
+                panic!("resuming: {e}");
+            }
+        }
+        d.r.end_replay();
+        d.water_room = d.g.water_rooms.contains(&d.v(1));
+        from = *line;
+    }
+    let (d, failed) = play(d, &route, from);
     for e in &d.events {
         println!("{e}");
     }

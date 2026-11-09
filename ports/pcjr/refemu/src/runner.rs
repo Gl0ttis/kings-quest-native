@@ -110,6 +110,11 @@ impl Runner {
         self.replay = Some(q);
     }
 
+    /// Stop replaying: the rest of the log is dropped.
+    pub fn end_replay(&mut self) {
+        self.replay = None;
+    }
+
     /// A byte of the engine's data segment.
     pub fn ds(&self, off: u16) -> u8 {
         self.m.ram[cpu::lin(DATA_SEG, off) as usize]
