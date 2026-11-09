@@ -113,6 +113,13 @@ impl World {
         let r = pic::draw(&mut p, &mut self.g.pic);
         if let (Some(mut log), Some(before)) = (log, before) {
             log.marks.push((log.writes.len(), r.work, r.plots));
+            if let (true, Some(t)) = (self.drawing_room, self.drawing_trace.as_mut()) {
+                if let Some(pic) = t.last_mut() {
+                    // The frame and the picture: one drawing, their work added up.
+                    let (n0, w0) = pic.last().copied().unwrap_or_default();
+                    pic.extend(log.marks.iter().map(|&(n, w, _)| (n0 + n, w0.plus(&w))));
+                }
+            }
             self.screen.shown = before;
             self.show_drawing(&log);
         } else {
@@ -164,7 +171,12 @@ impl World {
     pub fn draw_room_picture(&mut self) {
         self.checkpoint(0x34F5);
         if self.g.restoring {
+            self.cost.pictures_done += 1;
             return;
+        }
+        if let Some(t) = self.drawing_trace.as_mut() {
+            t.push(Vec::new());
+            self.drawing_room = true;
         }
         self.screen.shown.fill(0xFF);
         self.screen.work.fill(0x11);
@@ -175,7 +187,9 @@ impl World {
         let frame = self.res.ds[pic::FRAME..pic::FRAME + 11].to_vec();
         self.interpret(&frame);
         self.draw_loaded_picture();
+        self.drawing_room = false;
         self.merge_colours();
+        self.cost.pictures_done += 1;
     }
 
     /// `$3534`: the loaded picture, over what is there.

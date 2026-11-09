@@ -166,3 +166,11 @@ numbers can't say "at the next prompt", and the prompts hold the game cycle.
   frame hash for every pass: `reference/*.frames`, which the port's tests check.
   `--checkpoints` replays a log with its keys at their checkpoints instead (gold_key's,
   recorded that way).
+- **`kqplotlog-pcjr DISK EVENTS OUT`:** the original's room-picture drawing, timed:
+  following the log, every picture's start, the bytes it writes to the displayed page
+  by cycle, and the colours merged (`REFEMU_PLOTLOG`, machine.rs). For timing the
+  port's drawing (`examples/drawcmp.rs`, `tools/drawfit.py`).
+- **`REFEMU_BIOS_HPOS=1`:** a mode change sets 0040:0089, the horizontal screen
+  position, to the mode's CRTC register 2, as IBM's BIOS does (56h after mode 9; the
+  game saves it in DS:127B). Off by default: the routes were recorded without it, and
+  the timer's ticks fall elsewhere with it, so their logs don't follow.

@@ -3,6 +3,11 @@ the original's cycles per pass (refemu-pcjr's trace, reference/*.csv).
 
     python tools/costfit.py --fit COSTS.csv TRACE.csv [...] [--check COSTS.csv TRACE.csv ...]
 
+The drawing of a room picture is timed on its own (tools/drawfit.py, from every byte
+the original writes as it draws), so its costs (DRAWING) are fixed here, not fitted on
+the passes: of a loading pass, what is left after them is the sectors' and a picture's
+other work (c34F5).
+
 Row k of the counts is pass k's work; the trace's row k+1 gives its cycles. The fit is
 over the --fit routes; the --check routes are only measured with the constants found.
 
@@ -34,6 +39,20 @@ def load(files):
     y = np.array([float(d) for _, d in rows])
     return names, X, y
 
+
+# The drawing's costs, from tools/drawfit.py over the max-score run's 146 pictures:
+# the clear before the first byte and the merge after the last (c34F5), and the lines'
+# and fills' counts.
+DRAWING = {
+    "c34F5": 366_744.0 + 104_454.0,
+    "abs_steps": 1_110.35,
+    "to_steps": 1_217.87,
+    "lines": 1_093.98,
+    "fill_bytes": 26.83,
+    "fill_scans": 11.28,
+    "fill_runs": 923.48,
+    "fill_seeds": 319.92,
+}
 
 args = sys.argv[1:]
 i_check = args.index("--check") if "--check" in args else len(args)
@@ -82,8 +101,9 @@ while True:
     if not neg:
         break
     del ORD[min(neg, key=lambda i: c_ord[i + 1])]
-LD = [n for n in LOAD if col(X, n)[loading].std() > 0]
-resid = y - design(X, ORD) @ c_ord
+LD = ["sectors", "c34F5"]
+drawing = lambda X: sum(col(X, n) * v for n, v in DRAWING.items())
+resid = y - design(X, ORD) @ c_ord - drawing(X)
 while True:
     c_load, *_ = np.linalg.lstsq(np.column_stack([col(X, n)[loading] for n in LD]), resid[loading], rcond=None)
     neg = [i for i in range(len(LD)) if c_load[i] < 0]
@@ -94,13 +114,13 @@ while True:
 print("ordinary passes (cycles per count):")
 for n, v in zip(ORD, c_ord[1:]):
     print(f"  {n} {v:.2f}")
-print("loading passes, added:")
+print("loading passes, added (besides the drawing):")
 for n, v in zip(LD, c_load):
     print(f"  {n} {v:.2f}")
 
 
 def predict(X):
-    p = design(X, ORD) @ c_ord
+    p = design(X, ORD) @ c_ord + drawing(X)
     return p + sum(col(X, n) * v for n, v in zip(LD, c_load))
 
 

@@ -30,6 +30,21 @@ pub struct Work {
     pub fill_seeds: u32,
 }
 
+impl Work {
+    /// This and `o` added up.
+    pub fn plus(&self, o: &Work) -> Work {
+        Work {
+            abs_steps: self.abs_steps + o.abs_steps,
+            to_steps: self.to_steps + o.to_steps,
+            lines: self.lines + o.lines,
+            fill_bytes: self.fill_bytes + o.fill_bytes,
+            fill_scans: self.fill_scans + o.fill_scans,
+            fill_runs: self.fill_runs + o.fill_runs,
+            fill_seeds: self.fill_seeds + o.fill_seeds,
+        }
+    }
+}
+
 pub struct Picture {
     /// 168 rows of 160: priority << 4 | colour (the Apple painter's layout).
     pub buf: Vec<u8>,

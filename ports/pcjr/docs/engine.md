@@ -120,9 +120,11 @@ lengths show what was missing):
 - the timer handler: each tick, each joystick read (none is connected in refemu, so
   the read times out after 41 turns of its loop; with a stick, the turns until both
   axes settle), each byte sent to the sound chip;
-- loading: sectors read; for a picture, a fixed part (clearing, the frame, the colours
-  merged), the line steps (the absolute line's by error terms; the others' by a
-  multiply and a divide each), the lines, and the fills' bytes and runs.
+- loading: sectors read; for a room picture, the pages cleared before it, the line
+  steps (the absolute line's by error terms; the others' by a multiply and a divide
+  each), the lines, the fills' bytes, scans, runs and seeds, and after it the colours
+  merged into the work page (`$064C`, about 1.9M cycles, the finished picture on screen
+  meanwhile).
 
 Busy waits for the timer (the messages printing, `$462F`) aren't work: the clock takes
 them to the tick that ends them.
@@ -136,9 +138,21 @@ engine):
 | Passes | Median error | 90% within | Total |
 |---|---|---|---|
 | Ordinary | 1.5–1.6% | 3.6–3.9% | −0.27% to −0.01% |
-| Loading (disk, picture) | 0.71% | 2.4% | −0.10% to −0.05% |
-| Busy waits (the clock's) | 3.4% | 7.6–8.1% | +2.7% to +3.2% |
-| The whole run | | | +0.04% (giant sling, 24 min), +0.20% (gold key, 26 min) |
+| Loading (disk, picture) | 0.79–0.81% | 1.8% | −0.17% to −0.08% |
+| Busy waits (the clock's) | 3.3–3.9% | 8.7–8.8% | +3.3% to +3.7% |
+| The whole run | | | +0.11% (giant sling, 24 min), +0.19% (gold key, 26 min) |
+
+**The drawing** of a room picture is timed on its own, since a front end shows it as it
+goes: refemu-pcjr's `kqplotlog-pcjr` logs every byte the original writes to the
+displayed page while it draws, by cycle, and `examples/drawcmp.rs` sets the port's
+drawing beside it, mark by mark; `tools/drawfit.py` fits the clear before the first
+byte, the per-count costs of the lines and fills, and the end, over the max-score run's
+146 pictures (and `tools/costfit.py` then fits only the sectors and the merge on the
+loading passes). On the giant-sling run's 150, which the fit didn't see, each picture's
+drawing takes within 0.7% (median) and 2.5% (90%) of the original's time, and part way
+through the share drawn is within 0.3 and 1.1 points of the original's. (With one fixed
+cost per picture, fitted only on whole passes, it was 22% too long, and 9 points off
+part way.)
 
 **Start-up** is 4.1 s by the model to the first pass, 4.5 s in refemu. Most of the
 difference is the title screen's wait, which in refemu is its own automatic RETURN

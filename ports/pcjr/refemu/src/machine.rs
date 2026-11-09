@@ -99,6 +99,12 @@ pub struct Machine {
     /// The event log (`--events`): ticks, keys and disk swaps against the checkpoint
     /// count, for replaying in the port.
     pub events: Option<String>,
+    /// REFEMU_PLOTLOG=FILE: each room picture's drawing (`$34F5` to the colours merged,
+    /// `$064C`), for timing the port's drawing: "S cycle" at its start, then "W cycle n"
+    /// after each instruction that wrote to the displayed page (1800:0), n the bytes
+    /// written so far, and "E cycle" at the merge.
+    pub plot_log: Option<String>,
+    plot_writes: Option<u64>,
 }
 
 impl Machine {
@@ -148,6 +154,8 @@ impl Machine {
             unknown_ports: HashMap::new(),
             notes: Vec::new(),
             idle_polls: 0,
+            plot_log: std::env::var_os("REFEMU_PLOTLOG").map(|_| String::new()),
+            plot_writes: None,
             blocked_reads: 0,
             last_arrow: 0x4D00,
             joy_trigger: 0,
@@ -220,6 +228,21 @@ impl Machine {
             cpu.halted = false;
         } else {
             self.shared_accesses = 0;
+            if let (Some(log), 0x60) = (self.plot_log.as_mut(), cpu.s[CS]) {
+                use std::fmt::Write;
+                match (cpu.ip, self.plot_writes) {
+                    (0x34F5, None) => {
+                        self.plot_writes = Some(0);
+                        let _ = writeln!(log, "S {}", cpu.cycles);
+                    }
+                    (0x064C, Some(_)) => {
+                        self.plot_writes = None;
+                        let _ = writeln!(log, "E {}", cpu.cycles);
+                    }
+                    _ => {}
+                }
+            }
+            let written = self.plot_writes;
             let (before, fetched) = (cpu.cycles, cpu.fetched);
             cpu.step(self);
             // The 8088 fetches instructions a byte at a time, 4 clocks each. Intel's
@@ -236,6 +259,12 @@ impl Machine {
             let w = self.shared_accesses * self.wait_states;
             cpu.cycles += w;
             self.wait_cycles += w;
+            if let (Some(n), Some(m), Some(log)) = (self.plot_writes, written, self.plot_log.as_mut()) {
+                if n != m {
+                    use std::fmt::Write;
+                    let _ = writeln!(log, "W {} {n}", cpu.cycles);
+                }
+            }
         }
         if cpu.cycles >= self.next_tick {
             if cpu.flags & IF != 0 && self.pic_mask & 1 == 0 {
@@ -324,15 +353,20 @@ impl Machine {
             0 => {
                 self.video_mode = al & 0x7F;
                 self.ram[0x449] = self.video_mode;
-                // 0040:0089, the horizontal screen position: register 2 of the mode's
-                // CRTC table, as IBM's BIOS sets it (its tables at F000:F0A4, 16 bytes
-                // each: modes 0-1, 2-3, 4-8, 9 and up).
-                self.ram[0x489] = match self.video_mode {
-                    0 | 1 => 0x2C,
-                    2 | 3 => 0x5A,
-                    4..=8 => 0x2B,
-                    _ => 0x56,
-                };
+                // REFEMU_BIOS_HPOS=1: 0040:0089, the horizontal screen position, set to
+                // register 2 of the mode's CRTC table, as IBM's BIOS sets it (its
+                // tables at F000:F0A4, 16 bytes each: modes 0-1, 2-3, 4-8, 9 and up).
+                // Off by default: the game sets it itself when it finds 0 ($0554), and
+                // the recorded routes were measured that way (the 14 cycles that saves
+                // move the timer's ticks, so their logs no longer follow).
+                if std::env::var_os("REFEMU_BIOS_HPOS").is_some() {
+                    self.ram[0x489] = match self.video_mode {
+                        0 | 1 => 0x2C,
+                        2 | 3 => 0x5A,
+                        4..=8 => 0x2B,
+                        _ => 0x56,
+                    };
+                }
                 // 32 KB modes use pages 6-7 on a 128 KB PCjr, 16 KB modes page 7.
                 let page = if matches!(self.video_mode, 9 | 10) { 6 } else { 7 };
                 self.crt_page = page;
@@ -615,6 +649,11 @@ impl Bus for Machine {
     fn write(&mut self, a: u32, v: u8) {
         match a {
             0..=0x1FFFF => {
+                if let Some(n) = self.plot_writes.as_mut() {
+                    if (0x18000..0x20000).contains(&a) {
+                        *n += 1;
+                    }
+                }
                 self.shared_accesses += 1;
                 self.ram[a as usize] = v
             }

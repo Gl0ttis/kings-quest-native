@@ -396,6 +396,11 @@ pub struct World {
     /// every finished pass's.
     pub cost: cost::Cost,
     pub cost_trace: Option<Vec<cost::Cost>>,
+    /// Each room picture's drawing, as shown (with a front end watching): at each
+    /// mark, the bytes written to the displayed page so far and the work done (for
+    /// timing it against the original's, examples/drawcmp.rs).
+    pub drawing_trace: Option<Vec<Vec<(usize, crate::pic::Work)>>>,
+    drawing_room: bool,
     /// A front end's look at the game, about 60 times a second of the game's time (at
     /// checkpoints and in busy waits): to show the screen, play the sound bytes, put
     /// the disk asked for in the drive, keep the Play diskette.
@@ -546,6 +551,8 @@ impl World {
             frame_hashes: None,
             cost: cost::Cost::default(),
             cost_trace: None,
+            drawing_trace: None,
+            drawing_room: false,
             charged: 0.0,
             carry: 0.0,
             loading_cycles: 0,

@@ -37,3 +37,7 @@ kq1-apple2 = { path = "../../apple2", default-features = false }
 [[bin]]
 name = "kqprofile-pcjr"
 path = "src/bin/kqprofile.rs"
+
+[[bin]]
+name = "kqplotlog-pcjr"
+path = "src/bin/kqplotlog.rs"

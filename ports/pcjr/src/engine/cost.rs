@@ -12,9 +12,13 @@ use super::clock::CHECKPOINTS;
 // The constants: CPU cycles per count, fitted by tools/costfit.py over the max-score and
 // magic-ring routes (43,534 passes), every one kept >= 0. On the gold-key and
 // giant-sling routes, which the fit didn't see: passes without a disk read or a
-// picture within 1.56% (median) and 3.75% (90%) of the original's cycles in refemu,
-// the loading passes within 0.71% and 2.35%, the whole runs 0.12% short. Busy waits
+// picture within 1.57% (median) and 3.76% (90%) of the original's cycles in refemu,
+// the loading passes within 0.80% and 1.80%, the whole runs 0.13% short. Busy waits
 // for the timer aren't work: the paced clock takes them to the tick that ends them.
+// The drawing of a room picture is timed on its own (tools/drawfit.py, from every
+// byte the original writes to the displayed page as it draws, in the max-score run's
+// 146 pictures): the port shows it at that pace, each picture's drawing within 0.7%
+// (median) and 2.5% (90%) of the original's, and part way within 0.3 and 1.1 points.
 //
 // An ordinary pass: its rules, its actors and their drawing, the characters, the ticks.
 const ACTOR: f64 = 13_704.0; // per actor updated ($1665)
@@ -32,13 +36,18 @@ const JOYSTICK_TURN: f64 = JOYSTICK / 41.0; // per turn, a connected stick's rea
 const SOUND: f64 = 249.3; // per byte sent to the sound chip
 const BELOW: f64 = 156.8; // per row looked down for a priority under 15
                           // Loading: the disk and the picture.
-const SECTOR: f64 = 111_365.0;
-const PICTURE: f64 = 1_788_243.0; // per room picture: clearing, the frame, the colours merged
-const ABS_STEP: f64 = 1_284.0; // per step of the absolute line (F6)
-const TO_STEP: f64 = 1_486.0; // per step of the other lines (a multiply and a divide)
-const LINE: f64 = 1_184.0;
-const FILL_BYTE: f64 = 69.91;
-const FILL_RUN: f64 = 1_625.0;
+const SECTOR: f64 = 120_918.0;
+// A room picture: the pages cleared, before its first byte; after its last, the
+// colours merged into the work page ($064C), the picture shown meanwhile.
+const PICTURE_START: f64 = 366_744.0;
+const PICTURE_END: f64 = 1_939_673.0;
+const ABS_STEP: f64 = 1_110.35; // per step of the absolute line (F6)
+const TO_STEP: f64 = 1_217.87; // per step of the other lines (a multiply and a divide)
+const LINE: f64 = 1_093.98;
+const FILL_BYTE: f64 = 26.83;
+const FILL_SCAN: f64 = 11.28;
+const FILL_RUN: f64 = 923.48;
+const FILL_SEED: f64 = 319.92;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Cost {
@@ -72,6 +81,9 @@ pub struct Cost {
     /// Picture pixels plotted by lines and fills, and the drawing's work in detail.
     pub plots: u32,
     pub pic: crate::pic::Work,
+    /// Room pictures finished (their colours merged): their end's cost comes after
+    /// the drawing, which a front end shows as it goes.
+    pub pictures_done: u32,
     /// Ticks that ended a busy wait (`$462F` and the like): the time to them is the
     /// wait, not work.
     pub wait_ticks: u32,
@@ -173,7 +185,10 @@ impl Cost {
     /// pictures drawn (a player's fast loads skip their time).
     pub fn loading_cycles(&self) -> f64 {
         let cp = |a: u16| CHECKPOINTS.iter().position(|&x| x == a).map_or(0, |i| self.checkpoints[i]) as f64;
-        PICTURE * cp(0x34F5) + SECTOR * self.sectors as f64 + Cost::drawing_cycles(&self.pic)
+        PICTURE_START * cp(0x34F5)
+            + PICTURE_END * self.pictures_done as f64
+            + SECTOR * self.sectors as f64
+            + Cost::drawing_cycles(&self.pic)
     }
 
     /// The cycles of a picture's lines and fills (`work`), without its fixed part.
@@ -182,7 +197,9 @@ impl Cost {
             + TO_STEP * p.to_steps as f64
             + LINE * p.lines as f64
             + FILL_BYTE * p.fill_bytes as f64
+            + FILL_SCAN * p.fill_scans as f64
             + FILL_RUN * p.fill_runs as f64
+            + FILL_SEED * p.fill_seeds as f64
     }
 
     /// Count a visit of the checkpoint at `at`.
