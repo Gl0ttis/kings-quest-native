@@ -1,7 +1,7 @@
 [package]
 name = "kq1-pcjr"
 version = "0.1.0"
-description = "Native port of the 1984 IBM PCjr King's Quest (in progress): disk reader and tools. Runs on the user's own disk image."
+description = "Native port of the 1984 IBM PCjr King's Quest: engine, player (kq-pcjr) and tools. Runs on the user's own disk image."
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

@@ -16,7 +16,7 @@ release, each behaving as that release did: same rules, same timing, same quirks
 | Port | Original | Status | Crates |
 |---|---|---|---|
 | [Apple IIe](ports/apple2/README.md) | 1984, Sierra, Apple version by Jeff Stephenson (double hi-res, 128K) | Playable start to finish; matches the original on every pass of a 158-point playthrough | `kq1-apple2`, `kq1-apple2-refemu` |
-| [IBM PCjr](ports/pcjr/README.md) | 1984, Sierra/IBM (self-booting; PCjr only) | In progress: disk layout done, resources extract | `kq1-pcjr` |
+| [IBM PCjr](ports/pcjr/README.md) | 1984, Sierra/IBM (self-booting; PCjr only) | Playable start to finish; matches the original on every pass and screen of three whole-game playthroughs; its Play diskette is the original's | `kq1-pcjr`, `kq1-pcjr-refemu` |
 
 ## Layout
 
@@ -30,7 +30,7 @@ ports/
     reference/          traces measured from the original (numbers only), for the tests
     original/           your disk images (not in git)
     extracted/          decoded game data (not in git)
-  pcjr/                 the IBM PCjr port (in progress): crate kq1-pcjr
+  pcjr/                 the IBM PCjr port: crate kq1-pcjr (engine, kq-pcjr, tools)
     refemu/             crate kq1-pcjr-refemu: the reference PCjr (measuring only)
 .github/                CI, PR title check, release-please, Dependabot
 ```
@@ -39,23 +39,28 @@ Each port is self-contained in `ports/<platform>/`. To start a new one, read
 [docs/porting-guide.md](docs/porting-guide.md). Code shared between ports will go
 into crates under `crates/` when a second port needs it.
 
-## Playing (Apple IIe)
+## Playing
 
-Download `kq` for Windows or Linux from the
-[releases page](https://github.com/Gl0ttis/kings-quest-native/releases), put your three
-game disk images next to it and start it. [ports/apple2/PLAYING.md](ports/apple2/PLAYING.md)
-has the details, keys and options.
+Download the player for Windows or Linux from the
+[releases page](https://github.com/Gl0ttis/kings-quest-native/releases), put your own
+game disk images next to it and start it:
 
-## Building (Apple IIe)
+- Apple IIe: `kq`, with the three game disks.
+  [ports/apple2/PLAYING.md](ports/apple2/PLAYING.md) has the details, keys and options.
+- IBM PCjr: `kq-pcjr`, with the game disk.
+  [ports/pcjr/PLAYING.md](ports/pcjr/PLAYING.md) has the details, keys and options.
 
-Put the disk images in `ports/apple2/original/` (git ignores it), then:
+## Building
+
+Put the disk images in the port's `original/` folder (git ignores it), then:
 
 ```
-cd ports/apple2
-cargo run --release --bin kq -- original
+cargo run --release -p kq1-apple2 --bin kq -- ports/apple2/original
+cargo run --release -p kq1-pcjr --bin kq-pcjr
 ```
 
-See [ports/apple2/README.md](ports/apple2/README.md) for the tools, tests and documentation.
+See [ports/apple2/README.md](ports/apple2/README.md) and
+[ports/pcjr/README.md](ports/pcjr/README.md) for the tools, tests and documentation.
 
 ## Licence
 
