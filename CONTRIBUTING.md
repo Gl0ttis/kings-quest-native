@@ -71,11 +71,17 @@ Each crate has its own [semantic version](https://semver.org/), in its `Cargo.to
 and its own tags (`kq1-apple2-v0.2.0`). Nothing is bumped by hand:
 [release-please](https://github.com/googleapis/release-please) reads the
 conventional commits on `main` and keeps a release pull request open with the next
-versions and changelogs (`ports/<port>/CHANGELOG.md`). Its checks are started by the
-release workflow (GitHub doesn't start them for a pull request a workflow opened).
-If GitHub holds the release pull request's own CI run for approval ("action
-required"), approve it: its checks are the ones branch protection waits for.
-Merging it tags the release, and the release workflow attaches the builds of `kq`.
+versions and changelogs (`ports/<port>/CHANGELOG.md`). It merges itself once its checks
+pass (auto-merge), which tags the release, and the release workflow attaches the
+builds of `kq`. So every merge to `main` with a `feat` or `fix` for a port releases it,
+within minutes and without anyone's hand.
+
+release-please works with its own token, the repository secret `RELEASE_PLEASE_TOKEN`:
+a fine-grained personal access token for this repository only, with *Contents*,
+*Pull requests* and *Issues* (its labels) read and write. GitHub starts no workflows
+for what a workflow's own `GITHUB_TOKEN` does, so with that the release pull request
+would get no checks and its merge wouldn't release. Renew the token before it expires
+(GitHub emails a reminder): make a new one and replace the secret.
 The measuring emulators (`kq1-apple2-refemu`, `kq1-pcjr-refemu`) are not released:
 they are tools for checking the ports, never published, so release-please leaves them
 out and their version stays as it is. That is why release-please's `cargo-workspace`
