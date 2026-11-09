@@ -10,8 +10,10 @@
 //! Both are 160 × 168, the picture's size. The painter (pic.rs) addresses them in the
 //! PCjr's mode-9 layout; [`Screen`] maps that to rows and columns.
 
+use super::clock;
+use super::cost::Cost;
 use super::World;
-use crate::pic::{self, Mem};
+use crate::pic::{self, Mem, Work};
 use std::rc::Rc;
 
 pub const WIDTH: usize = 160;
@@ -44,6 +46,18 @@ fn at(off: u16) -> Option<usize> {
 struct Pages<'a> {
     s: &'a mut Screen,
     data: &'a [u8],
+    /// For a front end: the displayed page's writes, and how far the drawing had got.
+    log: Option<&'a mut DrawLog>,
+}
+
+/// A picture's drawing on the displayed page, for showing it as it goes.
+#[derive(Default)]
+struct DrawLog {
+    /// Each write: the pixel and its value.
+    writes: Vec<(usize, u8)>,
+    /// Marks about a quarter of a frame's time apart: the writes done by then, and the
+    /// work and plots so far.
+    marks: Vec<(usize, Work, u32)>,
 }
 
 impl Mem for Pages<'_> {
@@ -55,6 +69,9 @@ impl Mem for Pages<'_> {
         if let Some(i) = at(off) {
             if seg == 0x1800 {
                 self.s.shown[i] = v;
+                if let Some(l) = self.log.as_mut() {
+                    l.writes.push((i, v));
+                }
             } else {
                 self.s.work[i] = v;
             }
@@ -62,6 +79,13 @@ impl Mem for Pages<'_> {
     }
     fn data(&self, i: usize) -> Option<u8> {
         self.data.get(i).copied()
+    }
+    fn progress(&mut self, work: &Work, plots: u32) {
+        let Some(l) = self.log.as_mut() else { return };
+        let last = l.marks.last().map_or(0.0, |m| Cost::drawing_cycles(&m.1));
+        if Cost::drawing_cycles(work) - last >= clock::CYCLES_PER_FRAME as f64 / 4.0 {
+            l.marks.push((l.writes.len(), *work, plots));
+        }
     }
 }
 
@@ -79,12 +103,26 @@ impl Screen {
 }
 
 impl World {
-    /// `$353F`: draw `data` onto the pages.
+    /// `$353F`: draw `data` onto the pages. The original draws on the displayed page,
+    /// so with a front end watching (`on_frame`), the drawing is shown as it goes: the
+    /// displayed page's writes are played back in time, its work charged as it is done.
     fn interpret(&mut self, data: &[u8]) {
-        let mut p = Pages { s: &mut self.screen, data };
+        let mut log = self.on_frame.is_some().then(DrawLog::default);
+        let before = log.as_ref().map(|_| self.screen.shown.clone());
+        let mut p = Pages { s: &mut self.screen, data, log: log.as_mut() };
         let r = pic::draw(&mut p, &mut self.g.pic);
-        self.cost.plots += r.plots;
-        let (c, w) = (&mut self.cost.pic, r.work);
+        if let (Some(mut log), Some(before)) = (log, before) {
+            log.marks.push((log.writes.len(), r.work, r.plots));
+            self.screen.shown = before;
+            self.show_drawing(&log);
+        } else {
+            self.add_drawing_work(&r.work, r.plots);
+        }
+    }
+
+    fn add_drawing_work(&mut self, w: &Work, plots: u32) {
+        self.cost.plots += plots;
+        let c = &mut self.cost.pic;
         c.abs_steps += w.abs_steps;
         c.to_steps += w.to_steps;
         c.lines += w.lines;
@@ -92,6 +130,33 @@ impl World {
         c.fill_scans += w.fill_scans;
         c.fill_runs += w.fill_runs;
         c.fill_seeds += w.fill_seeds;
+    }
+
+    /// The logged drawing onto the displayed page, mark by mark: the writes up to it,
+    /// its work charged (the same in all as drawing it at once), and the front end's
+    /// frame when one is due, at its time.
+    fn show_drawing(&mut self, log: &DrawLog) {
+        let (mut done, mut work, mut plots) = (0, Work::default(), 0);
+        for &(upto, w, p) in &log.marks {
+            for &(i, v) in &log.writes[done..upto] {
+                self.screen.shown[i] = v;
+            }
+            done = upto;
+            let delta = Work {
+                abs_steps: w.abs_steps - work.abs_steps,
+                to_steps: w.to_steps - work.to_steps,
+                lines: w.lines - work.lines,
+                fill_bytes: w.fill_bytes - work.fill_bytes,
+                fill_scans: w.fill_scans - work.fill_scans,
+                fill_runs: w.fill_runs - work.fill_runs,
+                fill_seeds: w.fill_seeds - work.fill_seeds,
+            };
+            self.add_drawing_work(&delta, p - plots);
+            (work, plots) = (w, p);
+            self.charge();
+            self.clock.pace(self.cycles);
+            self.frame_due();
+        }
     }
 
     /// `$34F5`: op 06: the loaded room picture: both pages cleared, the frame, the

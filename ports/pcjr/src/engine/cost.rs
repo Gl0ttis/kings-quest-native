@@ -173,10 +173,12 @@ impl Cost {
     /// pictures drawn (a player's fast loads skip their time).
     pub fn loading_cycles(&self) -> f64 {
         let cp = |a: u16| CHECKPOINTS.iter().position(|&x| x == a).map_or(0, |i| self.checkpoints[i]) as f64;
-        let p = &self.pic;
-        PICTURE * cp(0x34F5)
-            + SECTOR * self.sectors as f64
-            + ABS_STEP * p.abs_steps as f64
+        PICTURE * cp(0x34F5) + SECTOR * self.sectors as f64 + Cost::drawing_cycles(&self.pic)
+    }
+
+    /// The cycles of a picture's lines and fills (`work`), without its fixed part.
+    pub fn drawing_cycles(p: &crate::pic::Work) -> f64 {
+        ABS_STEP * p.abs_steps as f64
             + TO_STEP * p.to_steps as f64
             + LINE * p.lines as f64
             + FILL_BYTE * p.fill_bytes as f64

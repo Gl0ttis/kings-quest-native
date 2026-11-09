@@ -132,6 +132,10 @@ pub trait Clock {
     /// picture drawing; part of the cycles passed to [`Clock::at`]). A clock for play
     /// can skip their time (fast loads).
     fn loading(&mut self, _cycles: u64) {}
+    /// Between checkpoints, `cycles` reached (a picture shown as it is drawn): a clock
+    /// for play waits for its time. No events come: those of the interval come at its
+    /// checkpoints, as always.
+    fn pace(&mut self, _cycles: u64) {}
 }
 
 /// The PCjr joystick as the game's read finds it (`$0563`): for each axis, the turns

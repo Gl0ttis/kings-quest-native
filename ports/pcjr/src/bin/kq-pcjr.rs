@@ -3,7 +3,8 @@
 //!
 //! Plays the IBM PCjr King's Quest in a window, with the native engine, at the
 //! original's speed (engine::cost: each pass lasts as long as it did on a PCjr, and the
-//! timer's 18.2 ticks a second fall where they did).
+//! timer's 18.2 ticks a second fall where they did). Room pictures appear as the
+//! original draws them, outlines then fills, at its pace.
 //!
 //! DISK is the game's disk: an HxC `.mfm` dump of the original or a 360K `.img`. With
 //! none given, kq-pcjr looks next to itself, then in the current folder and its
@@ -113,7 +114,7 @@ impl PlayerClock {
     }
 
     /// Wait until the game's cycle `cycles` is due.
-    fn pace(&mut self, cycles: u64) {
+    fn wait_for(&mut self, cycles: u64) {
         let cycles = cycles.saturating_sub(self.skipped);
         let speed = self.shared.lock().unwrap().speed;
         if speed != self.speed {
@@ -141,7 +142,7 @@ impl PlayerClock {
 
 impl Clock for PlayerClock {
     fn at(&mut self, _n: u64, cycles: u64) -> Vec<Event> {
-        self.pace(cycles);
+        self.wait_for(cycles);
         let mut out = self.keys();
         while (self.ticks + 1) * CYCLES_PER_TICK <= cycles {
             self.ticks += 1;
@@ -152,7 +153,7 @@ impl Clock for PlayerClock {
 
     /// A busy wait: until the next tick.
     fn waiting(&mut self, _n: u64, _cycles: u64) -> Vec<Event> {
-        self.pace((self.ticks + 1) * CYCLES_PER_TICK);
+        self.wait_for((self.ticks + 1) * CYCLES_PER_TICK);
         self.ticks += 1;
         let mut out = self.keys();
         out.push(Event::Tick(0xFFFF));
@@ -166,6 +167,10 @@ impl Clock for PlayerClock {
 
     fn joystick(&mut self) -> Option<Joystick> {
         self.joystick.then(joystick::read).flatten()
+    }
+
+    fn pace(&mut self, cycles: u64) {
+        self.wait_for(cycles);
     }
 
     fn loading(&mut self, cycles: u64) {

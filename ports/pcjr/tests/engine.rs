@@ -194,8 +194,8 @@ fn the_credits_are_xored_onto_the_scroll() {
     let clock = StickClock { ticks: 0, keys: Vec::new(), push_at: u64::MAX, cycles: 0 };
     let mut w = World::new(&disk, Box::new(clock)).expect("engine");
     w.on_frame = Some(Box::new(|w: &mut World| {
-        if w.cycles >= (10.0 * CPU_HZ) as u64 {
-            w.stop("10 s".into());
+        if w.cycles >= (14.0 * CPU_HZ) as u64 {
+            w.stop("14 s".into());
         }
     }));
     w.run();

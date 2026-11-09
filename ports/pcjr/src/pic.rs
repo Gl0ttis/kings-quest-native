@@ -58,6 +58,9 @@ pub trait Mem {
     fn write(&mut self, seg: u32, off: u16, v: u8);
     /// Byte `i` of the picture being drawn, or `None` past its end.
     fn data(&self, i: usize) -> Option<u8>;
+    /// The drawing's work so far, before each plot of a line and after each run of a
+    /// fill: for a front end that shows the picture as it is drawn.
+    fn progress(&mut self, _work: &Work, _plots: u32) {}
 }
 
 /// The interpreter's state the engine keeps in its data segment (`$198C`-`$1993`).
@@ -167,6 +170,7 @@ impl Painter<'_> {
     /// `$3792` + `$6BA`: plot at (x, y) by the mode and toggle.
     fn plot_at(&mut self, x: u8, y: u8) {
         let di = row(y).wrapping_add(x as u16);
+        self.m.progress(&self.work, self.plots);
         self.plots += 1;
         if self.mode & 1 != 0 {
             if self.toggle & 1 != 0 {
@@ -363,6 +367,7 @@ impl Painter<'_> {
                     self.write(PRI_SEG, left.wrapping_add(k), self.pri);
                 }
             }
+            self.m.progress(&self.work, self.plots);
             // $77C: try the seeds on the stack, newest first.
             loop {
                 let (width, a) = *stack.last().unwrap();

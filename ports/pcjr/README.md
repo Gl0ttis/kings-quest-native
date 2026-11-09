@@ -20,7 +20,7 @@ cargo run --release -p kq1-pcjr --bin kq-pcjr
 
 `kq-pcjr` finds the game's disk next to itself, in the current folder or in
 `original/` (or give its path). It plays in a window at the PCjr's speed, with its
-sound. The keys are the PCjr's: the arrows and Home, PgUp, End and PgDn walk (the same
+sound, and the room pictures are drawn on screen as the original draws them. The keys are the PCjr's: the arrows and Home, PgUp, End and PgDn walk (the same
 key again stops), typing enters commands, Enter submits, Tab shows the inventory, Esc
 pauses, 0 jumps. A joystick or game controller is the PCjr's joystick: the stick or
 d-pad walks, button 1 is the `-` key held down and button 2 jumps (`--no-joystick`
