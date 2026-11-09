@@ -1013,8 +1013,15 @@ fn run_line(d: &mut Driver, line: &str) -> Result<(), String> {
     }
 }
 
+/// Chance went against the line: a death, the dwarf, a condition set by chance, or a
+/// crossing spoiled (a random visitor on entry, such as the witch in room 46, who
+/// carries Graham off).
 fn retryable(d: &Driver, e: &str) -> bool {
-    d.dead() || e.contains("robbed") || e.starts_with("required")
+    d.dead()
+        || e.contains("robbed")
+        || e.starts_with("required")
+        || e.contains("going round in circles")
+        || e.contains("no path to edge")
 }
 
 /// Play the route; each line from a snapshot, retried with 1-30 extra passes of waiting

@@ -101,7 +101,8 @@ expect score 40
 room 44
 enter 79 128 105 138 127
 say give bowl
-say fill bowl
+# The PCjr rule is "fill" alone (noun 2 is a verb with nothing after it).
+say fill
 area 120 140 158 166
 say get fiddle
 expect score 48
