@@ -36,6 +36,18 @@ pub struct Runner {
     /// The instruction at the current position was counted already (the run stopped
     /// there).
     resume: bool,
+    /// Replaying an event log: the keys and disk swaps to make at each checkpoint (by
+    /// number), instead of answering the prompts.
+    replay: Option<std::collections::VecDeque<(u64, Replayed)>>,
+    /// Print the checkpoints numbered FROM-TO as they pass (KQ_CPS=FROM-TO).
+    cps: Option<(u64, u64)>,
+}
+
+/// A key press or a disk swap from an event log.
+#[derive(Clone, Copy, Debug)]
+pub enum Replayed {
+    Key(u16),
+    Disk(usize),
 }
 
 impl Runner {
@@ -70,7 +82,32 @@ impl Runner {
             last_pass_cycle: None,
             wait_since: None,
             resume: false,
+            replay: None,
+            cps: std::env::var("KQ_CPS").ok().and_then(|v| {
+                let (a, b) = v.split_once('-')?;
+                Some((a.parse().ok()?, b.parse().ok()?))
+            }),
         })
+    }
+
+    /// Replay refemu-pcjr's event log (`--events`): its keys (`K n key`) and disk swaps
+    /// (`D n disk`) are made at the checkpoints they were made at; the timer ticks follow.
+    pub fn replay(&mut self, events: &str) {
+        let q = events
+            .lines()
+            .filter_map(|l| {
+                let mut f = l.split_whitespace();
+                let kind = f.next()?;
+                let n: u64 = f.next()?.parse().ok()?;
+                let v = f.next()?;
+                match kind {
+                    "K" => Some((n, Replayed::Key(u16::from_str_radix(v, 16).ok()?))),
+                    "D" => Some((n, Replayed::Disk(v.parse().ok()?))),
+                    _ => None,
+                }
+            })
+            .collect();
+        self.replay = Some(q);
     }
 
     /// A byte of the engine's data segment.
@@ -109,6 +146,21 @@ impl Runner {
             let at_checkpoint = self.cpu.s[CS] == 0x60 && self.checkpoints[self.cpu.ip as usize];
             if at_checkpoint && !resumed {
                 self.m.checkpoint += 1;
+                if self.cps.is_some_and(|(a, b)| (a..=b).contains(&self.m.checkpoint)) {
+                    eprintln!("checkpoint {} at {:04X}, v25 {}", self.m.checkpoint, self.cpu.ip, self.v(25));
+                }
+            }
+            if let Some(q) = self.replay.as_mut() {
+                // Keys pressed before the run started (the title's) count as at 0.
+                while q.front().is_some_and(|e| e.0 <= self.m.checkpoint) {
+                    match q.pop_front().unwrap().1 {
+                        Replayed::Key(k) => self.m.push_key(k),
+                        Replayed::Disk(d) => {
+                            self.m.insert(d);
+                            self.m.blocked_reads = 0;
+                        }
+                    }
+                }
             }
             if (self.cpu.s[CS], self.cpu.ip) == MAIN_LOOP && !resumed {
                 self.passes += 1;
@@ -137,7 +189,8 @@ impl Runner {
             }
             // Waiting for a key outside the game cycle: the disk swaps are answered as
             // refemu-pcjr answers them; RETURN at the title; otherwise the caller types.
-            if self.m.idle_polls > 0
+            if self.replay.is_none()
+                && self.m.idle_polls > 0
                 && self.m.keys.is_empty()
                 && (at_checkpoint || self.m.blocked_reads > 0 || self.passes == 0)
             {

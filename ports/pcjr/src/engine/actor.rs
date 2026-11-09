@@ -135,6 +135,21 @@ impl World {
         if self.keep_vars {
             self.vars_trace.push(self.vars);
         }
+        if self.probe.is_some_and(|(a, b)| (a..=b).contains(&self.passes)) {
+            let e = &self.actors[0];
+            eprintln!(
+                "pass {} ego ({}, {}) motion {:02X} dir {} no_move {} key_dir {} bios {:04X?} ring {}",
+                self.passes,
+                e.x,
+                e.y,
+                e.motion,
+                e.dir,
+                e.no_move,
+                self.g.key_dir,
+                self.keys,
+                self.g.ring.len()
+            );
+        }
         if self.passes > self.max_passes {
             self.stop(format!("{} passes", self.max_passes));
         }

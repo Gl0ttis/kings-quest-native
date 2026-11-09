@@ -12,6 +12,9 @@
 //!
 //! **Where in an interval.** Between two checkpoints, the port fires a tick:
 //! - at a disk read, if the tick interrupted the read ([`Site::Disk`]);
+//! - before an action that writes a variable, if the tick interrupted its dispatch or
+//!   its handler, which writes last ([`Site::Op`]): `set 25` when a room starts lets
+//!   the timer read the keys, so a tick during it must not;
 //! - in a busy wait (a loop on a flag the timer changes), one by one until the wait
 //!   is over;
 //! - otherwise at the next checkpoint, after the code between.
@@ -68,12 +71,29 @@ pub enum Event {
 pub enum Site {
     /// A disk read (`$4D93`-`$4E2F`).
     Disk,
+    /// Action `n`'s dispatch (`$1ABB`-`$1AD3`, `$2479`-`$248B`) and its handler, up to
+    /// the jump back to `$1ABB`, for the actions that write a variable (08-12, 35, 36:
+    /// set, reset, increment, decrement, assign, and the room tests).
+    Op(u8),
 }
 
 impl Site {
     pub fn contains(self, ip: u16) -> bool {
         match self {
             Site::Disk => (0x4D93..0x4E30).contains(&ip),
+            Site::Op(op) => {
+                let handler = match op {
+                    0x08 => 0x1B7C..0x1B8D,
+                    0x09 => 0x1B90..0x1BA1,
+                    0x10 => 0x1CA1..0x1CC7,
+                    0x11 => 0x1CCA..0x1CEE,
+                    0x12 => 0x1CF1..0x1D10,
+                    0x35 => 0x220E..0x2221,
+                    0x36 => 0x2224..0x2252,
+                    _ => return false,
+                };
+                (0x1ABB..0x1AD4).contains(&ip) || (0x2479..0x248C).contains(&ip) || handler.contains(&ip)
+            }
         }
     }
 }

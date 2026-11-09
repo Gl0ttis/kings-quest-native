@@ -186,9 +186,12 @@ say get key
 expect score 77
 
 # The witch's house (room 28 -> 65). The witch is home only if the random bit v14 is
-# set on entry and no protective spell is active (v56 = 0); she gives the most points.
-# Each entry to room 28 toggles v154 (the witch alerted, set on odd entries); she can
-# only be caught off guard on an even entry, so step out to room 37 and back first.
+# set on entry and no protective spell is active (v55 = 0, Apple v56); she gives the
+# most points. Each entry to room 28 toggles v155 (Apple v154: the witch alerted, set
+# on odd entries); she can only be caught off guard on an even entry, so step out to
+# room 37 and back first. The fairy (room 9, when v14 is set on entry) casts a spell
+# that lasts while timer v9 runs; wait for it to wear off.
+waitvar 55 0 3000
 room 28
 room 37
 room 28 40 127 70 135
@@ -262,12 +265,13 @@ waitvar 212 1 800   # Apple v213
 area 121 118 142 138
 say get shield
 expect score 106
-say get scepter
+say get sceptre   # the PCjr only knows this spelling (and rod, staff)
 expect score 112
-# West to room 78 (the exit works at y 78-102): eat the mushroom (+3) to shrink, and
+# West to room 78 (on the PCjr the exit is rule 00AD: x 2-8, y 60-85; the Apple's
+# works at y 78-102): eat the mushroom (+3) to shrink, and
 # leave west through the small hole (+1). Eating it scores +3 but the mushroom item's
 # point goes with it (net +2).
-area 12 82 16 98
+area 12 68 16 78
 hold L
 waitvar 1 78 100
 wait 4

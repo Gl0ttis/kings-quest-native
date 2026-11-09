@@ -359,6 +359,8 @@ pub struct World {
     pub log: Vec<String>,
     /// Print each action run (KQ_TRACE_OPS).
     pub trace_ops: bool,
+    /// Print the ego and the keys at the start of passes FROM-TO (KQ_PROBE=FROM-TO).
+    pub probe: Option<(u64, u64)>,
 }
 
 impl World {
@@ -475,6 +477,10 @@ impl World {
             max_passes: u64::MAX,
             log: Vec::new(),
             trace_ops: std::env::var_os("KQ_TRACE_OPS").is_some(),
+            probe: std::env::var("KQ_PROBE").ok().and_then(|v| {
+                let (a, b) = v.split_once('-')?;
+                Some((a.parse().ok()?, b.parse().ok()?))
+            }),
         })
     }
 

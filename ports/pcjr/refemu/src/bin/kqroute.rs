@@ -256,11 +256,8 @@ impl Driver {
         // A pass of walking is committed before a key takes effect: on a side with an
         // exit, the two outermost cells are a step or two from leaving the room (a key can take
         // two passes to act, when a pass goes by without a timer tick), so keep off them.
-        if let Some(ex) = self.g.exits.get(&self.v(1)).filter(|_| !near) {
-            if ex[1] != 0 && x <= 3 || ex[2] != 0 && x + w >= 157 || ex[3] != 0 && y <= 0x29 || ex[4] != 0 && y >= 0xA4
-            {
-                return false;
-            }
+        if !near && self.in_margin(x, y, w) {
+            return false;
         }
         if let Some((room, rects)) = &self.keep_in {
             if *room == self.v(1) && !rects.iter().any(|r| x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3]) {
@@ -333,6 +330,15 @@ impl Driver {
         })
     }
 
+    /// Is (x, y) in the edge margin (where only backing out is allowed)? The margin
+    /// is waived near the start only then: otherwise the ego would creep into it a
+    /// step at a time.
+    fn in_margin(&self, x: i32, y: i32, w: i32) -> bool {
+        self.g.exits.get(&self.v(1)).is_some_and(|ex| {
+            ex[1] != 0 && x <= 3 || ex[2] != 0 && x + w >= 157 || ex[3] != 0 && y <= 0x29 || ex[4] != 0 && y >= 0xA4
+        })
+    }
+
     /// A step `d` onto (x, y): standable, and (a turn can come a pass late, when a pass
     /// goes by without a timer tick) not one step short of peril the same way.
     fn step_ok(&self, x: i32, y: i32, d: usize, w: i32, near: bool) -> bool {
@@ -387,6 +393,7 @@ impl Driver {
         if goal(sx, sy) {
             return Some(0);
         }
+        let in_margin = self.in_margin(sx, sy, self.ego_width());
         let idx = |x: i32, y: i32| (y * W + x) as usize;
         let mut first = vec![255u8; (W * H) as usize];
         let mut q = VecDeque::new();
@@ -398,7 +405,7 @@ impl Driver {
                 if !(0..W).contains(&nx) || !(0..H).contains(&ny) || first[idx(nx, ny)] != 255 {
                     continue;
                 }
-                let near = (nx - sx).abs() <= 2 && (ny - sy).abs() <= 2;
+                let near = in_margin && (nx - sx).abs() <= 2 && (ny - sy).abs() <= 2;
                 if !self.step_ok(nx, ny, d as usize, wd[d as usize], near) {
                     continue;
                 }
@@ -468,6 +475,7 @@ impl Driver {
         self.narrow.set(self.ego_min_width());
         let wd = self.dir_widths();
         let (sx, sy) = self.ahead();
+        let in_margin = self.in_margin(sx, sy, self.ego_width());
         let idx = |x: i32, y: i32| (y * W + x) as usize;
         let mut dist = vec![u32::MAX; (W * H) as usize];
         let mut q = VecDeque::from([(sx, sy)]);
@@ -478,7 +486,7 @@ impl Driver {
                 if (0..W).contains(&nx)
                     && (0..H).contains(&ny)
                     && dist[idx(nx, ny)] == u32::MAX
-                    && self.step_ok(nx, ny, d, wd[d], (nx - sx).abs() <= 2 && (ny - sy).abs() <= 2)
+                    && self.step_ok(nx, ny, d, wd[d], in_margin && (nx - sx).abs() <= 2 && (ny - sy).abs() <= 2)
                 {
                     dist[idx(nx, ny)] = dist[idx(x, y)] + 1;
                     q.push_back((nx, ny));
@@ -1069,6 +1077,33 @@ fn bounce(d: &mut Driver) -> Result<(), String> {
     Err(format!("no way out of room {here} and back"))
 }
 
+/// Line `i` again from the snapshot before it after 1-30 passes of waiting (`back` 0),
+/// or the line before it too, after 0-20 passes, then the line after 0-30 (`back` 1).
+fn retry_waits(snaps: &mut Vec<Driver>, lines: &[(usize, String)], i: usize, back: usize) -> Option<Driver> {
+    let line = &lines[i].1;
+    for extra_prev in 0..=(if back == 1 { 20 } else { 0 }) {
+        for extra in 0..=30usize {
+            if back == 0 && extra == 0 {
+                continue;
+            }
+            let mut t = snaps[i - back].clone();
+            let mut ok = true;
+            if back == 1 {
+                let (_, pline) = &lines[i - 1];
+                ok = t.wait(extra_prev).and_then(|_| run_line(&mut t, pline)).is_ok();
+            }
+            if ok && t.wait(extra).and_then(|_| run_line(&mut t, line)).is_ok() {
+                if back == 1 {
+                    snaps.truncate(i);
+                    snaps.push(t.clone());
+                }
+                return Some(t);
+            }
+        }
+    }
+    None
+}
+
 fn retryable(d: &Driver, e: &str) -> bool {
     d.dead()
         || e.contains("robbed")
@@ -1107,70 +1142,54 @@ fn play(d0: Driver, route: &str) -> (Driver, Option<(usize, String)>) {
         if !retryable(&d, &e) {
             return (d, Some((*n, e)));
         }
+        // Waiting 1-30 passes first (that keeps the random draws as they were), then
+        // round trips, then the line before again with waits.
         let mut fixed = false;
-        // The random bit v14 comes from the next byte of the engine's code at each room
-        // change, whatever the timing: out to a neighbouring room and back (an even number
-        // of times first: some rooms count their entries), from this line or up to five
-        // before it (a doorway's room can't be left and re-entered by its exits), and
-        // the lines from there played again.
-        'trips: for back in 0..=5usize.min(i) {
-            for k in [2, 4, 6, 1, 3, 5] {
-                let from = i - back;
-                let mut t = snaps[from].clone();
-                let mut redone = Vec::new();
-                let mut r = (0..k).try_for_each(|_| bounce(&mut t));
-                for (j, (m, l)) in lines.iter().enumerate().take(i + 1).skip(from) {
-                    if r.is_err() {
-                        break;
+        if let Some(t) = retry_waits(&mut snaps, &lines, i, 0) {
+            d = t;
+            fixed = true;
+        }
+        if !fixed {
+            // The random bit v14 comes from the next byte of the engine's code at each room
+            // change, whatever the timing: out to a neighbouring room and back (an even number
+            // of times first: some rooms count their entries; up to 11), from this line or up to five
+            // before it (a doorway's room can't be left and re-entered by its exits), and
+            // the lines from there played again.
+            'trips: for back in 0..=5usize.min(i) {
+                    for k in [2, 4, 6, 8, 10, 1, 3, 5, 7, 9, 11] {
+                    let from = i - back;
+                    let mut t = snaps[from].clone();
+                    let mut redone = Vec::new();
+                    let mut r = (0..k).try_for_each(|_| bounce(&mut t));
+                    for (j, (m, l)) in lines.iter().enumerate().take(i + 1).skip(from) {
+                        if r.is_err() {
+                            break;
+                        }
+                        if j > from {
+                            redone.push(t.clone());
+                        }
+                        let at = format!("{:4}: {l}   [pass {}, room {}, score {}]", m + 1, t.r.passes, t.v(1), t.v(19));
+                        t.events.push(at);
+                        r = run_line(&mut t, l);
                     }
-                    if j > from {
-                        redone.push(t.clone());
+                    if std::env::var_os("KQ_RETRY").is_some() {
+                        eprintln!("line {}: {k} round trips from line {}: {r:?}", n + 1, lines[from].0 + 1);
                     }
-                    let at = format!("{:4}: {l}   [pass {}, room {}, score {}]", m + 1, t.r.passes, t.v(1), t.v(19));
-                    t.events.push(at);
-                    r = run_line(&mut t, l);
-                }
-                if std::env::var_os("KQ_RETRY").is_some() {
-                    eprintln!("line {}: {k} round trips from line {}: {r:?}", n + 1, lines[from].0 + 1);
-                }
-                if r.is_ok() {
-                    t.events.push(format!("      (after {k} round trips to a neighbouring room from line {})", lines[from].0 + 1));
-                    snaps.truncate(from + 1);
-                    snaps.extend(redone);
-                    d = t;
-                    fixed = true;
-                    break 'trips;
+                    if r.is_ok() {
+                        t.events.push(format!("      (after {k} round trips to a neighbouring room from line {})", lines[from].0 + 1));
+                        snaps.truncate(from + 1);
+                        snaps.extend(redone);
+                        d = t;
+                        fixed = true;
+                        break 'trips;
+                    }
                 }
             }
         }
-        'search: for back in 0..=1usize {
-            if fixed {
-                break;
-            }
-            if back > i {
-                break;
-            }
-            for extra_prev in 0..=(if back == 1 { 20 } else { 0 }) {
-                for extra in 0..=30usize {
-                    if back == 0 && extra == 0 {
-                        continue;
-                    }
-                    let mut t = snaps[i - back].clone();
-                    let mut ok = true;
-                    if back == 1 {
-                        let (_, pline) = &lines[i - 1];
-                        ok = t.wait(extra_prev).and_then(|_| run_line(&mut t, pline)).is_ok();
-                    }
-                    if ok && t.wait(extra).and_then(|_| run_line(&mut t, line)).is_ok() {
-                        if back == 1 {
-                            snaps.truncate(i);
-                            snaps.push(t.clone());
-                        }
-                        d = t;
-                        fixed = true;
-                        break 'search;
-                    }
-                }
+        if !fixed && i >= 1 {
+            if let Some(t) = retry_waits(&mut snaps, &lines, i, 1) {
+                d = t;
+                fixed = true;
             }
         }
         if !fixed {
