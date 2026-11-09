@@ -87,3 +87,11 @@ fn the_magic_ring_route_matches_the_original() {
     let Some(disk) = original() else { return };
     assert_eq!(replay(&disk, "magic_ring"), 22462);
 }
+
+/// The giant-with-the-sling route (routes/giant_sling.route): the giant killed with the
+/// sling instead of left to sleep, ending at 153; 20463 passes.
+#[test]
+fn the_giant_sling_route_matches_the_original() {
+    let Some(disk) = original() else { return };
+    assert_eq!(replay(&disk, "giant_sling"), 20463);
+}
