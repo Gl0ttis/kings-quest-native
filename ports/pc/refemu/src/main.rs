@@ -295,7 +295,7 @@ fn main() {
         "CGA: mode {:02X} colour {:02X}, CRTC R2 {:02X}; video mode {}",
         m.cga.mode, m.cga.colour, m.cga.crtc[2], m.video_mode
     );
-    eprintln!("speaker events: {}; sectors read: {}", m.sound.len(), m.sectors_read);
+    eprintln!("speaker events: {}; sectors read: {}; keys waiting {:04X?}", m.sound.len(), m.sectors_read, m.keys);
     eprintln!("vectors: 08 {:04X?} 09 {:04X?} 1C {:04X?}", m.vector(8), m.vector(9), m.vector(0x1C));
     let text: Vec<String> =
         m.text.iter().map(|r| String::from_utf8_lossy(r).trim_end().to_string()).filter(|r| !r.is_empty()).collect();

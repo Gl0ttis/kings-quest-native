@@ -130,3 +130,13 @@ original's (tests/engine.rs), then implemented in the port.
 - **The joystick** (`$1383`, every other tick, `$141B` the read): with none, v16 is
   cleared unless v31 is 1, and nothing else changes (the PCjr sets a time-out flag,
   here DS:187D, which stays 0).
+- **The screen** compared is the CGA's picture area in its 640-dot mode: each picture
+  pixel its colour's dot pattern, two to a byte (`World::frame`, refemu-pc's
+  `Runner::frame`).
+- **An actor's rectangle copied to the screen** (`$1875`) starts at an even pixel (an
+  odd left edge one back, the width 2 wider), and isn't clipped: past the right edge it
+  reads on into the buffer, row y + 4 (its layout's next 160 bytes), and writes on into
+  the screen, line y + 2 (the CGA's next 80 bytes). A cel drawn past the right edge
+  lands in the buffer the same way, at the start of row y + 4.
+- **Op 0A's record** before a message, the cursor to the start of row 24, is at
+  DS:1E26.

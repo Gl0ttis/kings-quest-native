@@ -294,9 +294,9 @@ impl World {
             }
             0x0A => {
                 // The message is queued for the timer to print, after a record that
-                // puts the cursor at the start of row 24.
+                // puts the cursor at the start of row 24 (DS:1E26, `01`).
                 self.g.prompt_shown = true;
-                self.queue_engine_string(0x17DA);
+                self.queue_engine_string(0x1E26);
                 self.queue_script_message(s, s.word(p));
                 p + 2
             }

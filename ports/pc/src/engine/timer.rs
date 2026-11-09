@@ -202,6 +202,20 @@ impl World {
     /// v23 = 1.
     pub fn queue_message(&mut self, text: Rc<Vec<u8>>, at: usize) {
         self.site(super::clock::Site::QueueAdd);
+        // KQ_MSG: print each message queued, with the pass.
+        if std::env::var_os("KQ_MSG").is_some() {
+            let t: String = text[at..]
+                .iter()
+                .take_while(|&&c| c != 0 && c != 0xFF)
+                .take(60)
+                .map(|&c| if c >= 0x20 { c as char } else { '.' })
+                .collect();
+            eprintln!(
+                "pass {} queue message at {at:04X}: {t:?} (ends {:02X?})",
+                self.passes,
+                text[at..].iter().find(|&&c| c == 0 || c == 0xFF)
+            );
+        }
         if self.g.queue.len() < 8 {
             self.g.queue.push_back(Msg { text, at });
         }

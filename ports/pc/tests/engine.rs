@@ -30,10 +30,8 @@ fn replay_with(disk: &Disk, name: &str, play: Option<Vec<u8>>) -> (usize, World)
     let trace = std::fs::read_to_string(dir.join(format!("{name}.csv"))).expect("the trace");
     let reference: Vec<Vec<&str>> = trace.lines().skip(1).map(|l| l.split(',').collect()).collect();
     // The screen at each pass (refemu's kqframes-pc --hashes), where recorded.
-    // KQ_STATE_ONLY: leave the screens out (while the port's screen isn't the PC's yet).
     let frames: Option<Vec<u64>> = std::fs::read_to_string(dir.join(format!("{name}.frames")))
         .ok()
-        .filter(|_| std::env::var_os("KQ_STATE_ONLY").is_none())
         .map(|t| t.lines().map(|l| u64::from_str_radix(l, 16).expect("a frame hash")).collect());
     let mut w = World::new(disk, Box::new(Replay::parse(&events))).expect("engine");
     if let Some(img) = play {

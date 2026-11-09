@@ -747,16 +747,17 @@ impl World {
         }
     }
 
-    /// The screen as the player sees it, in the hardware's terms: 1 when the text
-    /// screen is up, then its 40 × 25 characters; else 0, the displayed page's picture
-    /// area (160 bytes, each two pixels, × 168 rows, as video memory holds it) and the
-    /// characters of the graphics screen's cells. (Text is compared as characters: the
-    /// port has no ROM font.)
+    /// The screen as the player sees it, as refemu-pc's runner gives it (`frame`): 1
+    /// and the 40 × 25 characters when a text mode is up; else 0, the CGA's picture area
+    /// in its 640-dot mode (168 lines of 80 bytes: each picture pixel its colour's dot
+    /// pattern, two to a byte, as the copy to the screen makes them, `$1966`) and the
+    /// characters.
     pub fn frame(&self) -> Vec<u8> {
-        let mut f = Vec::with_capacity(1 + screen::WIDTH * screen::HEIGHT + 1000);
+        let mut f = Vec::with_capacity(1 + 80 * screen::HEIGHT + 1000);
         f.push(self.text.text_mode as u8);
         if !self.text.text_mode {
-            f.extend_from_slice(&self.screen.shown);
+            let p = |c: u8| crate::composite::PATTERN[(c & 15) as usize];
+            f.extend(self.screen.shown.chunks(2).map(|c| p(c[0]) << 4 | p(c[1])));
         }
         f.extend(self.text.grid().cells.iter().flatten());
         f

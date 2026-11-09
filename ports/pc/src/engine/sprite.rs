@@ -24,16 +24,12 @@ impl World {
 
     #[inline]
     fn work(&self, x: i32, y: i32) -> u8 {
-        if (0..WIDTH as i32).contains(&x) && (0..HEIGHT as i32).contains(&y) {
-            self.screen.work[y as usize * WIDTH + x as usize]
-        } else {
-            0
-        }
+        buffer_at(x, y).map_or(0, |i| self.screen.work[i])
     }
     #[inline]
     fn set_work(&mut self, x: i32, y: i32, v: u8) {
-        if (0..WIDTH as i32).contains(&x) && (0..HEIGHT as i32).contains(&y) {
-            self.screen.work[y as usize * WIDTH + x as usize] = v;
+        if let Some(i) = buffer_at(x, y) {
+            self.screen.work[i] = v;
         }
     }
 
@@ -578,7 +574,7 @@ impl World {
         let (oh, ow) = x.cel_drawn.size();
         let (nh, nw) = x.cel_new.size();
         let top = (x.y.wrapping_sub(oh).wrapping_add(1)).min(x.new_y.wrapping_sub(nh).wrapping_add(1));
-        let left = x.x.min(x.new_x);
+        let mut left = x.x.min(x.new_x);
         let mut rows_n = oh.max(nh);
         let mut cols = ow.max(nw);
         if x.y != x.new_y {
@@ -590,14 +586,24 @@ impl World {
         if cols & 1 != 0 {
             cols = cols.wrapping_add(1);
         }
+        // The PC's copy to the screen (`$1875`) takes two pixels to a CGA byte, from an
+        // even one: an odd left edge goes one back, the width 2 wider.
+        if left & 1 != 0 {
+            left -= 1;
+            cols = cols.wrapping_add(2);
+        }
         self.cost.blit += (rows(rows_n) * cols as i32) as u32;
         for r in 0..rows(rows_n) {
             for c in 0..cols as i32 {
                 let (px, py) = (left as i32 + c, top as i32 + r);
-                if (0..WIDTH as i32).contains(&px) && (0..HEIGHT as i32).contains(&py) {
-                    let i = py as usize * WIDTH + px as usize;
-                    let v = self.screen.work[i] & 0xF0;
-                    self.screen.shown[i] = v | v >> 4;
+                // Unclipped: past the right edge it reads on into the buffer (row y + 4,
+                // its layout's next 160 bytes) and writes on into the screen (line y + 2,
+                // the CGA's next 80 bytes).
+                let (src, dst) = if px < WIDTH as i32 { (py, py) } else { (py + 4, py + 2) };
+                let qx = px % WIDTH as i32;
+                if let (Some(s), true) = (buffer_at(qx, src), (0..HEIGHT as i32).contains(&dst)) {
+                    let v = self.screen.work[s] & 0xF0;
+                    self.screen.shown[dst as usize * WIDTH + qx as usize] = v | v >> 4;
                 }
             }
         }
@@ -607,6 +613,14 @@ impl World {
         x.cel_drawn = x.cel_new.clone();
         debug_assert!(a < ACTORS);
     }
+}
+
+/// Pixel (x, y) of the picture buffer, as its layout addresses it: rows of 160 in four
+/// banks, so x 160-319 is the start of row y + 4 (where a cel drawn past the right edge
+/// lands); off the picture's 168 rows, nothing that is shown.
+fn buffer_at(x: i32, y: i32) -> Option<usize> {
+    let (x, y) = if (WIDTH as i32..2 * WIDTH as i32).contains(&x) { (x - WIDTH as i32, y + 4) } else { (x, y) };
+    ((0..WIDTH as i32).contains(&x) && (0..HEIGHT as i32).contains(&y)).then(|| y as usize * WIDTH + x as usize)
 }
 
 /// A count in a byte decremented to 0: 0 means 256.
