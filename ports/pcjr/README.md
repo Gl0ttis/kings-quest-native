@@ -9,7 +9,7 @@ published, from your own disk image, with no 8088 emulation. It follows
 (about 89,000 passes: the walk, save and restore, three deaths, the gold key, the
 maximum score, the magic ring and the giant with the sling), it matches the original
 on every pass, in its state and on screen. A speed model gives the original's timing,
-within 0.2% over whole routes. The player, `kq-pcjr`, is new and not yet released.
+within 0.2% over whole routes. The player is `kq` in its download (`kq-pcjr` in the workspace).
 See [docs/port-plan.md](docs/port-plan.md).
 
 ## Playing

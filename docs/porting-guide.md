@@ -60,7 +60,11 @@ crate is `kq1-pcjr`.
 1. **Crate.** Create `ports/<port>/` with its crate and add it to `members` in the root
    `Cargo.toml`. Keep the window and sound code behind an optional `player` feature, as
    the Apple port does, so the engine library has no dependencies and builds headless.
-   - The player binary is `kq`. Its release archives are named `kq-<port>-<platform>`.
+   - The player is `kq` to players: its release archive holds it as `kq` (`kq.exe`), so
+     every port runs the same way. In the workspace it is `kq-<port>` (the Cargo
+     `[[bin]]` name), since two packages' binaries can't share a name there; the release
+     workflow renames it. Its archives are named `kq-<port>-<version>-<platform>`, with
+     the crate's version.
    - Name the measuring emulator after the port's own crate, e.g. `kq1-pcjr-refemu`, in
      `ports/<port>/refemu/`.
 2. **Releases.** Add the crates to `release-please-config.json` and

@@ -1,45 +1,45 @@
 # King's Quest for the IBM PCjr: playing
 
-`kq-pcjr` plays Sierra's 1984 IBM PCjr *King's Quest* natively on Windows and Linux,
+`kq` plays Sierra's 1984 IBM PCjr *King's Quest* natively on Windows and Linux,
 from your own copy of the game's disk. It plays and sounds like the original, at the
 original's speed.
 
-## 1. Get kq-pcjr
+## 1. Get kq
 
 Download the archive for your system from the
 [releases page](https://github.com/Gl0ttis/kings-quest-native/releases) and unpack
-it anywhere:
+it into a folder of its own (another port's `kq` would clash in the same one):
 
-- Windows: `kq-pcjr-windows-x64.zip`, containing `kq-pcjr.exe`.
-- Linux: `kq-pcjr-linux-x64.tar.gz`, containing `kq-pcjr`. It needs X11 (or XWayland)
+- Windows: `kq-pcjr-<version>-windows-x64.zip`, containing `kq.exe`.
+- Linux: `kq-pcjr-<version>-linux-x64.tar.gz`, containing `kq`. It needs X11 (or XWayland)
   and ALSA, which desktop systems already have.
 
 Nothing else needs installing.
 
 ## 2. Add your game disk
 
-`kq-pcjr` doesn't include the game. You need an image of the PCjr version's disk (the
+`kq` doesn't include the game. You need an image of the PCjr version's disk (the
 one that boots, with "Sierra On-Line Inc 1984 / IBM Corp. 1984" on it):
 
 - an HxC `.mfm` dump of the original diskette, copy protection and all; or
 - a 360K sector image (`.img`, 368,640 bytes) of it.
 
-Put it in the same folder as `kq-pcjr`:
+Put it in the same folder as `kq`:
 
 ```
 King's Quest/
-  kq-pcjr.exe
+  kq.exe
   King's Quest (PCjr).mfm
 ```
 
 ## 3. Play
 
-Double-click `kq-pcjr.exe` (or run `./kq-pcjr` on Linux).
+Double-click `kq.exe` (or run `./kq` on Linux).
 
-You can also keep the disk somewhere else and point `kq-pcjr` at it, from a terminal:
+You can also keep the disk somewhere else and point `kq` at it, from a terminal:
 
 ```
-kq-pcjr "D:\Games\PCjr\King's Quest (PCjr).mfm"
+kq "D:\Games\PCjr\King's Quest (PCjr).mfm"
 ```
 
 ## Keys
@@ -62,7 +62,7 @@ The game's keys are the PCjr's:
 A joystick or game controller works as the PCjr's joystick: the stick (or the d-pad)
 walks Graham while you hold it, button 2 jumps, and button 1 is the `-` key held down.
 
-These keys control `kq-pcjr` itself:
+These keys control `kq` itself:
 
 | Key | Does |
 |---|---|
@@ -75,14 +75,14 @@ These keys control `kq-pcjr` itself:
 
 The game saves to its "Play diskette", which it makes itself: type `copy disk` before
 your first save and answer `y` (when it asks you to put the Play or the Master
-diskette in the drive, `kq-pcjr` does it for you: just press Enter). The
+diskette in the drive, `kq` does it for you: just press Enter). The
 Play diskette is kept as `KQ1 Play.img` next to the game's disk. It's the original's
-own format: an emulator running the original can read it, and `kq-pcjr` reads one
+own format: an emulator running the original can read it, and `kq` reads one
 made by the original.
 
 ## Options
 
-Add these after `kq-pcjr` when starting it from a terminal:
+Add these after `kq` when starting it from a terminal:
 
 | Option | Does |
 |---|---|
@@ -101,7 +101,7 @@ Add these after `kq-pcjr` when starting it from a terminal:
 
 The text uses a built-in font in the PCjr's style. For the PCjr's own, put an image
 of the PCjr BIOS (64 KB, as in an emulator's ROM set) next to the game's disk as
-`bios.rom`, and `kq-pcjr` uses it automatically. No ROM is included with `kq-pcjr`.
+`bios.rom`, and `kq` uses it automatically. No ROM is included with `kq`.
 
 ## Things that are as in the original
 
@@ -111,5 +111,5 @@ of the PCjr BIOS (64 KB, as in an emulator's ROM set) next to the game's disk as
 
 ## Licence
 
-`kq-pcjr` is under the MIT licence (`LICENSE`). *King's Quest* is Sierra's. `kq-pcjr`
+`kq` is under the MIT licence (`LICENSE`). *King's Quest* is Sierra's. `kq`
 contains none of the game: it reads your copy.

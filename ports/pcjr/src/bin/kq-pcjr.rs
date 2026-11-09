@@ -1,14 +1,14 @@
-//! kq-pcjr [DISK] [--speed N] [--fast-loads] [--mute] [--fullscreen] [--no-joystick]
-//!         [--font FILE] [--no-rom-font] [--play FILE] [--scale N] [--rate N] [--room N]
+//! kq [DISK] [--speed N] [--fast-loads] [--mute] [--fullscreen] [--no-joystick]
+//!    [--font FILE] [--no-rom-font] [--play FILE] [--scale N] [--rate N] [--room N]
 //!         [--route NAME]
 //!
-//! Plays the IBM PCjr King's Quest in a window, with the native engine, at the
+//! The IBM PCjr player, `kq` as shipped (`kq-pcjr` in the workspace). Plays the IBM PCjr King's Quest in a window, with the native engine, at the
 //! original's speed (engine::cost: each pass lasts as long as it did on a PCjr, and the
 //! timer's 18.2 ticks a second fall where they did). Room pictures appear as the
 //! original draws them, outlines then fills, at its pace.
 //!
 //! DISK is the game's disk: an HxC `.mfm` dump of the original or a 360K `.img`. With
-//! none given, kq-pcjr looks next to itself, then in the current folder and its
+//! none given, kq looks next to itself, then in the current folder and its
 //! `original` folder. Saves go on the Play diskette, which the game makes itself ("copy
 //! disk") and which is kept as an image next to the game's disk (`KQ1 Play.img`, or
 //! `--play FILE`). When the game asks for the Play or the Master diskette, it is put in
@@ -554,7 +554,7 @@ fn find_disk(given: Option<&str>) -> Result<PathBuf, String> {
         }
     }
     Err("No disk image of King's Quest (IBM PCjr) was found.\n\nPut the game's disk image (an HxC .mfm dump or a \
-         360K .img) next to kq-pcjr, or give its path: kq-pcjr DISK"
+         360K .img) next to kq, or give its path: kq DISK"
         .into())
 }
 
@@ -751,7 +751,7 @@ fn main() {
     let use_joystick = !flag("--no-joystick");
     let no_rom_font = flag("--no-rom-font");
     if args.iter().any(|a| a.starts_with("--")) || args.len() > 1 {
-        eprintln!("usage: kq-pcjr [DISK] [--speed N] [--fast-loads] [--mute] [--fullscreen] [--no-joystick] [--font FILE] [--no-rom-font] [--play FILE] [--scale N] [--rate N] [--room N] [--route NAME]");
+        eprintln!("usage: kq [DISK] [--speed N] [--fast-loads] [--mute] [--fullscreen] [--no-joystick] [--font FILE] [--no-rom-font] [--play FILE] [--scale N] [--rate N] [--room N] [--route NAME]");
         std::process::exit(2);
     }
     let disk_path = find_disk(args.first().map(String::as_str)).unwrap_or_else(|e| fatal(&e));

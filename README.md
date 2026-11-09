@@ -41,13 +41,13 @@ into crates under `crates/` when a second port needs it.
 
 ## Playing
 
-Download the player for Windows or Linux from the
-[releases page](https://github.com/Gl0ttis/kings-quest-native/releases), put your own
-game disk images next to it and start it:
+Download the port's archive for Windows or Linux from the
+[releases page](https://github.com/Gl0ttis/kings-quest-native/releases), unpack it into
+a folder of its own, put your own game disk images next to `kq` in it and start `kq`:
 
-- Apple IIe: `kq`, with the three game disks.
+- Apple IIe: `kq-apple2-<version>-<system>`, with the three game disks.
   [ports/apple2/PLAYING.md](ports/apple2/PLAYING.md) has the details, keys and options.
-- IBM PCjr: `kq-pcjr`, with the game disk.
+- IBM PCjr: `kq-pcjr-<version>-<system>`, with the game disk.
   [ports/pcjr/PLAYING.md](ports/pcjr/PLAYING.md) has the details, keys and options.
 
 ## Building
@@ -55,7 +55,7 @@ game disk images next to it and start it:
 Put the disk images in the port's `original/` folder (git ignores it), then:
 
 ```
-cargo run --release -p kq1-apple2 --bin kq -- ports/apple2/original
+cargo run --release -p kq1-apple2 --bin kq-apple2 -- ports/apple2/original
 cargo run --release -p kq1-pcjr --bin kq-pcjr
 ```
 

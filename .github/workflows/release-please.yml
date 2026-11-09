@@ -1,7 +1,7 @@
 # Every push to main: release-please keeps a release pull request open with the next
-# versions and changelogs (from the conventional commits), and the players (kq for the
-# Apple IIe, kq-pcjr for the PCjr) are built for Windows and Linux (downloadable from
-# the run). Merging the release pull request tags
+# versions and changelogs (from the conventional commits), and each port's player is
+# built for Windows and Linux (downloadable from the run): kq-<port>-<version>-<platform>
+# archives, the player in each as kq. Merging the release pull request tags
 # the release; the builds are then attached to the GitHub release too.
 #
 # GitHub starts no workflows for a pull request this workflow's token opens or
@@ -44,7 +44,7 @@ jobs:
           gh workflow run pr-title.yml -R "$GITHUB_REPOSITORY" --ref "$BRANCH"
 
   build:
-    name: kq (${{ matrix.name }})
+    name: kq-apple2 (${{ matrix.name }})
     needs: release-please
     strategy:
       fail-fast: false
@@ -52,10 +52,10 @@ jobs:
         include:
           - name: windows-x64
             os: windows-latest
-            exe: kq.exe
+            exe: .exe
           - name: linux-x64
             os: ubuntu-latest
-            exe: kq
+            exe: ""
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -65,26 +65,31 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libx11-dev libxkbcommon-dev libxcursor-dev libxrandr-dev libasound2-dev
       - name: Build
-        run: cargo build --release --locked -p kq1-apple2 --bin kq
+        run: cargo build --release --locked -p kq1-apple2 --bin kq-apple2
+      # The archive: kq-apple2-<version>-<platform>/, the player in it as kq (every
+      # port's runs as kq), with the licence and the player's guide.
       - name: Package
+        id: package
         shell: bash
         run: |
-          dir="kq-apple2-${{ matrix.name }}"
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' ports/apple2/Cargo.toml | head -1)
+          dir="kq-apple2-$version-${{ matrix.name }}"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
           mkdir "$dir"
-          cp "target/release/${{ matrix.exe }}" "$dir/"
+          cp "target/release/kq-apple2${{ matrix.exe }}" "$dir/kq${{ matrix.exe }}"
           cp LICENSE "$dir/"
           cp ports/apple2/PLAYING.md "$dir/README.md"
           if [ "$RUNNER_OS" = "Windows" ]; then 7z a "$dir.zip" "$dir" > /dev/null; else tar czf "$dir.tar.gz" "$dir"; fi
       - uses: actions/upload-artifact@v7
         with:
-          name: kq-apple2-${{ matrix.name }}
-          path: kq-apple2-${{ matrix.name }}.*
+          name: ${{ steps.package.outputs.dir }}
+          path: ${{ steps.package.outputs.dir }}.*
       - name: Attach to the release
         if: needs.release-please.outputs.apple2-released == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ needs.release-please.outputs.apple2-tag }}" kq-apple2-${{ matrix.name }}.* --clobber
+        run: gh release upload "${{ needs.release-please.outputs.apple2-tag }}" ${{ steps.package.outputs.dir }}.* --clobber
 
   build-pcjr:
     name: kq-pcjr (${{ matrix.name }})
@@ -95,10 +100,10 @@ jobs:
         include:
           - name: windows-x64
             os: windows-latest
-            exe: kq-pcjr.exe
+            exe: .exe
           - name: linux-x64
             os: ubuntu-latest
-            exe: kq-pcjr
+            exe: ""
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -109,22 +114,27 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libx11-dev libxkbcommon-dev libxcursor-dev libxrandr-dev libasound2-dev
       - name: Build
         run: cargo build --release --locked -p kq1-pcjr --bin kq-pcjr
+      # The archive: kq-pcjr-<version>-<platform>/, the player in it as kq (every
+      # port's runs as kq), with the licence and the player's guide.
       - name: Package
+        id: package
         shell: bash
         run: |
-          dir="kq-pcjr-${{ matrix.name }}"
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' ports/pcjr/Cargo.toml | head -1)
+          dir="kq-pcjr-$version-${{ matrix.name }}"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
           mkdir "$dir"
-          cp "target/release/${{ matrix.exe }}" "$dir/"
+          cp "target/release/kq-pcjr${{ matrix.exe }}" "$dir/kq${{ matrix.exe }}"
           cp LICENSE "$dir/"
           cp ports/pcjr/PLAYING.md "$dir/README.md"
           if [ "$RUNNER_OS" = "Windows" ]; then 7z a "$dir.zip" "$dir" > /dev/null; else tar czf "$dir.tar.gz" "$dir"; fi
       - uses: actions/upload-artifact@v7
         with:
-          name: kq-pcjr-${{ matrix.name }}
-          path: kq-pcjr-${{ matrix.name }}.*
+          name: ${{ steps.package.outputs.dir }}
+          path: ${{ steps.package.outputs.dir }}.*
       - name: Attach to the release
         if: needs.release-please.outputs.pcjr-released == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ needs.release-please.outputs.pcjr-tag }}" kq-pcjr-${{ matrix.name }}.* --clobber
+        run: gh release upload "${{ needs.release-please.outputs.pcjr-tag }}" ${{ steps.package.outputs.dir }}.* --clobber
