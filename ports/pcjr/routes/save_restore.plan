@@ -1,0 +1,7 @@
+# Make a Play diskette ("copy disk", y; the disk swaps are answered as asked), walk up,
+# save to slot A, walk left, restore slot A: the ego goes back to where it was saved.
+w30, >copy disk, pk79, w60
+U, w30, S, w10
+>save game, p>a, w40
+L, w40, S, w10
+>restore game, p>a, w60

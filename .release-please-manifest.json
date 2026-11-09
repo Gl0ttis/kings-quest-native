@@ -1,3 +1,4 @@
 {
-  "ports/apple2": "0.2.0"
+  "ports/apple2": "0.2.0",
+  "ports/pcjr": "0.0.0"
 }

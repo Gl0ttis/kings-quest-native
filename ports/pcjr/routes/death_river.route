@@ -1,0 +1,10 @@
+# Translated from the Apple port's routes/death_river.route: the PCjr's variable numbers
+# (docs/engine.md, "Variables"). Run: kqroute-pcjr DISK routes/death_river.route
+# Death route: the river bank in room 40. Standing on the water (priority 0 under all of
+# Graham's bottom row, v4 = 1) in the top-left corner, he slips into the river.
+# Run with: kqroute extracted/disk1.do extracted/disk2.do extracted/disk3.do routes/death_river.route
+room 40
+# The PCjr lets Graham further left than the Apple (x 2, the Apple 11): at x 11-13
+# a strip of priority 1 under his feet keeps him out of the water.
+final 6 43 9 47
+dies 600

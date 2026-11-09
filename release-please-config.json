@@ -57,6 +57,12 @@
       "exclude-paths": [
         "ports/apple2/refemu"
       ]
+    },
+    "ports/pcjr": {
+      "component": "kq1-pcjr",
+      "exclude-paths": [
+        "ports/pcjr/refemu"
+      ]
     }
   }
 }

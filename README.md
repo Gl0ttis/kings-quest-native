@@ -16,7 +16,7 @@ release, each behaving as that release did: same rules, same timing, same quirks
 | Port | Original | Status | Crates |
 |---|---|---|---|
 | [Apple IIe](ports/apple2/README.md) | 1984, Sierra, Apple version by Jeff Stephenson (double hi-res, 128K) | Playable start to finish; matches the original on every pass of a 158-point playthrough | `kq1-apple2`, `kq1-apple2-refemu` |
-| IBM PCjr | 1984, Sierra/IBM | Planned | |
+| [IBM PCjr](ports/pcjr/README.md) | 1984, Sierra/IBM (self-booting; PCjr only) | Playable start to finish; matches the original on every pass and screen of three whole-game playthroughs; its Play diskette is the original's | `kq1-pcjr`, `kq1-pcjr-refemu` |
 
 ## Layout
 
@@ -24,36 +24,46 @@ release, each behaving as that release did: same rules, same timing, same quirks
 Cargo.toml              workspace
 docs/porting-guide.md   how a port is built and checked; start here for a new one
 ports/
-  apple2/               the Apple IIe port: crate kq1-apple2 (engine, kq, tools)
+  apple2/               the Apple IIe port: crate kq1-apple2 (engine, kq-apple2, tools)
     refemu/             crate kq1-apple2-refemu: the reference emulator (measuring only)
     docs/ routes/ tools/
     reference/          traces measured from the original (numbers only), for the tests
     original/           your disk images (not in git)
     extracted/          decoded game data (not in git)
+  pcjr/                 the IBM PCjr port: crate kq1-pcjr (engine, kq-pcjr, tools)
+    refemu/             crate kq1-pcjr-refemu: the reference PCjr (measuring only)
+    docs/ routes/ tools/ reference/ original/ extracted/   as for the Apple port
 .github/                CI, PR title check, release-please, Dependabot
 ```
 
-Each port is self-contained in `ports/<platform>/`. To start a new one, read
-[docs/porting-guide.md](docs/porting-guide.md). Code shared between ports will go
-into crates under `crates/` when a second port needs it.
+Each port lives in `ports/<platform>/`. To start a new one, read
+[docs/porting-guide.md](docs/porting-guide.md). The PCjr port uses the Apple port's
+decoders for views, scripts and the vocabulary directly, the formats being the same;
+code shared more widely will move to crates under `crates/`. Each port's player is
+`kq` in its download (`kq-<port>` in the workspace).
 
-## Playing (Apple IIe)
+## Playing
 
-Download `kq` for Windows or Linux from the
-[releases page](https://github.com/Gl0ttis/kings-quest-native/releases), put your three
-game disk images next to it and start it. [ports/apple2/PLAYING.md](ports/apple2/PLAYING.md)
-has the details, keys and options.
+Download the port's archive for Windows or Linux from the
+[releases page](https://github.com/Gl0ttis/kings-quest-native/releases), unpack it into
+a folder of its own, put your own game disk images next to `kq` in it and start `kq`:
 
-## Building (Apple IIe)
+- Apple IIe: `kq-apple2-<version>-<system>`, with the three game disks.
+  [ports/apple2/PLAYING.md](ports/apple2/PLAYING.md) has the details, keys and options.
+- IBM PCjr: `kq-pcjr-<version>-<system>`, with the game disk.
+  [ports/pcjr/PLAYING.md](ports/pcjr/PLAYING.md) has the details, keys and options.
 
-Put the disk images in `ports/apple2/original/` (git ignores it), then:
+## Building
+
+Put the disk images in the port's `original/` folder (git ignores it), then:
 
 ```
-cd ports/apple2
-cargo run --release --bin kq-apple2 -- original
+cargo run --release -p kq1-apple2 --bin kq-apple2 -- ports/apple2/original
+cargo run --release -p kq1-pcjr --bin kq-pcjr
 ```
 
-See [ports/apple2/README.md](ports/apple2/README.md) for the tools, tests and documentation.
+See [ports/apple2/README.md](ports/apple2/README.md) and
+[ports/pcjr/README.md](ports/pcjr/README.md) for the tools, tests and documentation.
 
 ## Licence
 

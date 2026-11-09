@@ -1,0 +1,9 @@
+# Translated from the Apple port's routes/death_rock.route: the PCjr's variable numbers
+# (docs/engine.md, "Variables"). Run: kqroute-pcjr DISK routes/death_rock.route
+# Death route: the rolling rock (room 3). Moving the rock while standing below it, in the
+# path it rolls down (to 113, 147), and it runs Graham over (v6 = 10, the rock).
+# Run with: kqroute extracted/disk1.do extracted/disk2.do extracted/disk3.do routes/death_rock.route
+room 3
+goto 114 128
+say move rock
+dies 300

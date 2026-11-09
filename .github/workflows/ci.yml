@@ -52,8 +52,10 @@ jobs:
       # the rest run everywhere.
       - name: Test
         run: cargo test --workspace --locked
-      - name: Engine library without the player
-        run: cargo test -p kq1-apple2 --no-default-features --lib --locked
+      - name: Engine libraries without the players
+        run: |
+          cargo test -p kq1-apple2 --no-default-features --lib --locked
+          cargo test -p kq1-pcjr --no-default-features --lib --locked
 
   commits:
     name: Conventional commits

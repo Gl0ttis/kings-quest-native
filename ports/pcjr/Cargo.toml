@@ -1,0 +1,45 @@
+[package]
+name = "kq1-pcjr"
+version = "0.1.0"
+description = "Native port of the 1984 IBM PCjr King's Quest: engine, player (kq-pcjr) and tools. Runs on the user's own disk image."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "kq1_pcjr"
+path = "src/lib.rs"
+
+[dependencies]
+# For now, the Apple port's decoders for pictures, views and scripts: the PCjr resources
+# use the same formats (docs/disk-layout.md). Shared code moves to crates/ once the
+# PCjr engine needs it (docs/porting-guide.md).
+kq1-apple2 = { path = "../apple2", default-features = false }
+# Only the windowed player (kq-pcjr) uses it; the engine library has no other
+# dependencies. X11 only on Linux (Wayland desktops run it through XWayland).
+minifb = { version = "0.29.0", optional = true, default-features = false, features = ["x11"] }
+
+# Linux: sound (cpal) and full screen (Xlib through the window's handles).
+[target.'cfg(target_os = "linux")'.dependencies]
+cpal = { version = "0.15", optional = true }
+x11-dl = { version = "2.21", optional = true }
+raw-window-handle = { version = "0.6", optional = true }
+
+[features]
+default = ["player"]
+player = ["dep:minifb", "dep:cpal", "dep:x11-dl", "dep:raw-window-handle"]
+
+[[bin]]
+name = "kqextract-pcjr"
+path = "src/bin/kqextract-pcjr.rs"
+
+# Shipped as `kq` (the release archive renames it); `kq-pcjr` in the workspace, where
+# each port's player needs a name of its own.
+[[bin]]
+name = "kq-pcjr"
+path = "src/bin/kq-pcjr.rs"
+required-features = ["player"]
