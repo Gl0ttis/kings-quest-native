@@ -6,7 +6,8 @@
 //! rows 21-24, and the title's credits, whose attributes have bit 7 set: the BIOS XORs
 //! them onto the picture), and the text screen (mode 1, page 7) of the
 //! inventory, the Play diskette and ops 3C-3F. The BIOS cursor is one, as the game uses
-//! it (it keeps the graphics cursor itself while the text screen is up, at PCjr DS:1EF4).
+//! it (it keeps the graphics cursor itself while the text screen is up, at DS:1164, which
+//! `$194C` puts back).
 
 /// A 40 × 25 screen of characters and attributes.
 #[derive(Clone)]

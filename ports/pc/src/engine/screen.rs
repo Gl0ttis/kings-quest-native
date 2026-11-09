@@ -200,7 +200,9 @@ impl World {
         self.interpret(&data);
     }
 
-    /// `PCjr $064C`: the displayed page's colours into the work page's high nibbles.
+    /// `$14DC`: the picture just drawn on the screen (B800h: the PC draws a room's picture
+    /// onto the screen itself) merged with its priorities into the buffer (1400h): here,
+    /// the displayed plane's colours into the work plane's high nibbles.
     pub fn merge_colours(&mut self) {
         for (w, s) in self.screen.work.iter_mut().zip(&self.screen.shown) {
             *w = (s & 0xF0) | (*w & 0x0F);

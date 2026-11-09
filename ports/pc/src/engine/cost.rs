@@ -38,7 +38,7 @@ const BELOW: f64 = 156.8; // per row looked down for a priority under 15
                           // Loading: the disk and the picture.
 const SECTOR: f64 = 120_918.0;
 // A room picture: the pages cleared, before its first byte; after its last, the
-// colours merged into the work page (PCjr $064C), the picture shown meanwhile.
+// colours merged into the work page (`$14DC`), the picture shown meanwhile.
 const PICTURE_START: f64 = 366_744.0;
 const PICTURE_END: f64 = 1_939_673.0;
 const ABS_STEP: f64 = 1_110.35; // per step of the absolute line (F6)

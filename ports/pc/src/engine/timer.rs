@@ -46,47 +46,67 @@ impl World {
         self.key_tick();
     }
 
-    /// `PCjr $0563`: read the joystick. Its axes' one-shots are fired and the port polled
-    /// until both have ended; one that runs 41 turns is a time-out (no joystick).
-    /// Button 1 is the `-` key held down: v16 while it is down (the key toggles v16,
-    /// and v31 marks that toggle, which a button that is up leaves alone); button 2 is
-    /// the `0` key, the jump (v17). The stick's direction goes in DS:187E, for the next
-    /// pass to take when the keypad gives none.
+    /// `$1383`: read the joystick (every other tick). A read (`$141B`) ends at once, with
+    /// nothing read, if a key is waiting; it times each axis's one-shot, and one that
+    /// runs out means no joystick. Until a read has taken the stick's centre (DS:115E),
+    /// v16 is cleared unless v31 is 1, and the first good read is the centre (`$135A`:
+    /// the thresholds half and one and a half times it, DS:1156-115C). Then each read:
+    /// none (no stick) undoes the centre and the direction; else button 1 down sets
+    /// v16 (up, it clears v16 and v31 unless v31 is 1: the `-` key's toggle), button 2
+    /// clears both and sets v17 (the jump), and the axes against the thresholds give the
+    /// direction (left/right, up/down; DS:1315) in DS:187E, for the next pass to take
+    /// when the keypad gives none. The PCjr's compares fixed counts and sets a time-out
+    /// flag (DS:187D here, which the PC leaves as it is).
     fn joystick(&mut self) {
         self.g.joy_skip = true;
-        let stick = self.clock.joystick().filter(|j| j.x < 41 && j.y < 41);
-        let Some(j) = stick else {
-            // The PC's read (`$1383`): v16 is cleared unless v31 is 1 (`$138F`), then the
-            // axes' loops (`$141B`) run out and nothing else is touched: no time-out
-            // flag (DS:187D stays as it is), no direction. (The PC's reading of a real
-            // stick, with its centre taken at the first read, is still the PCjr's here.)
-            self.cost.joystick += 1;
+        self.cost.joystick += 1;
+        if self.g.joy_centre.is_none() {
             if self.vars[31] != 1 {
                 self.vars[16] = 0;
             }
+            if !self.keys.is_empty() {
+                return;
+            }
+            let Some(j) = self.clock.joystick() else { return };
+            self.g.joy_centre = Some((j.x, j.y));
+        }
+        if !self.keys.is_empty() {
+            return;
+        }
+        let Some(j) = self.clock.joystick() else {
+            self.g.joy_centre = None;
+            self.g.joy_dir = 0;
             return;
         };
-        self.g.joy_timeout = 0;
         self.cost.joystick_turns += j.x.max(j.y) as u32 + 1;
-        if !(self.vars[31] == 1 && !j.buttons[0]) {
-            self.vars[16] = j.buttons[0] as u8;
+        let (cx, cy) = self.g.joy_centre.unwrap_or((j.x, j.y));
+        let (cx, cy) = (cx as u16, cy as u16);
+        if j.buttons[0] {
+            self.vars[16] = 1;
+            self.vars[31] = 0;
+        } else if self.vars[31] != 1 {
+            self.vars[16] = 0;
             self.vars[31] = 0;
         }
         if j.buttons[1] {
             self.vars[31] = 0;
+            self.vars[16] = 0;
             self.vars[17] = 1;
         }
-        // (A key that came during the read would end it here, the direction kept; the
-        // read only starts with none waiting, and the port's keys come at checkpoints.)
-        let col = match j.x {
-            0..=6 => 4,
-            7..=18 => 0,
-            _ => 8,
+        let (x, y) = (j.x as u16, j.y as u16);
+        let col = if x > cx * 3 / 2 {
+            8
+        } else if x > cx / 2 {
+            0
+        } else {
+            4
         };
-        let row = match j.y {
-            0..=6 => 1,
-            7..=18 => 0,
-            _ => 2,
+        let row = if y <= cy / 2 {
+            1
+        } else if y <= cy * 3 / 2 {
+            0
+        } else {
+            2
         };
         self.g.joy_dir = self.res.ds[JOY_DIRS + col + row];
         if self.g.joy_dir != 0 {
@@ -94,8 +114,10 @@ impl World {
         }
     }
 
-    /// `PCjr $0844`: send the next record to the sound chip and take its duration. 0 ends
-    /// the tune (v15 = 1; on to the queued tune if there is another), FF repeats it.
+    /// `$1A55`: the next record of the tune, and its duration. 0 ends the tune (v15 = 1;
+    /// on to the queued tune if there is another), FF repeats it. The records are the
+    /// PCjr's, writes for its sound chip; the PC plays one voice of them on the speaker
+    /// ([`Self::note`]), whether the sound is on or not (the gate mutes it).
     fn music_tick(&mut self) {
         self.g.music_countdown = self.g.music_countdown.wrapping_sub(1);
         if self.g.music_countdown != 0 {
@@ -105,14 +127,10 @@ impl World {
         let n = s.data.get(s.at).copied().unwrap_or(0) as usize;
         s.at += 1;
         let n = if n == 0 { 0x10000 } else { n };
-        for _ in 0..n {
-            let b = s.data.get(s.at).copied().unwrap_or(0);
-            s.at += 1;
-            if self.g.sound_on {
-                self.sound_out.push(b);
-            }
-            self.cost.sound += 1;
-        }
+        let record: Vec<u8> = (0..n.min(3)).map(|k| s.data.get(s.at + k).copied().unwrap_or(0)).collect();
+        self.note(&record);
+        s.at += n;
+        self.cost.sound += 1;
         let d = s.data.get(s.at).copied().unwrap_or(0);
         s.at += 1;
         match d {
@@ -253,8 +271,11 @@ impl World {
             let Some(k) = self.keys.pop_front() else { return };
             let (al, ah) = (k as u8, (k >> 8) as u8);
             if self.g.paused {
-                // $1B14: a key ends the pause.
+                // $1B14: a key ends the pause, the speaker back on if the sound is.
                 self.g.paused = false;
+                if self.g.sound_on {
+                    self.speaker.push(super::Speaker::Gate(true));
+                }
                 continue;
             }
             // `cmp al,7Ah; jg`: signed, so 80h-FFh go on to the table, past its end.
@@ -304,7 +325,13 @@ impl World {
                     return;
                 }
                 c @ 0x80..=0x85 => self.g.key_flags[(c & 0x7F) as usize] = true,
-                0x8F => self.g.paused = true,
+                0x8F => {
+                    // $1B53: the speaker off while paused, if the sound is on.
+                    if self.g.sound_on {
+                        self.speaker.push(super::Speaker::Gate(false));
+                    }
+                    self.g.paused = true;
+                }
                 0x8E => {
                     let d = self.vars[31] ^ 1;
                     self.vars[31] = d;
@@ -317,7 +344,11 @@ impl World {
                     self.vars[31] = 0;
                     self.vars[17] = 1;
                 }
-                0x8C => self.g.sound_on = !self.g.sound_on,
+                0x8C => {
+                    // $1B95: the speaker's gate follows the sound.
+                    self.g.sound_on = !self.g.sound_on;
+                    self.speaker.push(super::Speaker::Gate(self.g.sound_on));
+                }
                 // 8Bh (Ctrl+V's) has no case on the PC (`$1BB4`), where the PCjr's turns a
                 // debug mode on.
                 0x8A => self.vars[27] = 1,
@@ -346,11 +377,31 @@ impl World {
         }
     }
 
-    /// `PCjr $0B1C`: stop the music and silence the chip.
+    /// `$157E`: a record's note on the speaker. Only a record that starts with a volume
+    /// write (its byte & 90h = 90h) changes it: voice 1's "off" (9Fh) sets the timer's
+    /// channel 2 to divisor 2, inaudible (the high byte the record's length's, 0); any
+    /// other, to the tone of the next two bytes, the chip's tone write (the first's low
+    /// four bits × 16, the second as the high byte).
+    fn note(&mut self, record: &[u8]) {
+        let Some(&first) = record.first() else { return };
+        if first & 0x90 != 0x90 {
+            return;
+        }
+        let divisor = if first == 0x9F {
+            2
+        } else {
+            let lo = record.get(1).copied().unwrap_or(0) << 4;
+            let hi = record.get(2).copied().unwrap_or(0);
+            u16::from_le_bytes([lo, hi])
+        };
+        self.speaker.push(super::Speaker::Divisor(divisor));
+    }
+
+    /// `$15B3`: stop the music, the timer's channel 2 to divisor 2 (silent).
     pub fn stop_music(&mut self) {
         self.g.music_next = None;
         self.g.music_on = false;
-        self.sound_out.extend_from_slice(&[0x04, 0x9F, 0xBF, 0xDF, 0xFF]);
+        self.speaker.push(super::Speaker::Divisor(2));
     }
 
     /// A stream in a loaded sound group.

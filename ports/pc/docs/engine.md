@@ -127,9 +127,26 @@ original's (tests/engine.rs), then implemented in the port.
   DS:10D2, 1609, 1967 and 17E7), and the 3 sectors' rest is whatever followed it in
   memory, never read back. The screen position saved (DS:1881) is the game's own
   (`$19D3`), not the BIOS's.
-- **The joystick** (`$1383`, every other tick, `$141B` the read): with none, v16 is
-  cleared unless v31 is 1, and nothing else changes (the PCjr sets a time-out flag,
-  here DS:187D, which stays 0).
+- **The joystick** (`$1383`, every other tick, `$141B` the read, which a waiting key
+  ends): until a read has taken the stick's centre (DS:115E), v16 is cleared unless v31
+  is 1; the first good read is the centre (`$135A`: thresholds at half and one and a
+  half times it, DS:1156-115C), a read that times out undoes it and the direction.
+  Button 1 sets v16 while down (up, it clears v16 and v31 unless v31 is 1), button 2
+  clears them and sets v17; the axes against the thresholds give the direction (table
+  DS:1315) in DS:187E. With no joystick nothing else changes: the PCjr sets a time-out
+  flag (here DS:187D, which stays as it is) and compares fixed counts.
+- **Sound: the speaker.** The music's records are the PCjr's, writes for its sound chip
+  (sound.rs). The timer's tick (`$1A55`) takes a record each time its duration runs out,
+  as on the PCjr, but plays one voice of it (`$157E`): a record whose first byte is a
+  volume write (byte & 90h = 90h) sets the timer's channel 2 (square wave, 1,193,182 Hz
+  over the divisor): voice 1 off (9Fh) to divisor 2, inaudible; any other to the next
+  two bytes' tone (the first's low four bits × 16, the second as the high byte). Other
+  records leave the note as it is. Stopping the music (`$15B3`) sets divisor 2 too, as
+  the start-up does (`$6E`). The speaker's gate (port 61h) is switched on at each start
+  (`$20E9`), off and on by the sound key (`$1B95`) and off for a pause while the sound
+  is on (`$1B53`, `$1B14`); the notes go to the timer whether or not the gate is on.
+  The port gives these as `World::speaker`, and the tests check every route's against
+  the original's (reference/*.speaker, refemu-pc `--speaker`).
 - **The screen** compared is the CGA's picture area in its 640-dot mode: each picture
   pixel its colour's dot pattern, two to a byte (`World::frame`, refemu-pc's
   `Runner::frame`).

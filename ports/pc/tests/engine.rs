@@ -71,6 +71,21 @@ fn replay_with(disk: &Disk, name: &str, play: Option<Vec<u8>>) -> (usize, World)
             assert_eq!(a, b, "{name}: the screen at pass {} differs (kqframes-pc shows how)", k + 1);
         }
     }
+    // The speaker's events, in order, where recorded (refemu-pc --speaker).
+    if let Ok(t) = std::fs::read_to_string(dir.join(format!("{name}.speaker"))) {
+        let orig: Vec<&str> = t.lines().collect();
+        let port: Vec<String> = w.speaker.iter().map(|s| s.log_line()).collect();
+        let n = orig.len().min(port.len());
+        if let Some(k) = (0..n).find(|&k| orig[k] != port[k]) {
+            panic!("{name}: the speaker's event {k} differs: original {}, port {}", orig[k], port[k]);
+        }
+        assert!(
+            port.len() >= orig.len(),
+            "{name}: the port's speaker stops after {} of {} events",
+            port.len(),
+            orig.len()
+        );
+    }
     (reference.len(), w)
 }
 

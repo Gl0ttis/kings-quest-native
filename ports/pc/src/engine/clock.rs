@@ -124,9 +124,10 @@ pub trait Clock {
     fn pace(&mut self, _cycles: u64) {}
 }
 
-/// The PCjr joystick as the game's read finds it (`PCjr $0563`): for each axis, the turns
-/// of its loop until the axis's one-shot ended (6 or fewer left or up, 19 or more right
-/// or down, 41 or more a time-out); whether each button is down.
+/// The joystick as the game's read finds it (`$141B`): for each axis, the turns of its
+/// loop until the axis's one-shot ended (more with the stick further right or down; the
+/// game compares them with its centre's, taken at its first read); whether each button
+/// is down. No joystick is none.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Joystick {
     pub x: u8,

@@ -268,7 +268,7 @@ impl World {
                 return Err(1);
             }
             0x05 => {
-                // The picture only: the PCjr's op 05 doesn't reset the ego.
+                // The picture only: op 05 doesn't reset the ego (the Apple version's does).
                 self.wait_print_done();
                 self.load_picture(a0);
                 p + 1

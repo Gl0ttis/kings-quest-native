@@ -71,7 +71,7 @@ impl World {
         self.text_screen_newline(0);
     }
 
-    /// `PCjr $3ECB`: an engine string at the text cursor, then a new line.
+    /// `$05DA`: an engine string at the text cursor, then a new line.
     pub fn print_ds(&mut self, at: usize) {
         let ds = self.res.ds.clone();
         let (row, col) = self.g.text_cursor;

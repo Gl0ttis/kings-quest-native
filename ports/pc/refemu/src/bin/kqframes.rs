@@ -1,4 +1,4 @@
-//! kqframes-pc DISK EVENTS --hashes OUT [--trace OUT]: the screen's hash at every pass of a
+//! kqframes-pc DISK EVENTS --hashes OUT [--trace OUT] [--speaker OUT]: the screen's hash at every pass of a
 //! run kqroute-pc recorded (its `--events` log), for the reference (reference/*.frames).
 //! kqframes-pc DISK EVENTS [--from N]: the original's screen against the port's.
 //!
@@ -82,7 +82,7 @@ fn main() {
         a.drain(p..(p + 2).min(a.len()));
         v
     };
-    let (hashes, trace) = (opt("--hashes"), opt("--trace"));
+    let (hashes, trace, speaker) = (opt("--hashes"), opt("--trace"), opt("--speaker"));
     let from: u64 = opt("--from").map_or(1, |v| v.parse().expect("--from N"));
     let [disk, events] = a.as_slice() else {
         eprintln!("usage: kqframes-pc DISK EVENTS [--hashes OUT] [--trace OUT] [--from N]");
@@ -134,6 +134,9 @@ fn main() {
     std::fs::write(hashes.unwrap(), out).expect("write the hashes");
     if let Some(p) = trace {
         std::fs::write(p, &r.trace).expect("write the trace");
+    }
+    if let Some(p) = speaker {
+        std::fs::write(p, kq1_pc_refemu::speaker_log(&r.m.sound)).expect("write the speaker's events");
     }
     eprintln!("{} passes followed", r.passes);
 }

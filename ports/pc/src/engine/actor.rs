@@ -1,5 +1,6 @@
 //! The game cycle (`$293A`), each actor's update (`$2AAD`), and the actions that load
-//! things and add, place and clear actors (`$0B37`-`$112D`, `PCjr $4AFC`-`$2063`).
+//! things and add, place and clear actors (`$0B37`-`$112D`, `$1D18`-`$2063`: from the
+//! resource table's lookup to the disk read).
 
 use super::res::{Script, View};
 use super::save::SAVE_OFFSETS;

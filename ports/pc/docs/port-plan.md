@@ -32,7 +32,8 @@ both have it working.
 | 5. The engine | **Done** ([src/engine/](../src/engine/mod.rs), [engine.md](engine.md)): the PCjr port's native engine with the PC's addresses, and the PC's differences found pass by pass and implemented (engine.md, "How the PC differs"). |
 | 6. Pass-by-pass comparison | **Done.** All ten routes match the original on every pass, in state and on screen (about 82,000 passes; `tests/engine.rs`; `kqframes-pc` shows where screens differ), and the Play diskette's save block is the original's byte for byte. |
 | 8. The screen | **Done**: the CGA's whole screen, each pixel its dot pattern, and the text drawn as the BIOS draws it, from the user's own BIOS font (`original/bios.rom`, not shipped); the PC's unclipped copy of an actor's rectangle. |
-| 9-10 | To do: sound (the speaker), timing (the speed model), the player. |
+| Sound | **Engine done**: the PC plays one voice of the PCjr's sound-chip records on the speaker (engine.md, "Sound: the speaker"); every route's speaker events match the original's, in order (`reference/*.speaker`). The player has yet to make the sound. |
+| 9-10 | To do: timing (the speed model), the player (window, composite display, the speaker's sound, keys, joystick). |
 
 ## Next steps
 

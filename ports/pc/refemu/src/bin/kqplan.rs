@@ -1,4 +1,4 @@
-//! kqplan-pc DISK PLAN [--events OUT] [--trace OUT] [--frames OUT] [--play IMG] [--play-out IMG]
+//! kqplan-pc DISK PLAN [--events OUT] [--trace OUT] [--frames OUT] [--speaker OUT] [--play IMG] [--play-out IMG]
 //!
 //! Plays a plan through the original in refemu-pc (the runner) and writes the reference
 //! the port is replayed against: the event log, the trace and the screens. A plan is
@@ -61,6 +61,7 @@ fn main() {
     };
     let (events, trace, frames) = (opt("--events"), opt("--trace"), opt("--frames"));
     let (play, play_out) = (opt("--play"), opt("--play-out"));
+    let speaker = opt("--speaker");
     let [disk, plan] = args.as_slice() else {
         eprintln!(
             "usage: kqplan-pc DISK PLAN [--events OUT] [--trace OUT] [--frames OUT] [--play IMG] [--play-out IMG]"
@@ -160,6 +161,9 @@ screen:
     }
     if let Some(p) = trace {
         std::fs::write(p, &r.trace).expect("write the trace");
+    }
+    if let Some(p) = speaker {
+        std::fs::write(p, kq1_pc_refemu::speaker_log(&r.m.sound)).expect("write the speaker's events");
     }
     if let Some(p) = frames {
         std::fs::write(p, out_frames).expect("write the frames");

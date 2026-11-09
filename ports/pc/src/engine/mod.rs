@@ -259,6 +259,9 @@ pub struct Globals {
     /// 1277, 1278, 1279: the joystick timed out; its direction; the keypad's.
     pub joy_timeout: u8,
     pub joy_dir: u8,
+    /// The joystick's centre, as the first good read took it (DS:115E set, its counts),
+    /// for the thresholds.
+    pub joy_centre: Option<(u8, u8)>,
     pub key_dir: u8,
     /// 127C: a set_loop waiting for the actor's next update (its view number; FF
     /// none).
@@ -360,8 +363,8 @@ pub struct World {
     /// The Master and the Play diskette, and which is in the drive.
     pub disks: [Floppy; 2],
     pub drive: usize,
-    /// Bytes for the sound chip, for the sound output.
-    pub sound_out: Vec<u8>,
+    /// What the engine does to the speaker, in order, for the sound output.
+    pub speaker: Vec<Speaker>,
     /// When the timer fires, and the events of the interval since the last
     /// checkpoint not yet fired.
     pub clock: Box<dyn Clock>,
@@ -430,6 +433,25 @@ pub struct World {
     pub frame: Option<Vec<u8>>,
 }
 
+/// The PC's speaker, as the engine drives it: the timer's channel 2 set to a divisor (in
+/// square-wave mode; the tone is 1,193,182 Hz over it), or the speaker's gate (port
+/// 61h, its two low bits) switched on or off.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Speaker {
+    Divisor(u16),
+    Gate(bool),
+}
+
+impl Speaker {
+    /// The event as refemu-pc's speaker log writes it (reference/*.speaker).
+    pub fn log_line(&self) -> String {
+        match self {
+            Speaker::Divisor(d) => format!("D {d:04X}"),
+            Speaker::Gate(on) => format!("G {}", *on as u8),
+        }
+    }
+}
+
 /// A frame's hash (FNV-1a), as refemu's tools hash the original's.
 pub fn frame_hash(f: &[u8]) -> u64 {
     f.iter().fold(1469598103934665603u64, |h, &b| (h ^ b as u64).wrapping_mul(1099511628211))
@@ -490,6 +512,7 @@ impl World {
             chase_dir: 0,
             joy_timeout: 0,
             joy_dir: 0,
+            joy_centre: None,
             key_dir: 0,
             pending_loop: res.ds[0x1882],
             play_disk: false,
@@ -537,7 +560,7 @@ impl World {
             keys: VecDeque::new(),
             disks,
             drive: 0,
-            sound_out: Vec::new(),
+            speaker: Vec::new(),
             clock,
             pending: VecDeque::new(),
             checkpoint: 0,

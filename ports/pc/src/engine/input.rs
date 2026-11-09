@@ -107,9 +107,11 @@ impl Default for Parse {
 
 impl World {
     /// `$2094`: start, then the main loop; after a restart, again. Before it, at power-on,
-    /// the engine reads its resource table (2 sectors from sector 10, `$5A`).
+    /// the engine reads its resource table (2 sectors from sector 10, `$5A`) and stops
+    /// the music, which silences the speaker (`$6E`).
     pub fn start(&mut self) {
         self.read_sectors(2);
+        self.stop_music();
         loop {
             // The Play diskette jumps to the restart from deep in a pass (`jmp
             // $1C33`, which resets the stack).
@@ -140,7 +142,8 @@ impl World {
         self.g.parse.line[0] = 0;
         self.g.parse.line[1] = 0xFF;
         self.g.music_on = false;
-        // The music starts with silence.
+        // $20E9: the speaker's gate on; the music starts with silence.
+        self.speaker.push(super::Speaker::Gate(true));
         self.g.music = Some(super::Stream { data: self.res.ds.clone(), at: SILENCE });
         self.g.music_on = true;
         let start_room = if self.g.first_start { self.start_room.take() } else { None };
