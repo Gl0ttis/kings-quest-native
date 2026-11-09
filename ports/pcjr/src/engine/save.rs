@@ -1,23 +1,49 @@
-//! Saving, restoring and restarting (`$0A30`, `$38B8`-`$3C1C`).
+//! Saving, restoring, restarting and making a Play diskette (`$0A30`, `$38B8`-`$3EC2`).
 //!
 //! The original saves to its Play diskette: 3 sectors a slot (26 slots, `a`-`z`, from
-//! sector 282h), holding "vrsn#", the slot, the variables, the object table and the
-//! actor table with the globals after it, as they are in its memory. Restarting
-//! restores slot FFh, which the Master holds at sector 27Fh, and then clears most of
-//! the state again: of it, only the object table and two bytes stay.
+//! sector 282h), holding "vrsn#", the slot, the variables, the object table, and the
+//! actor table with the globals after it, as they are in its memory. The port writes
+//! the same blocks, so its Play diskettes and the original's are the same. The actor
+//! records hold pointers into the engine's heap (to a view, and to a cel in it); the
+//! port writes a view's base as 2000h + 100h × its number, and reads a cel back from
+//! where its pointer is relative to its view's base, so the original's saves read too.
+//!
+//! Restarting restores slot FFh (the Master holds it at sector 27Fh), then clears most
+//! of the state again: of it, only the object table and two bytes stay.
 
-use super::{Object, World, OBJECTS};
+use super::{Actor, CelRef, Object, World, ACTORS, OBJECTS};
 
-/// The save block's layout.
+/// The save block: "vrsn#", the slot, v0-v255, the objects, DS:11E1-127C.
 const SIGNATURE: &[u8; 5] = b"vrsn#";
 const VARS_AT: usize = 6;
 const OBJECTS_AT: usize = VARS_AT + 256;
 const ACTORS_AT: usize = OBJECTS_AT + 8 * OBJECTS;
-/// Bytes saved: the signature and slot, the variables, the objects, DS:11E1-127C.
-pub const SAVE_LEN: usize = ACTORS_AT + 0x9C;
+/// The original's actor table holds 4 records; the globals DS:1259-127C follow.
+const RECORDS: usize = 4;
+const GLOBALS_AT: usize = ACTORS_AT + 30 * RECORDS;
+pub const SAVE_LEN: usize = GLOBALS_AT + 0x24;
+/// Where the port says a view is, in the actor records it saves.
+const VIEW_BASE: u16 = 0x2000;
+/// The background save offset of each slot (DS:0D1C).
+const SAVE_OFFSETS: usize = 0x0D1C;
+/// "Games may only be saved on your Play diskette.", "Disk Write Error!...".
+const NOT_ON_PLAY: usize = 0x1E28;
+const WRITE_ERROR: usize = 0x1DE8;
+/// The Play diskette's strings: the question, the label, "insert Master", "insert
+/// Play", "write error", "ready".
+const PLAY_ASK: usize = 0x1A87;
+const PLAY_LABEL: usize = 0x1AD9;
+const INSERT_MASTER: usize = 0x1B2B;
+const INSERT_PLAY: usize = 0x1B72;
+const COPY_WRITE_ERROR: usize = 0x1C03;
+const PLAY_READY: usize = 0x1BC4;
+
+/// Raised to jump to the restart (`jmp $0A30`), which resets the stack: caught by
+/// [`World::start`].
+pub struct RestartNow;
 
 impl World {
-    /// The 3 sectors of slot `slot` (FF: the initial state on the Master).
+    /// The 3 sectors of slot `slot` (FF: the initial state).
     fn slot_sector(slot: u8) -> usize {
         if slot == 0xFF {
             0x27F
@@ -26,29 +52,196 @@ impl World {
         }
     }
 
-    /// `$3B99`: read slot `slot` from the disk in the drive: its block, or the error
-    /// (10: not that slot).
-    fn read_slot(&mut self, slot: u8) -> Result<Vec<u8>, u8> {
-        self.checkpoint(0x3B99);
-        self.g.keys_on = false;
-        self.checkpoint(0x4D93);
-        self.site(super::clock::Site::Disk);
-        self.cycles += 3 * super::actor::SECTOR_CYCLES;
-        self.g.keys_on = true;
-        let at = Self::slot_sector(slot) * 512;
-        let block = self.disk_image().get(at..at + SAVE_LEN).map(<[u8]>::to_vec).unwrap_or_default();
-        if block.len() < SAVE_LEN || &block[..5] != SIGNATURE || block[5] != slot {
-            return Err(10);
+    // ---- The save block.
+
+    /// A cel pointer as the port writes it.
+    fn cel_pointer(c: &CelRef) -> u16 {
+        match &c.view {
+            Some(v) => VIEW_BASE + 0x100 * v.num as u16 + v.cel_offset(c.lp, c.cel) as u16,
+            None => 0,
         }
-        Ok(block)
     }
 
-    /// The image of the disk in the drive.
-    fn disk_image(&self) -> &[u8] {
-        &self.res.disk_image
+    fn encode_actor(&self, a: &Actor, out: &mut [u8]) {
+        let base = a.view.as_ref().map_or(0, |v| VIEW_BASE + 0x100 * v.num as u16);
+        out[0] = a.room;
+        out[1..3].copy_from_slice(&base.to_le_bytes());
+        out[3] = a.lp;
+        out[4] = a.no_move;
+        out[5] = a.view_num;
+        out[6] = 0;
+        out[7] = a.cel_count;
+        out[8] = a.cel;
+        out[9] = a.delay;
+        out[10] = a.countdown;
+        out[11] = a.flags;
+        out[12] = a.step_x;
+        out[13] = a.step_y;
+        out[14] = a.cycle;
+        out[15] = a.motion;
+        out[16] = a.dir;
+        out[17..19].copy_from_slice(&self.res.ds_word(SAVE_OFFSETS + 2 * a.slot as usize).to_le_bytes());
+        out[19] = a.slot;
+        out[20..22].copy_from_slice(&Self::cel_pointer(&a.cel_drawn).to_le_bytes());
+        out[22..24].copy_from_slice(&Self::cel_pointer(&a.cel_new).to_le_bytes());
+        out[24] = a.x;
+        out[25] = a.y;
+        out[26] = a.new_x;
+        out[27] = a.new_y;
+        out[28] = a.hidden;
+        out[29] = a.priority;
     }
 
-    /// The object table from a save block.
+    fn decode_actor(&mut self, b: &[u8], keep_saved: Vec<u8>) -> Actor {
+        let word = |i: usize| u16::from_le_bytes([b[i], b[i + 1]]);
+        let base = word(1);
+        // The view: the port's own pointer names it; otherwise the view number.
+        let num = if base >= VIEW_BASE && (base - VIEW_BASE).is_multiple_of(0x100) && (base - VIEW_BASE) / 0x100 < 111 {
+            ((base - VIEW_BASE) / 0x100) as u8
+        } else {
+            b[5]
+        };
+        let view = if base == 0 { None } else { self.res.view(num) };
+        let cel = |p: u16| -> CelRef {
+            match &view {
+                Some(v) => {
+                    let (lp, cel) = v.cel_at(p.wrapping_sub(base) as usize).unwrap_or((b[3], b[8]));
+                    CelRef { view: Some(v.clone()), lp, cel }
+                }
+                None => CelRef::default(),
+            }
+        };
+        Actor {
+            room: b[0],
+            view: view.clone(),
+            lp: b[3],
+            no_move: b[4],
+            view_num: b[5],
+            cel_count: b[7],
+            cel: b[8],
+            delay: b[9],
+            countdown: b[10],
+            flags: b[11],
+            step_x: b[12],
+            step_y: b[13],
+            cycle: b[14],
+            motion: b[15],
+            dir: b[16],
+            slot: b[19],
+            saved: keep_saved,
+            cel_drawn: cel(word(20)),
+            cel_new: cel(word(22)),
+            x: b[24],
+            y: b[25],
+            new_x: b[26],
+            new_y: b[27],
+            hidden: b[28],
+            priority: b[29],
+        }
+    }
+
+    /// The globals DS:1259-127C, in order.
+    fn globals_bytes(&self) -> [u8; 0x24] {
+        let g = &self.g;
+        [
+            g.spare[0],
+            g.input_off as u8,
+            g.actor_count,
+            g.barrier_x,
+            g.barrier_y,
+            g.band_x.0,
+            g.band_x.1,
+            g.band_y.0,
+            g.band_y.1,
+            g.program as u8,
+            g.program2 as u8,
+            g.target.0,
+            g.target.1,
+            g.slack.0,
+            g.slack.1,
+            g.follow_dist,
+            g.follow_state,
+            g.kept_step,
+            g.detour_count,
+            g.detour_turn,
+            g.patrol_side,
+            g.special_step,
+            g.room_changed,
+            g.kept_step28,
+            g.detour_len,
+            g.detour_state,
+            g.barrier_latch,
+            g.spare[1],
+            g.saved_dir,
+            g.chase_dir,
+            g.joy_timeout,
+            g.joy_dir,
+            g.key_dir,
+            g.spare[2],
+            g.hpos,
+            g.pending_loop,
+        ]
+    }
+
+    fn set_globals_bytes(&mut self, b: &[u8]) {
+        let g = &mut self.g;
+        g.spare[0] = b[0];
+        g.input_off = b[1] != 0;
+        g.actor_count = b[2];
+        g.barrier_x = b[3];
+        g.barrier_y = b[4];
+        g.band_x = (b[5], b[6]);
+        g.band_y = (b[7], b[8]);
+        g.program = b[9] != 0;
+        g.program2 = b[10] != 0;
+        g.target = (b[11], b[12]);
+        g.slack = (b[13], b[14]);
+        g.follow_dist = b[15];
+        g.follow_state = b[16];
+        g.kept_step = b[17];
+        g.detour_count = b[18];
+        g.detour_turn = b[19];
+        g.patrol_side = b[20];
+        g.special_step = b[21];
+        g.room_changed = b[22];
+        g.kept_step28 = b[23];
+        g.detour_len = b[24];
+        g.detour_state = b[25];
+        g.barrier_latch = b[26];
+        g.spare[1] = b[27];
+        g.saved_dir = b[28];
+        g.chase_dir = b[29];
+        g.joy_timeout = b[30];
+        g.joy_dir = b[31];
+        g.key_dir = b[32];
+        g.spare[2] = b[33];
+        g.hpos = b[34];
+        g.pending_loop = b[35];
+    }
+
+    /// The save block for `slot`.
+    fn encode(&self, slot: u8) -> Vec<u8> {
+        let mut b = vec![0u8; SAVE_LEN];
+        b[..5].copy_from_slice(SIGNATURE);
+        b[5] = slot;
+        b[VARS_AT..VARS_AT + 256].copy_from_slice(&self.vars);
+        for (i, o) in self.objects.iter().enumerate() {
+            let r = &mut b[OBJECTS_AT + 8 * i..OBJECTS_AT + 8 * i + 8];
+            r[..2].copy_from_slice(&o.name.to_le_bytes());
+            r[2] = o.room;
+            r[3] = o.extra;
+            r[4] = o.loop_cel;
+            r[5] = o.x;
+            r[6] = o.y;
+            r[7] = o.slot;
+        }
+        for (i, a) in self.actors.iter().take(RECORDS).enumerate() {
+            self.encode_actor(a, &mut b[ACTORS_AT + 30 * i..ACTORS_AT + 30 * i + 30]);
+        }
+        b[GLOBALS_AT..].copy_from_slice(&self.globals_bytes());
+        b
+    }
+
     fn objects_from(block: &[u8]) -> [Object; OBJECTS] {
         let mut o = [Object::default(); OBJECTS];
         for (i, r) in o.iter_mut().enumerate() {
@@ -56,6 +249,7 @@ impl World {
             *r = Object {
                 name: u16::from_le_bytes([b[0], b[1]]),
                 room: b[2],
+                extra: b[3],
                 loop_cel: b[4],
                 x: b[5],
                 y: b[6],
@@ -65,27 +259,245 @@ impl World {
         o
     }
 
-    /// `$0A30`: restart. Slot FF is restored; then everything from the key flags to the
-    /// joystick's direction (DS:0E2E-1279: the variables, the actors, the barriers,
-    /// the parser...) is cleared, and the music's countdown and the input flags before
-    /// them set to 1. What is left of the restored state is the object table and the
-    /// pending set_loop. Then the start again (without the title).
+    /// The state from a save block (`$3BDF`): the variables, the objects, the actors
+    /// and the globals after them.
+    fn decode(&mut self, b: &[u8]) {
+        self.vars.copy_from_slice(&b[VARS_AT..VARS_AT + 256]);
+        self.objects = Self::objects_from(b);
+        for i in 0..RECORDS {
+            let saved = std::mem::take(&mut self.actors[i].saved);
+            let r = b[ACTORS_AT + 30 * i..ACTORS_AT + 30 * i + 30].to_vec();
+            self.actors[i] = self.decode_actor(&r, saved);
+        }
+        for a in &mut self.actors[RECORDS..ACTORS] {
+            *a = Actor::default();
+        }
+        self.set_globals_bytes(&b[GLOBALS_AT..SAVE_LEN]);
+    }
+
+    // ---- The disks.
+
+    /// INT 13h on the disk in the drive: read or write `count` sectors from `lba`
+    /// (`data` the bytes to write, or filled by a read). The status (3: write-protected).
+    fn disk(&mut self, write: bool, lba: usize, count: usize, data: &mut Vec<u8>) -> u8 {
+        let d = &mut self.disks[self.drive];
+        let range = lba * 512..(lba + count) * 512;
+        if write {
+            if d.write_protected {
+                return 3;
+            }
+            if let Some(dst) = d.image.get_mut(range) {
+                dst.copy_from_slice(&data[..count * 512]);
+            }
+        } else {
+            *data = d.image.get(range).map_or_else(|| vec![0; count * 512], <[u8]>::to_vec);
+        }
+        0
+    }
+
+    /// `$3B99`: read slot `slot` from the disk in the drive: its block, or the error
+    /// (10: not that slot).
+    fn load_slot(&mut self, slot: u8) -> Result<Vec<u8>, u8> {
+        self.checkpoint(0x3B99);
+        self.read_sectors_counted(3);
+        let mut data = Vec::new();
+        self.disk(false, Self::slot_sector(slot), 3, &mut data);
+        if &data[..5] != SIGNATURE || data[5] != slot {
+            return Err(10);
+        }
+        Ok(data)
+    }
+
+    /// `$3ABC`: save to slot `slot`. Before a real slot, the disk's boot sector is
+    /// written with the start of the engine's data segment (it fails on the Master,
+    /// which is write-protected). Writing on the Master fails with "Games may only be
+    /// saved on your Play diskette."; another error asks for a key and tries again.
+    fn save_slot(&mut self, slot: u8) {
+        self.checkpoint(0x3ABC);
+        if slot != 0xFF {
+            let mut boot: Vec<u8> = (0..512u16).map(|i| self.res.code_byte(0x4E30 + i)).collect();
+            self.disk(true, 0, 1, &mut boot);
+        }
+        let mut b = self.encode(slot);
+        b.resize(3 * 512, 0);
+        self.g.keys_on = false;
+        loop {
+            self.cycles += 3 * super::actor::SECTOR_CYCLES;
+            match self.disk(true, Self::slot_sector(slot), 3, &mut b) {
+                0 => break,
+                3 => {
+                    self.print_now(NOT_ON_PLAY);
+                    break;
+                }
+                _ => {
+                    self.print_now(WRITE_ERROR);
+                    self.g.keys_on = false;
+                    self.blocking_key();
+                    self.g.keys_on = true;
+                }
+            }
+        }
+        self.g.keys_on = true;
+    }
+
+    /// `$3B74`: print an engine string at once (whole, and waiting for it).
+    fn print_now(&mut self, at: usize) {
+        self.g.print_all = true;
+        self.queue_engine_string(at);
+        self.wait_print_done();
+        self.g.print_all = false;
+    }
+
+    /// INT 16h AH=0: wait for a key and take it.
+    pub fn blocking_key(&mut self) -> u16 {
+        self.site_keys();
+        self.wait_until("a key", |w| !w.keys.is_empty());
+        self.keys.pop_front().unwrap_or(0)
+    }
+
+    /// `$3C15`.
+    fn key_wait(&mut self) -> u8 {
+        self.checkpoint(0x3C15);
+        self.blocking_key() as u8
+    }
+
+    /// `$3C0A`: the key waiting, not taken (0 if none).
+    fn key_poll(&mut self) -> u8 {
+        self.checkpoint(0x3C0A);
+        self.site_keys();
+        self.keys.front().map_or(0, |&k| k as u8)
+    }
+
+    /// `$4D93` for a read whose data the caller takes from the disk.
+    fn read_sectors_counted(&mut self, n: u16) {
+        self.g.keys_on = false;
+        self.checkpoint(0x4D93);
+        self.site(super::clock::Site::Disk);
+        self.cycles += n as u64 * super::actor::SECTOR_CYCLES;
+        self.g.keys_on = true;
+    }
+
+    // ---- The dialog.
+
+    /// `$38B8`: the save or restore dialog. After making a Play diskette (1E91), slot 0
+    /// is restored without asking.
+    pub fn save_restore_dialog(&mut self) {
+        self.checkpoint(0x38B8);
+        let mut slot = 0u8;
+        let mut ask = true;
+        if self.g.restoring {
+            self.g.restoring = false;
+            ask = false;
+        }
+        loop {
+            if ask {
+                slot = self.ask_slot();
+                if slot == 0x1A {
+                    return;
+                }
+                if self.g.save_requested {
+                    // The hidden slot FF (Space, then Ctrl-]) writes the initial state.
+                    self.save_slot(slot);
+                    return;
+                }
+            }
+            ask = true;
+            match self.load_slot(slot) {
+                Ok(b) => {
+                    self.decode(&b);
+                    self.restored();
+                    return;
+                }
+                Err(_) => self.queue_engine_string(0x19CA),
+            }
+        }
+    }
+
+    /// `$3935`: after a restore: the ego off screen, object 0 in this room, the actors
+    /// cleared, the room's script loaded again; v29 = 1 (restored), v25 = 0.
+    fn restored(&mut self) {
+        self.actors[0].room = 0xFF;
+        self.wait_print_done();
+        let r = self.vars[1];
+        self.objects[0].room = r;
+        self.clear_actors();
+        self.stop_music();
+        self.room = Some(self.load_room_script(r));
+        self.vars[29] = 1;
+        self.vars[25] = 0;
+    }
+
+    /// `$39D3`: which slot? A letter (0-25), 1Ah for Enter, or FF for Space then
+    /// Ctrl-] when saving.
+    fn ask_slot(&mut self) -> u8 {
+        self.wait_print_done();
+        self.g.print_all = true;
+        self.g.keys_on = false;
+        self.queue_engine_string(0x1A04);
+        self.queue_engine_string(0x1A29);
+        let col = if self.g.save_requested {
+            self.queue_engine_string(0x1A43);
+            0x20
+        } else {
+            self.queue_engine_string(0x1A52);
+            self.queue_engine_string(0x1A5F);
+            0x25
+        };
+        self.queue_engine_string(0x1A66);
+        self.wait_print_done();
+        self.g.print_all = false;
+        let r = loop {
+            let k = self.key_wait();
+            if k == 0x0D {
+                break 0x1A;
+            }
+            if k == b' ' {
+                let mut k = self.key_poll();
+                while k == 0 {
+                    k = self.key_poll();
+                }
+                if self.g.save_requested && k == 0x1D {
+                    break 0xFF;
+                }
+                continue;
+            }
+            if k.is_ascii_lowercase() {
+                self.text.cursor = (0x18, col);
+                self.put_char(k);
+                break k - b'a';
+            }
+        };
+        self.text_newline();
+        self.g.keys_on = true;
+        r
+    }
+
+    // ---- Restarting.
+
+    /// `$0A30`: restart. Slot FF is restored from the disk in the drive; then
+    /// everything from the key flags to the keypad's direction (DS:0E2E-1279: the
+    /// variables, the actors, the barriers, the parser...) is cleared, and the music's
+    /// countdown and the flags before them set to 1. What is left of the restored
+    /// state is the object table, the horizontal position and the pending set_loop.
     pub fn restart(&mut self) {
-        let block = match self.read_slot(0xFF) {
+        let block = match self.load_slot(0xFF) {
             Ok(b) => b,
-            Err(e) => self.stop(format!("restart: the initial state isn't on the disk (error {e})")),
+            Err(e) => self.stop(format!("restart: no initial state on the disk (error {e})")),
         };
         self.objects = Self::objects_from(&block);
-        self.g.pending_loop = block[ACTORS_AT + (0x127C - 0x11E1)];
+        let kept = (block[GLOBALS_AT + 0x21], block[GLOBALS_AT + 0x22], block[GLOBALS_AT + 0x23]);
         // DS:0E24-0E2D = 1.
         self.g.music_countdown = 1;
         self.g.sound_on = true;
         self.g.keys_on = true;
         self.g.prompt_shown = true;
         self.g.matched = true;
-        self.g.parse.phrase = 1;
         self.g.prompt_due = true;
         // DS:0E2E-1279 = 0.
+        let line_len = self.g.parse.line.len();
+        let (count, at, column) = (self.g.parse.count, self.g.parse.at, self.g.parse.column);
+        self.g.parse =
+            super::input::Parse { phrase: 1, line: vec![0; line_len], count, at, column, ..Default::default() };
         self.g.key_flags = [false; 6];
         self.g.debug = false;
         self.g.queue.clear();
@@ -99,86 +511,157 @@ impl World {
         self.g.paused = false;
         self.g.selected = 0;
         self.g.text_col = 0;
-        let line = std::mem::take(&mut self.g.parse.line);
-        let (count, at, column) = (self.g.parse.count, self.g.parse.at, self.g.parse.column);
-        self.g.parse = super::input::Parse {
-            phrase: 1,
-            line: line.iter().map(|_| 0).collect(),
-            count,
-            at,
-            column,
-            ..Default::default()
-        };
         self.global = None;
         self.room = None;
         self.extra = None;
         self.vars = [0; 256];
         self.view_table = vec![None; 256];
         self.actors = Default::default();
-        let g = &mut self.g;
-        g.input_off = false;
-        g.actor_count = 0;
-        g.barrier_x = 0;
-        g.barrier_y = 0;
-        g.band_x = (0, 0);
-        g.band_y = (0, 0);
-        g.program = false;
-        g.program2 = false;
-        g.target = (0, 0);
-        g.slack = (0, 0);
-        g.follow_dist = 0;
-        g.follow_state = 0;
-        g.kept_step = 0;
-        g.detour_count = 0;
-        g.detour_turn = 0;
-        g.patrol_side = 0;
-        g.special_step = 0;
-        g.room_changed = 0;
-        g.kept_step28 = 0;
-        g.detour_len = 0;
-        g.detour_state = 0;
-        g.barrier_latch = 0;
-        g.saved_dir = 0;
-        g.chase_dir = 0;
-        g.joy_timeout = 0;
-        g.joy_dir = 0;
-        g.key_dir = 0;
+        let mut g = [0u8; 0x24];
+        (g[0x21], g[0x22], g[0x23]) = kept;
+        self.set_globals_bytes(&g);
         self.clear_actors();
         self.vars[24] = 3;
     }
 
-    /// `$38B8`: the save or restore dialog.
-    pub fn save_restore_dialog(&mut self) {
-        self.stop("the save and restore dialog isn't ported yet".into());
-    }
+    // ---- The Play diskette.
 
-    /// `$3C1C`: op 42: make a Play diskette.
+    /// `$3C1C`: op 42: make a Play diskette. On "y": a blank diskette is formatted and
+    /// the Master's data (sectors 63-641) copied to it in three passes, through memory
+    /// (the second part of each pass through the video pages), the disks swapped by the
+    /// player as asked; then the game is saved to slot 0, and the game restarts and
+    /// restores it.
     pub fn make_play_diskette(&mut self) {
-        self.stop("making a Play diskette isn't ported yet".into());
+        self.g.text_attr = 0x0F;
+        self.enter_text_mode();
+        self.g.text_cursor = (0, 0);
+        self.print_ds(PLAY_ASK);
+        self.g.keys_on = false;
+        loop {
+            match self.blocking_key() as u8 {
+                b'y' => break,
+                b'n' => {
+                    self.g.keys_on = true;
+                    self.leave_text_mode();
+                    return;
+                }
+                _ => {}
+            }
+        }
+        self.stop_music();
+        self.print_ds(PLAY_LABEL);
+        self.copy_master();
+        self.save_slot(0);
+        self.g.restoring = true;
+        self.g.key_flags[2] = true;
+        self.g.keys_on = true;
+        std::panic::panic_any(RestartNow);
     }
 
-    /// `$3ED9`: op 31: the inventory screen.
-    pub fn inventory_screen(&mut self) {
-        self.stop("the inventory screen isn't ported yet".into());
+    /// `$3CDA`: the copy: three passes of 69 + 124 sectors from sector 63, the first
+    /// pass formatting the Play diskette.
+    fn copy_master(&mut self) {
+        let mut next = 0x3Fusize;
+        let mut passes = 4u8;
+        loop {
+            let (at1, at2) = (next, next + 0x45);
+            self.prompt_enter(INSERT_MASTER);
+            self.verify_master();
+            self.read_sectors_counted(0x45);
+            let mut chunk1 = Vec::new();
+            self.disk(false, at1, 0x45, &mut chunk1);
+            self.read_sectors_counted(0x7C);
+            let mut chunk2 = Vec::new();
+            self.disk(false, at2, 0x7C, &mut chunk2);
+            // The second part is read into segment 1000h: the work page, then the
+            // displayed page.
+            self.screen.load_pages(&chunk2);
+            self.prompt_enter(INSERT_PLAY);
+            if passes == 4 {
+                // The format also counts a pass.
+                passes -= 1;
+                self.format_play();
+            }
+            self.write_retrying(at1, 0x45, &mut chunk1);
+            self.write_retrying(at2, 0x7C, &mut chunk2);
+            next = at2 + 0x7C;
+            passes -= 1;
+            if passes == 0 {
+                break;
+            }
+        }
+        // $3CBE: back to graphics (mode 9 clears the displayed page); "ready".
+        self.screen.shown.fill(0);
+        self.text.text_mode = false;
+        self.text.graphics = Default::default();
+        self.text.cursor = (0, 0);
+        for b in self.res.ds_bytes(PLAY_READY, 0) {
+            self.text.teletype(b, 0x0F);
+        }
     }
 
-    /// `$4031`: op 3C: the text screen.
-    pub fn text_screen(&mut self, _fg: u8, _bg: u8) {
-        self.stop("the text screen isn't ported yet".into());
+    /// `$3D0F`: a prompt, then Enter.
+    fn prompt_enter(&mut self, at: usize) {
+        self.print_ds(at);
+        while self.blocking_key() as u8 != 0x0D {}
     }
 
-    /// `$3F9C`: op 3D.
-    pub fn print_at(&mut self, _s: &super::res::Script, _row: u8, _col: u8, _msg: u16) {
-        self.stop("print_at isn't ported yet".into());
+    /// `$3D39`: is the disk in the drive the Master? Its boot sector's second half is
+    /// the resource table; until it is, "insert the Master".
+    fn verify_master(&mut self) {
+        loop {
+            self.read_sectors_counted(1);
+            let mut s = Vec::new();
+            self.disk(false, 0, 1, &mut s);
+            if s[0x100..0x200] == self.res.code[0x100..0x200] {
+                return;
+            }
+            self.clear_text_screen(true);
+            self.print_ds(INSERT_MASTER);
+            self.wait_enter();
+        }
     }
 
-    /// `$3FB9`: op 3E.
-    pub fn print_text(&mut self, _s: &super::res::Script, _msg: u16) {
-        self.stop("print_text isn't ported yet".into());
+    /// `$3EC2`: wait for Enter.
+    fn wait_enter(&mut self) {
+        loop {
+            self.checkpoint(0x3EC2);
+            if self.blocking_key() as u8 == 0x0D {
+                return;
+            }
+        }
     }
 
-    /// `$40A6`: back to graphics.
-    pub fn leave_text_mode(&mut self) {
-        self.stop("the text screen isn't ported yet".into());
+    /// `$3DD6`: a write, retried (after "Disk Write Error!" and Enter) until it works.
+    fn write_retrying(&mut self, lba: usize, count: usize, data: &mut Vec<u8>) {
+        loop {
+            self.cycles += count as u64 * super::actor::SECTOR_CYCLES;
+            if self.disk(true, lba, count, data) == 0 {
+                return;
+            }
+            let keep = self.g.text_cursor;
+            self.print_ds(COPY_WRITE_ERROR);
+            self.g.text_cursor = keep;
+            self.wait_enter();
+        }
+    }
+
+    /// `$3E1A`: format the disk in the drive, 40 cylinders, 2 heads, each sector filled
+    /// with F6. On a write-protected disk (the Master), "insert the Play diskette" and
+    /// Enter, and that track again.
+    fn format_play(&mut self) {
+        for track in 0..80usize {
+            loop {
+                self.cycles += 9 * super::actor::SECTOR_CYCLES;
+                let d = &mut self.disks[self.drive];
+                if !d.write_protected {
+                    d.image[track * 9 * 512..(track + 1) * 9 * 512].fill(0xF6);
+                    break;
+                }
+                self.clear_text_screen(true);
+                self.print_ds(INSERT_PLAY);
+                self.wait_enter();
+            }
+        }
     }
 }

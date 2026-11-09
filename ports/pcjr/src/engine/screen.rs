@@ -65,6 +65,19 @@ impl Mem for Pages<'_> {
     }
 }
 
+impl Screen {
+    /// Bytes read into segment 1000h from its start: the work page, then the displayed
+    /// page (the Play diskette's copy goes through them).
+    pub fn load_pages(&mut self, data: &[u8]) {
+        for (o, &b) in data.iter().enumerate().take(0x10000) {
+            let (plane, off) = if o < 0x8000 { (&mut self.work, o) } else { (&mut self.shown, o - 0x8000) };
+            if let Some(i) = at(off as u16) {
+                plane[i] = b;
+            }
+        }
+    }
+}
+
 impl World {
     /// `$353F`: draw `data` onto the pages.
     fn interpret(&mut self, data: &[u8]) {

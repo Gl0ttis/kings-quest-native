@@ -102,8 +102,17 @@ impl World {
     /// `$0C4C`: start, then the main loop; after a restart, again.
     pub fn start(&mut self) {
         loop {
-            self.game_start();
-            self.main_loop();
+            // The Play diskette jumps to the restart from deep in a pass (`jmp
+            // $0A30`, which resets the stack).
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.game_start();
+                self.main_loop();
+            }));
+            if let Err(e) = r {
+                if e.downcast_ref::<super::save::RestartNow>().is_none() {
+                    std::panic::resume_unwind(e);
+                }
+            }
             self.restart();
         }
     }
@@ -205,7 +214,7 @@ impl World {
             if !matches!(b, 0x0D | 0x0A | 0x08 | 0x07) {
                 self.clear_cell(r, c);
             }
-            self.text.teletype(b);
+            self.text.teletype(b, 7);
         }
     }
 

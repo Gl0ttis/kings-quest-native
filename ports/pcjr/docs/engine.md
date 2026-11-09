@@ -61,6 +61,14 @@ Found reading the code; each is reproduced.
   object numbered by object 0's x (a bug); the prompt is printed.
 - **Restart** restores an initial state saved on the Master (sectors 27Fh-281h), then
   clears most of it again: what stays is the object table.
+- **Saves** go to a Play diskette, which the game makes itself (op 42): it formats a
+  blank diskette and copies the Master's sectors 63-641 to it in three passes, through
+  memory (part of each pass through the video pages); then it saves to slot 0,
+  restarts, and restores it. Before saving to a slot, it writes the start of its data
+  segment over the diskette's boot sector. A save holds the variables, the objects, and
+  the actor table with the globals after it, as they are in memory, pointers included:
+  the port writes the same blocks, with its own view addresses, and reads a cel back by
+  where its pointer is in its view.
 
 ## The timer in the port
 
@@ -78,7 +86,8 @@ the checkpoint sequences and the per-pass state.
 | Original | Port |
 |---|---|
 | `$0808` timer, `$0A9D` printing, `$08CE` keys | `timer.rs`: `int1c`, `print_chunk`, `key_tick` |
-| `$0A30` restart | `save.rs`: `restart` |
+| `$0A30` restart, `$38B8`-`$3EC2` save, restore, Play diskette | `save.rs` |
+| `$3ED9`-`$41CC` the text screen, inventory | `screens.rs` |
 | `$0C5A` start, `$0D16` main loop, `$48E8` title | `input.rs`: `game_start`, `main_loop`, `title` |
 | `$0DC1` parser, `$0F46`, `$0FF6`, `$0BA6`, `$0BFC` | `input.rs`: `next_parse`, `find_word_of_type`, `read_word`, `vocab_find`, `vocab_match_second` |
 | `$1069` line editor, `$13CE` input wait | `input.rs`: `read_line`, `wait_key` |

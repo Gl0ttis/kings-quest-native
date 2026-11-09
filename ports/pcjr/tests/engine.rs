@@ -46,3 +46,9 @@ fn the_walk_route_matches_the_original() {
     let Some(disk) = original() else { return };
     assert_eq!(replay(&disk, "walk_rooms_1_16"), 900);
 }
+
+#[test]
+fn the_save_restore_route_matches_the_original() {
+    let Some(disk) = original() else { return };
+    assert_eq!(replay(&disk, "save_restore"), 1000);
+}

@@ -25,7 +25,7 @@ engine draws.
 | 4. Measuring tool | **Working** ([refemu/](../refemu/README.md)). An 8086 core with 8088 timing, on a PCjr with no IBM ROM. It boots the original from the `.mfm` (the 1 KB-sector engine included) and runs plans (routes) of keys, typed commands and prompt answers. It answers disk swaps, and makes, saves to and restores from a Play diskette. It records a trace per pass and the screen, and can draw every room picture with the engine's own code. Timing: the 8088's instruction fetches are added to the core's counts, calibrated against 86Box (walking within 10%, a room change within 10%; [tools/86box/](../tools/86box/README.md)). 86Box is the timing reference: no working PCjr is available, and 86Box adds no PCjr wait states for this game. Still to do: a font for text in screenshots. |
 | Reference routes | `routes/walk_rooms_1_16.plan` (rooms 1 and 16) and `routes/save_restore.plan` (Play diskette, save, restore), recorded from the original as `reference/*.csv`. Compare the state columns; the cycles change with calibration. |
 | Picture painter | **Done** ([picture-format.md](picture-format.md)). The PCjr's own line, plot and fill routines, modelled literally; all 80 room pictures byte-identical to the engine's. |
-| 5. The engine | **Running** ([src/engine/](../src/engine/mod.rs), [engine.md](engine.md)). A native reimplementation, routine by routine, in the Apple port's style: decoded resources, named state, native screen planes. The timer interrupt (messages, music, keys) is replayed from refemu-pcjr's event log at the same points in the code. **The walk route matches the original on all 900 passes** (test `the_walk_route_matches_the_original`), and its 62,000 checkpoints come in the same order. Not yet ported: the save and restore dialog, making a Play diskette, the text screens (inventory, ops 3C-3F), the speed model, the player. |
+| 5. The engine | **Running** ([src/engine/](../src/engine/mod.rs), [engine.md](engine.md)). A native reimplementation, routine by routine, in the Apple port's style: decoded resources, named state, native screen planes. The timer interrupt (messages, music, keys) is replayed from refemu-pcjr's event log at the same points in the code. **Both reference routes match the original on every pass**: the walk (900 passes) and the save/restore (1,000 passes: making a Play diskette, saving, restoring), with every checkpoint in the same order (tests in `tests/engine.rs`). Saves are written in the original's format. Not yet: the speed model and the player; the text screens and inventory are ported but no route uses them yet. |
 | 6–10. Comparison onwards | The comparison runs (`examples/replay.rs`); the rest not started. |
 
 ## Findings so far
@@ -70,9 +70,9 @@ engine draws.
 
 ## Next
 
-1. **The rest of the engine:** the save and restore dialog and the Play diskette
-   (then the save_restore route), the text screens, then more routes (the Apple port's
-   seven, played on the PCjr).
+1. **More routes:** the Apple port's seven (the gold key, the magic ring, the full
+   score, the deaths), played on the PCjr. An autopilot playing a route in the port,
+   as the Apple port's `kqroute` does, would write the plans.
 2. **The variable renumbering** between the versions, so the Apple port's knowledge of
    each variable carries over.
 3. **The 86F format**, so the `.86f` dump can be read too.

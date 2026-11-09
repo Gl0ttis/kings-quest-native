@@ -22,6 +22,7 @@ pub mod motion;
 pub mod res;
 pub mod save;
 pub mod screen;
+pub mod screens;
 pub mod script;
 pub mod sprite;
 pub mod text;
@@ -121,6 +122,8 @@ pub struct Object {
     pub name: u16,
     /// The room it is in; bit 7 set while carried.
     pub room: u8,
+    /// Byte 3, unused.
+    pub extra: u8,
     /// Loop << 4 | cel, kept when its actor leaves the room.
     pub loop_cel: u8,
     pub x: u8,
@@ -274,6 +277,27 @@ pub struct Globals {
     pub picture: Option<Rc<Vec<u8>>>,
     /// The first start (0DD3).
     pub first_start: bool,
+    // -- The text screen and the BIOS.
+    /// 1EF9: the text screen's attribute; 1EF7/1EF8: its cursor (row, column).
+    pub text_attr: u8,
+    pub text_cursor: (u8, u8),
+    /// 1EF4: the graphics cursor, kept while the text screen is up.
+    pub gfx_cursor: (u8, u8),
+    /// The BIOS's horizontal screen position (0040:0089), and the graphics and text
+    /// screens' (1EF3, 1EF6); 127B: the one in a save.
+    pub bios_hpos: u8,
+    pub hpos_gfx: u8,
+    pub hpos_text: u8,
+    pub hpos: u8,
+    /// 1259, 1274, 127A: bytes among the saved globals that nothing uses.
+    pub spare: [u8; 3],
+}
+
+/// A diskette: 360K, its sectors in order.
+#[derive(Clone)]
+pub struct Floppy {
+    pub image: Vec<u8>,
+    pub write_protected: bool,
 }
 
 /// Asked to stop: the run is over (a pass limit, the end of a replay), or diverged.
@@ -309,6 +333,9 @@ pub struct World {
     pub text: text::Text,
     /// The BIOS keyboard buffer.
     pub keys: VecDeque<u16>,
+    /// The Master and the Play diskette, and which is in the drive.
+    pub disks: [Floppy; 2],
+    pub drive: usize,
     /// Bytes for the sound chip, for the sound output.
     pub sound_out: Vec<u8>,
     /// When the timer fires, and the events of the interval since the last
@@ -405,7 +432,20 @@ impl World {
             pic: crate::pic::State::default(),
             picture: None,
             first_start: true,
+            text_attr: res.ds[0x1EF9],
+            text_cursor: (res.ds[0x1EF8], res.ds[0x1EF7]),
+            gfx_cursor: (0, 0),
+            // The engine's start writes SP's high byte there (`$0554`).
+            bios_hpos: 0x9B,
+            hpos_gfx: res.ds[0x1EF3],
+            hpos_text: res.ds[0x1EF6],
+            hpos: res.ds[0x127B],
+            spare: [res.ds[0x1259], res.ds[0x1274], res.ds[0x127A]],
         };
+        let disks = [
+            Floppy { image: res.disk_image.clone(), write_protected: true },
+            Floppy { image: vec![0; crate::disk::IMAGE_LEN], write_protected: false },
+        ];
         Ok(World {
             res,
             vars: [0; 256],
@@ -419,6 +459,8 @@ impl World {
             screen: screen::Screen::default(),
             text: text::Text::default(),
             keys: VecDeque::new(),
+            disks,
+            drive: 0,
             sound_out: Vec::new(),
             clock,
             pending: VecDeque::new(),
@@ -464,10 +506,13 @@ impl World {
         }
     }
 
-    /// Code reading the BIOS keyboard: the interval's events up to its last key
-    /// press fire now.
+    /// Code reading the BIOS keyboard with none waiting: the interval's events up to
+    /// its next key press fire now.
     pub fn site_keys(&mut self) {
-        let Some(last) = self.pending.iter().rposition(|e| matches!(e, Event::Key(_))) else { return };
+        if !self.keys.is_empty() {
+            return;
+        }
+        let Some(last) = self.pending.iter().position(|e| matches!(e, Event::Key(_))) else { return };
         for _ in 0..=last {
             if let Some(e) = self.pending.pop_front() {
                 self.event(e);
@@ -502,7 +547,7 @@ impl World {
                 }
             }
             Event::Key(k) => self.keys.push_back(k),
-            Event::Disk(_) => {}
+            Event::Disk(d) => self.drive = (d as usize).min(1),
         }
     }
 
@@ -515,7 +560,8 @@ impl World {
     pub fn run(&mut self) -> String {
         let hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
-            if info.payload().downcast_ref::<Stop>().is_none() {
+            let p = info.payload();
+            if p.downcast_ref::<Stop>().is_none() && p.downcast_ref::<save::RestartNow>().is_none() {
                 hook(info);
             }
         }));

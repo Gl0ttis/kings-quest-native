@@ -30,10 +30,39 @@ impl Script {
     }
 }
 
-/// A view and its number.
+/// A view, its number, and its bytes as the engine holds them (after the length).
 pub struct View {
     pub num: u8,
     pub view: crate::view::View,
+    pub raw: Vec<u8>,
+}
+
+impl View {
+    fn word(&self, at: usize) -> usize {
+        u16::from_le_bytes([self.raw.get(at).copied().unwrap_or(0), self.raw.get(at + 1).copied().unwrap_or(0)])
+            as usize
+    }
+
+    /// Where loop `lp`'s cel `cel` is, from the view's start (`$4C08`): past the loop
+    /// count and the 8 loop sizes, the loops before, the loop's 4-byte header, its cel
+    /// size table and the cels before.
+    pub fn cel_offset(&self, lp: u8, cel: u8) -> usize {
+        let header = 0x11 + (0..lp as usize).map(|l| self.word(1 + 2 * l)).sum::<usize>();
+        let count = self.raw.get(header + 3).copied().unwrap_or(0) as usize;
+        header + 4 + 2 * count + (0..cel as usize).map(|c| self.word(header + 4 + 2 * c)).sum::<usize>()
+    }
+
+    /// The (loop, cel) at `offset` from the view's start, if one is.
+    pub fn cel_at(&self, offset: usize) -> Option<(u8, u8)> {
+        for (l, lp) in self.view.loops.iter().enumerate() {
+            for c in 0..lp.cels.len().max(1) {
+                if self.cel_offset(l as u8, c as u8) == offset {
+                    return Some((l as u8, c as u8));
+                }
+            }
+        }
+        None
+    }
 }
 
 pub struct Resources {
@@ -86,6 +115,7 @@ impl Resources {
             *r = Object {
                 name: u16::from_le_bytes([b[0], b[1]]),
                 room: b[2],
+                extra: b[3],
                 loop_cel: b[4],
                 x: b[5],
                 y: b[6],
@@ -176,7 +206,7 @@ impl Resources {
         }
         let raw = self.disk.view(v as usize)?;
         let view = crate::view::decode(raw).ok()?;
-        let x = Rc::new(View { num: v, view });
+        let x = Rc::new(View { num: v, view, raw: raw.get(2..).unwrap_or(&[]).to_vec() });
         self.views.borrow_mut()[v as usize] = Some(x.clone());
         Some(x)
     }
