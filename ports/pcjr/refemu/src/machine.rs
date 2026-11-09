@@ -92,15 +92,40 @@ pub struct Machine {
     /// Accesses through the B800 window (where 86Box applies the PCjr's wait states).
     pub b800_total: u64,
     pub sectors_read: u64,
+    /// Checkpoints passed so far (kq1_pcjr::engine::clock::CHECKPOINTS), counted by
+    /// the main loop.
+    pub checkpoint: u64,
+    /// The event log (`--events`): ticks, keys and disk swaps against the checkpoint
+    /// count, for replaying in the port.
+    pub events: Option<String>,
 }
 
 impl Machine {
     /// Disk `n` (0: the Master; 1: the Play diskette) into the drive.
     pub fn insert(&mut self, n: usize) {
+        if let Some(e) = self.events.as_mut() {
+            e.push_str(&format!(
+                "D {} {n}
+",
+                self.checkpoint
+            ));
+        }
         while self.disks.len() <= n {
             self.disks.push(Disk::default());
         }
         self.drive = n;
+    }
+
+    /// A key into the BIOS keyboard buffer, logged.
+    pub fn push_key(&mut self, k: u16) {
+        if let Some(e) = self.events.as_mut() {
+            e.push_str(&format!(
+                "K {} {k:04X}
+",
+                self.checkpoint
+            ));
+        }
+        self.keys.push_back(k);
     }
 
     pub fn new(game: Disk) -> Machine {
@@ -136,6 +161,8 @@ impl Machine {
             disk_total: 0,
             b800_total: 0,
             sectors_read: 0,
+            checkpoint: 0,
+            events: None,
         };
         // Interrupt vectors -> stubs; the diskette parameters; the BIOS data area.
         for n in 0..256u32 {
@@ -212,6 +239,14 @@ impl Machine {
         if cpu.cycles >= self.next_tick {
             if cpu.flags & IF != 0 && self.pic_mask & 1 == 0 {
                 self.next_tick += CYCLES_PER_TICK;
+                if let Some(e) = self.events.as_mut() {
+                    let ip = if cpu.s[cpu::CS] == 0x60 { cpu.ip } else { 0xFFFF };
+                    e.push_str(&format!(
+                        "T {} {ip:04X}
+",
+                        self.checkpoint
+                    ));
+                }
                 cpu.interrupt(self, 8);
             } else if cpu.cycles > self.next_tick + CYCLES_PER_TICK {
                 // Interrupts held off for a whole tick: the tick is lost, as on hardware.

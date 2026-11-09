@@ -150,6 +150,13 @@ impl Disk {
         Entry::decode(cs[cs_addr..cs_addr + 4].try_into().unwrap())
     }
 
+    /// Entry `n` of the room table as the engine reads it (`$4AFC`, base 0): any `n`,
+    /// rooms 0-84, the sound groups from 90, and past the table whatever follows.
+    pub fn table_entry(&self, n: usize) -> Option<Entry> {
+        let at = ROOM_TABLE + 4 * n;
+        (at + 4 <= ENGINE_ADDR + ENGINE_LEN).then(|| self.entry_at(at)).flatten()
+    }
+
     pub fn room_entry(&self, r: usize) -> Option<Entry> {
         (r < ROOMS).then(|| self.entry_at(ROOM_TABLE + 4 * r)).flatten()
     }

@@ -3,6 +3,7 @@
 
 pub mod color;
 pub mod disk;
+pub mod engine;
 pub mod mfm;
 pub mod pic;
 pub mod script;

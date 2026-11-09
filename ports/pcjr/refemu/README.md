@@ -121,6 +121,16 @@ numbers can't say "at the next prompt", and the prompts hold the game cycle.
   engine's own routines (clear `$615`, frame `$353F`, picture `$3534`) and write the
   buffers to `DIR/NNN.bin` (168 rows of 160 bytes, priority << 4 | colour). They are
   the reference for the port's painter (test `every_picture_matches_the_engine`).
+- `--events FILE`: the event log the port replays (`kq1_pcjr::engine::clock`): each
+  timer tick (`T n ip`: the checkpoint count, and the address it interrupted), key
+  press (`K n key`) and disk swap (`D n disk`), against the count of checkpoints passed
+  (the routine entries and loop heads in `clock::CHECKPOINTS`); and `P n pass` at each
+  pass. Keys typed at a prompt go in at a checkpoint, or during a blocking read, so
+  that their place in the game's code is exact.
+- `REFEMU_CHECKPOINTS=1` (with `--events`): log every checkpoint passed too (`C n
+  addr`), for finding where the port and the original part (`examples/replay.rs`).
+- `--snap FROM-TO:DIR`: the data segment (64 KB) at the start of each pass in
+  FROM..=TO, as `DIR/NNNNN.ds`.
 - `--shot FILE.png`: the screen at the end.
 - `--profile`: where the CPU spent its time, and how often the main routines were
   entered.

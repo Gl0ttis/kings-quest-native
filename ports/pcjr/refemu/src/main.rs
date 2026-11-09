@@ -125,14 +125,14 @@ fn apply(item: &str, m: &mut Machine) {
         // The last arrow again: the ego stops.
         "S" => {
             let k = m.last_arrow;
-            m.keys.push_back(k)
+            m.push_key(k)
         }
         _ => match key_for(item) {
             Some(ks) => {
                 if let Some(&a) = ks.iter().find(|&&k| matches!(k, 0x4800 | 0x5000 | 0x4B00 | 0x4D00)) {
                     m.last_arrow = a;
                 }
-                m.keys.extend(ks)
+                ks.into_iter().for_each(|k| m.push_key(k))
             }
             None => eprintln!("plan: unknown item {item}"),
         },
@@ -201,6 +201,18 @@ fn main() {
         .map(|v| v.split(',').filter_map(|x| x.trim().parse().ok()).collect())
         .unwrap_or_default();
     let frames_path = opt("--frames");
+    // --events FILE: ticks, keys and disk swaps against the checkpoint count, for
+    // replaying in the port (kq1_pcjr::engine::clock).
+    let events_path = opt("--events");
+    // REFEMU_CHECKPOINTS: also log every checkpoint passed, with its address.
+    let events_all = std::env::var_os("REFEMU_CHECKPOINTS").is_some();
+    // --snap FROM-TO:DIR: the whole data segment (64 KB) at the start of each pass in
+    // FROM..=TO, as DIR/NNNNN.ds, for comparing the port's state byte for byte.
+    let snap: Option<(u64, u64, String)> = opt("--snap").map(|v| {
+        let (r, dir) = v.split_once(':').expect("--snap FROM-TO:DIR");
+        let (a, b) = r.split_once('-').unwrap_or((r, r));
+        (a.parse().expect("--snap FROM"), b.parse().expect("--snap TO"), dir.to_string())
+    });
     let shot = opt("--shot");
     let profile = args.iter().any(|a| a == "--profile");
     args.retain(|a| a != "--profile");
@@ -234,6 +246,13 @@ fn main() {
         }
     }
     m.disks.push(play);
+    if events_path.is_some() {
+        m.events = Some(String::new());
+    }
+    let mut checkpoints = vec![false; 0x10000];
+    for &a in &kq1_pcjr::engine::clock::CHECKPOINTS {
+        checkpoints[a as usize] = true;
+    }
     let mut cpu = Cpu::new();
     m.boot(&mut cpu).unwrap_or_else(|e| panic!("{e}"));
     let limit = ticks.saturating_mul(CYCLES_PER_TICK);
@@ -263,6 +282,19 @@ fn main() {
                 *entries.entry(cpu.ip).or_default() += 1;
             }
         }
+        let at_checkpoint = cpu.s[CS] == 0x60 && checkpoints[cpu.ip as usize];
+        if at_checkpoint {
+            m.checkpoint += 1;
+            if events_all {
+                if let Some(e) = m.events.as_mut() {
+                    e.push_str(&format!(
+                        "C {} {:04X}
+",
+                        m.checkpoint, cpu.ip
+                    ));
+                }
+            }
+        }
         if (cpu.s[CS], cpu.ip) == MAIN_LOOP && passes == 0 {
             if let (Some(dir), Some(game)) = (&pictures_dir, &game) {
                 draw_pictures(&mut m, &cpu, game, dir);
@@ -271,6 +303,13 @@ fn main() {
         }
         if (cpu.s[CS], cpu.ip) == MAIN_LOOP {
             passes += 1;
+            if let Some(e) = m.events.as_mut() {
+                e.push_str(&format!(
+                    "P {} {passes}
+",
+                    m.checkpoint
+                ));
+            }
             wait_since = None;
             m.idle_polls = 0;
             if passes == 1 {
@@ -286,13 +325,20 @@ fn main() {
                     last_frame = f;
                 }
             }
+            if let Some((from, to, dir)) = &snap {
+                if (*from..=*to).contains(&passes) {
+                    let base = cpu::lin(DATA_SEG, 0) as usize;
+                    std::fs::create_dir_all(dir).expect("--snap DIR");
+                    std::fs::write(format!("{dir}/{passes:05}.ds"), &m.ram[base..base + 0x10000]).expect("--snap");
+                }
+            }
             if dump.contains(&passes) {
                 let act: Vec<String> = (0..30u16).map(|i| format!("{:02x}", rd(&m, ACTORS + i))).collect();
                 let vars: Vec<String> = (0..48u16).map(|i| format!("{}", rd(&m, VARS + i))).collect();
                 eprintln!("pass {passes}: actor0 {} | v0-47 {}", act.join(" "), vars.join(","));
             }
             if let Some(&k) = key_log.get(&passes) {
-                m.keys.push_back(k);
+                m.push_key(k);
             }
             let now = (m.eu_total, m.access_total, m.disk_total, m.b800_total);
             cost += &format!(
@@ -342,7 +388,10 @@ fn main() {
         // 1.5M cycles; with none, after 3M cycles it gets RETURN, as refemu does for the
         // Apple ("press a key"). The keyboard is polled every tick by the game's timer
         // handler, so polling alone doesn't mean a prompt.
-        if m.idle_polls > 0 && m.keys.is_empty() {
+        // Keys typed at a prompt go in at a checkpoint (or during a blocking read, which
+        // takes them), so the port, replaying the event log, gives them to the game at
+        // the same point in its code.
+        if m.idle_polls > 0 && m.keys.is_empty() && (at_checkpoint || m.blocked_reads > 0 || passes == 0) {
             let since = *wait_since.get_or_insert(cpu.cycles);
             let waited = cpu.cycles - since;
             // "Please insert your Play / Master diskette in the drive and press Enter":
@@ -360,7 +409,7 @@ fn main() {
                     eprintln!("disk swap: {} in the drive, Enter", if d == 1 { "Play" } else { "Master" });
                 }
                 m.insert(d);
-                m.keys.push_back(0x1C0D);
+                m.push_key(0x1C0D);
                 wait_since = None;
                 m.idle_polls = 0;
                 m.blocked_reads = 0;
@@ -373,7 +422,7 @@ fn main() {
                 // At a prompt, inserting a disk means pressing Enter after it.
                 apply(&item[1..], &mut m);
                 if item[1..].starts_with('@') {
-                    m.keys.push_back(0x1C0D);
+                    m.push_key(0x1C0D);
                 }
                 wait_since = None;
                 m.idle_polls = 0;
@@ -384,7 +433,7 @@ fn main() {
                 if std::env::var_os("REFEMU_KEYLOG").is_some() {
                     eprintln!("auto RETURN at pass {passes} cycle {}", cpu.cycles);
                 }
-                m.keys.push_back(0x1C0D);
+                m.push_key(0x1C0D);
                 wait_since = None;
                 m.idle_polls = 0;
                 m.blocked_reads = 0;
@@ -475,6 +524,9 @@ fn main() {
     }
     if let Some(p) = cost_path {
         std::fs::write(p, cost).expect("write the cost file");
+    }
+    if let (Some(p), Some(e)) = (&events_path, &m.events) {
+        std::fs::write(p, e).expect("--events");
     }
     if let Some(p) = trace_path {
         std::fs::write(p, trace).expect("write trace");

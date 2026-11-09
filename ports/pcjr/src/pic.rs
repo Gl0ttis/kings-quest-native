@@ -35,6 +35,29 @@ impl Picture {
     }
 }
 
+/// What the painter draws into and reads the picture from: the engine's memory
+/// (engine/picture.rs), or a pair of pages of its own ([`draw_room`]).
+pub trait Mem {
+    /// A byte at `seg:off`.
+    fn read(&self, seg: u32, off: u16) -> u8;
+    fn write(&mut self, seg: u32, off: u16, v: u8);
+    /// Byte `i` of the picture being drawn, or `None` past its end.
+    fn data(&self, i: usize) -> Option<u8>;
+}
+
+/// The interpreter's state the engine keeps in its data segment (`$198C`-`$1993`).
+#[derive(Clone, Copy, Default, Debug)]
+pub struct State {
+    pub mode: u8,
+    pub toggle: u8,
+    pub vis: u8,
+    pub pri: u8,
+    pub y: u8,
+    pub x: u8,
+    pub ty: u8,
+    pub tx: u8,
+}
+
 /// Linear addresses of the two pages, as segment * 16 (the engine's segments 1000 and
 /// 1800).
 const PRI_SEG: u32 = 0x1000;
@@ -46,12 +69,34 @@ fn row(y: u8) -> u16 {
     (y & 3) * 0x2000 + (y >> 2) * 160
 }
 
-struct Painter<'a> {
-    /// Memory from linear `0x10000` to `0x1FFFF`: the priority page, then the visual
-    /// page. Above it (the PCjr's 128 KB) reads give `FF` and writes are lost, as in
-    /// refemu.
+/// Pages of its own: memory from linear `0x10000` to `0x1FFFF`, the priority page
+/// then the visual page. Outside it reads give `FF` and writes are lost.
+struct Pages<'a> {
     mem: Vec<u8>,
     data: &'a [u8],
+}
+
+impl Mem for Pages<'_> {
+    fn read(&self, seg: u32, off: u16) -> u8 {
+        let a = seg * 16 + off as u32;
+        match a {
+            0x10000..=0x1FFFF => self.mem[(a - 0x10000) as usize],
+            _ => 0xFF,
+        }
+    }
+    fn write(&mut self, seg: u32, off: u16, v: u8) {
+        let a = seg * 16 + off as u32;
+        if (0x10000..=0x1FFFF).contains(&a) {
+            self.mem[(a - 0x10000) as usize] = v;
+        }
+    }
+    fn data(&self, i: usize) -> Option<u8> {
+        self.data.get(i).copied()
+    }
+}
+
+struct Painter<'a> {
+    m: &'a mut dyn Mem,
     pos: usize,
     /// `[$198C]`: 0 for F4-F7 (both pages); `FF` for F8-FB and FC; 1 for FE; `80` for FD.
     mode: u8,
@@ -72,20 +117,13 @@ struct Painter<'a> {
 
 impl Painter<'_> {
     fn read(&self, seg: u32, off: u16) -> u8 {
-        let a = seg * 16 + off as u32;
-        match a {
-            0x10000..=0x1FFFF => self.mem[(a - 0x10000) as usize],
-            _ => 0xFF,
-        }
+        self.m.read(seg, off)
     }
     fn write(&mut self, seg: u32, off: u16, v: u8) {
-        let a = seg * 16 + off as u32;
-        if (0x10000..=0x1FFFF).contains(&a) {
-            self.mem[(a - 0x10000) as usize] = v;
-        }
+        self.m.write(seg, off, v)
     }
     fn next(&mut self) -> u8 {
-        let b = self.data.get(self.pos).copied().unwrap_or_else(|| {
+        let b = self.m.data(self.pos).unwrap_or_else(|| {
             self.warnings.push("picture runs past its end".into());
             0xFF
         });
@@ -321,11 +359,13 @@ impl Painter<'_> {
 pub fn draw_room(frame: &[u8], data: &[u8]) -> Picture {
     let mut mem = vec![0x11u8; 0x10000];
     mem[0x8000..].fill(0xFF);
-    let frame = draw_onto(mem, frame);
-    let mut p = draw_onto(frame.0, data);
-    p.1.plots = p.1.plots.saturating_sub(frame.1.plots);
-    p.1.buf = buffer(&p.0);
-    p.1
+    let mut pages = Pages { mem, data: frame };
+    let mut state = State::default();
+    draw(&mut pages, &mut state);
+    pages.data = data;
+    let mut p = draw(&mut pages, &mut state);
+    p.buf = buffer(&pages.mem);
+    p
 }
 
 /// The two pages as a 160 × 168 buffer, priority << 4 | colour.
@@ -340,20 +380,20 @@ fn buffer(mem: &[u8]) -> Vec<u8> {
     buf
 }
 
-/// Run the interpreter (`$353F`) over pages `mem` (priority then visual).
-fn draw_onto(mem: Vec<u8>, data: &[u8]) -> (Vec<u8>, Picture) {
+/// Run the interpreter (`$353F`) on `m`, from and back to the engine's `state`. The F0
+/// toggle starts each picture cleared.
+pub fn draw(m: &mut dyn Mem, state: &mut State) -> Picture {
     let mut p = Painter {
-        mem,
-        data,
+        m,
         pos: 0,
-        mode: 0,
+        mode: state.mode,
         toggle: 0,
-        vis: 0,
-        pri: 0,
-        y: 0,
-        x: 0,
-        ty: 0,
-        tx: 0,
+        vis: state.vis,
+        pri: state.pri,
+        y: state.y,
+        x: state.x,
+        ty: state.ty,
+        tx: state.tx,
         plots: 0,
         warnings: Vec::new(),
     };
@@ -475,6 +515,6 @@ fn draw_onto(mem: Vec<u8>, data: &[u8]) -> (Vec<u8>, Picture) {
             _ => unreachable!(),
         };
     }
-    let pic = Picture { buf: Vec::new(), plots: p.plots, end: p.pos, warnings: p.warnings };
-    (p.mem, pic)
+    *state = State { mode: p.mode, toggle: p.toggle, vis: p.vis, pri: p.pri, y: p.y, x: p.x, ty: p.ty, tx: p.tx };
+    Picture { buf: Vec::new(), plots: p.plots, end: p.pos, warnings: p.warnings }
 }
