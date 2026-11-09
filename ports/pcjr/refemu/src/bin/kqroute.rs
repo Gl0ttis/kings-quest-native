@@ -22,6 +22,7 @@
 //!   keepin X1 Y1 X2 Y2 ...  keep the planner in these rectangles in this room
 //!   final X1 Y1 X2 Y2  walk into the game-ending rectangle
 //!   dies N            wait up to N passes for Graham to die
+//!   if V VAL STEP     the step only when variable V equals VAL
 //!   expect score N | expect room N
 
 use kq1_pcjr::disk::Disk;
@@ -171,13 +172,17 @@ impl Driver {
         self.water_room = self.g.water_rooms.contains(&self.v(1));
         if std::env::var("KQ_WATCH").ok().and_then(|v| v.parse::<u64>().ok()).is_some_and(|n| self.r.passes >= n) {
             eprintln!(
-                "pass {} room {} ego {:?} dir {} key {:?} ahead {:?}",
+                "pass {} room {} ego {:?} dir {} key {:?} ahead {:?} program {} motion {:02X} no_move {} cycle {}",
                 self.r.passes,
                 self.v(1),
                 self.ego(),
                 self.key_dir(),
                 key,
-                self.ahead()
+                self.ahead(),
+                self.r.ds(0x1262),
+                self.r.ds(0x11F0),
+                self.r.ds(0x11E5),
+                self.r.ds(0x11EF)
             );
         }
         if self.v(1) != room {
@@ -966,6 +971,17 @@ fn run_line(d: &mut Driver, line: &str) -> Result<(), String> {
             );
             Ok(())
         }
+        "if" => {
+            // if V VALUE STEP: the step only when vV == VALUE.
+            let mut w = rest.splitn(3, ' ');
+            let (v, val) = (w.next().and_then(|x| x.parse::<usize>().ok()), w.next().and_then(|x| x.parse::<u8>().ok()));
+            let (Some(v), Some(val), Some(then)) = (v, val, w.next()) else { return Err("if V VALUE STEP".into()) };
+            if d.v(v) == val {
+                run_line(d, then)
+            } else {
+                Ok(())
+            }
+        }
         "say" => d.say(rest.trim()),
         "prompt" => {
             d.prompt = rest.trim().bytes().map(ascii).chain([ascii(b'\r')]).collect();
@@ -1119,6 +1135,11 @@ fn main() {
         println!("{e}");
     }
     println!("end: pass {}, room {}, score {}, ego {:?}", d.r.passes, d.v(1), d.v(19), d.ego());
+    if let Ok(v) = std::env::var("KQ_VARS") {
+        let vals: Vec<String> =
+            v.split(',').filter_map(|x| x.parse::<usize>().ok()).map(|i| format!("v{i}={}", d.v(i))).collect();
+        println!("vars: {}", vals.join(" "));
+    }
     if let Some(p) = events_out {
         std::fs::write(p, d.r.events()).expect("write events");
     }

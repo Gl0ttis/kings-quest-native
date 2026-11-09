@@ -43,15 +43,16 @@ say open gate
 wait 10
 goto 30 158
 goto 30 140
-# The goat starts in the room-10 half of the corral (v53 = 10): go there inside the fence.
-edge L
+# The goat starts in room 11's half of the corral, and wanders into room 10's (v51 = 10;
+# Apple v53): show it the carrot where it is.
+if 51 10 edge L
 say show carrot
 expect score 23
 # Wait for the goat to reach Graham: it merges into his sprite (view 67, v40 = 1). Until
 # then room 11's gateway is barred ("You're not leaving without him").
 waitvar 41 1 400   # Apple v40
-# Back into room 11 and out through the gate.
-edge R
+# Back into room 11 (if in room 10) and out through the gate.
+if 1 10 edge R
 goto 30 140
 goto 30 160
 
@@ -60,9 +61,12 @@ goto 30 160
 room 22
 room 24
 room 25
-area 5 93 66 94
+area 5 93 30 94
 wait 5
-area 13 91 66 92
+# On the PCjr the goat, walking down off the bridge to (48, 108) after the butt, is
+# stopped by touching Graham if he stands in its way (x 41 on row 92). Started from
+# x 40-66, the scene puts him there (A0056); from x 13-39 he stays where he is (A0039).
+area 13 91 30 92
 wait 30
 expect score 27
 
