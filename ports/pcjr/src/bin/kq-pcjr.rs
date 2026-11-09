@@ -883,10 +883,13 @@ fn main() {
     }
 
     hook::dpi_aware();
+    // --scale N times 320 × 240 (the screen at its 4:3 shape); on Windows the hook sizes
+    // it again at the display's scale.
+    let scale = scale_n.unwrap_or(3).max(1);
     let mut window = Window::new(
         TITLE,
-        OUT_W,
-        OUT_H,
+        320 * scale,
+        240 * scale,
         WindowOptions {
             resize: true,
             scale: Scale::X1,
@@ -895,7 +898,7 @@ fn main() {
         },
     )
     .unwrap_or_else(|e| fatal(&format!("no window: {e}")));
-    hook::size_window(&window, scale_n.unwrap_or(3) as u32);
+    hook::size_window(&window, scale as u32);
     hook::install(&window, shared.clone());
     window.set_input_callback(Box::new(Chars(shared.clone())));
     let mut full = Fullscreen::default();
