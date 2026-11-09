@@ -73,10 +73,15 @@ and its own tags (`kq1-apple2-v0.2.0`). Nothing is bumped by hand:
 conventional commits on `main` and keeps a release pull request open with the next
 versions and changelogs (`ports/<port>/CHANGELOG.md`). Its checks are started by the
 release workflow (GitHub doesn't start them for a pull request a workflow opened).
+If GitHub holds the release pull request's own CI run for approval ("action
+required"), approve it: its checks are the ones branch protection waits for.
 Merging it tags the release, and the release workflow attaches the builds of `kq`.
-The measuring emulators (`kq1-apple2-refemu`) are not released: they are tools for
-checking the ports, never published, so release-please leaves them out and their
-version stays as it is.
+The measuring emulators (`kq1-apple2-refemu`, `kq1-pcjr-refemu`) are not released:
+they are tools for checking the ports, never published, so release-please leaves them
+out and their version stays as it is. That is why release-please's `cargo-workspace`
+plugin isn't used: it would bump them, as crates that depend on a released port. Each
+port's entry in the root `Cargo.lock` is updated by an `extra-files` rule in
+`release-please-config.json` instead.
 
 A change under `ports/apple2/` releases `kq1-apple2`, except under
 `ports/apple2/refemu/`, which releases nothing.
