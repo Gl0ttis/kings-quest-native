@@ -36,7 +36,7 @@ The PCjr's font is in its ROM, which isn't shipped. If you have the PCjr BIOS im
 (64 KB, as in an emulator's ROM set, for example 86Box's `roms/machines/ibmpcjr/bios.rom`),
 put it next to the game's disk as `bios.rom` and the text is in the original font; or
 give it with `--font FILE` (a 1,024-byte dump of the font alone works too). Otherwise
-the text is in the port's own font.
+the text is in the port's own font, of its own design in the same bold style.
 
 ## What you need
 
