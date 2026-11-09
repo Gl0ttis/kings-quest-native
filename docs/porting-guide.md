@@ -314,8 +314,11 @@ the docs.
 - the comparison method and the tests' structure;
 - the autopilot's approach;
 - the cost-model approach;
-- the player's front-end code (window hook, full screen, sound output, joystick, disk
-  discovery, the `fatal()` message box);
+- the player's platform side: `crates/kq1-frontend` (the Windows paint hook, full
+  screen, the joystick as a raw reading, the `fatal()` message box), which the Apple
+  and PCjr players both use; a player gives the hook its picture's size and shape and
+  turns the joystick reading into its machine's. Sound output and disk discovery are
+  each player's own still;
 - the documentation layout.
 
 **Probably reusable in idea, not code:**

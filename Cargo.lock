@@ -425,9 +425,8 @@ version = "0.2.0"
 dependencies = [
  "cpal",
  "kq1-formats",
+ "kq1-frontend",
  "minifb",
- "raw-window-handle",
- "x11-dl",
 ]
 
 [[package]]
@@ -442,14 +441,22 @@ name = "kq1-formats"
 version = "0.1.0"
 
 [[package]]
+name = "kq1-frontend"
+version = "0.1.0"
+dependencies = [
+ "minifb",
+ "raw-window-handle",
+ "x11-dl",
+]
+
+[[package]]
 name = "kq1-pcjr"
 version = "0.1.0"
 dependencies = [
  "cpal",
  "kq1-formats",
+ "kq1-frontend",
  "minifb",
- "raw-window-handle",
- "x11-dl",
 ]
 
 [[package]]
