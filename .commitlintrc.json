@@ -4,7 +4,7 @@
     "scope-enum": [
       2,
       "always",
-      ["apple2", "pcjr", "refemu", "workspace", "ci", "deps", "docs", "release"]
+      ["apple2", "pcjr", "pc", "refemu", "workspace", "ci", "deps", "docs", "release"]
     ],
     "body-max-line-length": [0, "always"],
     "footer-max-line-length": [0, "always"]

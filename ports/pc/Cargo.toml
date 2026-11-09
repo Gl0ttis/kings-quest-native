@@ -1,0 +1,24 @@
+[package]
+name = "kq1-pc"
+version = "0.1.0"
+description = "Native port of the 1984 IBM PC King's Quest (CGA, composite colour): engine, player and tools. Runs on the user's own disk image."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "kq1_pc"
+path = "src/lib.rs"
+
+[dependencies]
+# The resource formats (views, scripts, the vocabulary) and the MFM disk images,
+# shared with the other ports.
+kq1-formats = { path = "../../crates/kq1-formats" }
+
+[[bin]]
+name = "kqextract-pc"
+path = "src/bin/kqextract-pc.rs"

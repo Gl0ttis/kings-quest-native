@@ -450,6 +450,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "kq1-pc"
+version = "0.1.0"
+dependencies = [
+ "kq1-formats",
+]
+
+[[package]]
 name = "kq1-pcjr"
 version = "0.1.1"
 dependencies = [

@@ -64,6 +64,10 @@ changelog_include = ["kq1-formats", "kq1-frontend"]
 name = "kq1-pcjr"
 changelog_include = ["kq1-formats", "kq1-frontend"]
 
+[[package]]
+name = "kq1-pc"
+changelog_include = ["kq1-formats", "kq1-frontend"]
+
 # The reference emulators are tools for measuring the ports, never released.
 [[package]]
 name = "kq1-apple2-refemu"
