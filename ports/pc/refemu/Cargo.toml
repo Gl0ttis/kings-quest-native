@@ -21,3 +21,11 @@ path = "src/main.rs"
 [dependencies]
 kq1-pc = { path = ".." }
 kq1-formats = { path = "../../../crates/kq1-formats" }
+
+[[bin]]
+name = "kqroute-pc"
+path = "src/bin/kqroute.rs"
+
+[[bin]]
+name = "kqplan-pc"
+path = "src/bin/kqplan.rs"

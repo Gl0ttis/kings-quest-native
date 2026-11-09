@@ -60,3 +60,42 @@ The PC engine also has a wait of its own the PCjr's hasn't: each pass waits once
 (`$3FE7`) for the timer to clear a flag (`SS:$1E65`), so a pass is a whole number of
 ticks (refemu/README.md, "Timing"). Like the PCjr's busy waits it is not a checkpoint:
 its turns depend on the timing.
+
+## Data addresses
+
+`tools/addrmap.py --data` maps the PCjr's data-segment addresses too: wherever a run of
+code is found once in each engine, the two instructions' memory operands are paired.
+The offset isn't the same throughout. Examples:
+
+| PCjr | PC | |
+|---|---|---|
+| DS:`$0CD6`, `$0E98` | DS:`$12DA`, `$149C` | `+$604` |
+| DS:`$1003` (the variables) | DS:`$1609` | `+$606` |
+| DS:`$11E1` (the actors, 30 bytes each) | DS:`$17E7` | `+$606` |
+| DS:`$125A` (game over), `$1262`, `$1279` | DS:`$1860`, `$1868`, `$187F` | `+$606` |
+| DS:`$174F`, `$1758` (loops by direction) | DS:`$1D55`, `$1D5E` | `+$606` |
+| DS:`$1828` (the picture's row table) | DS:`$1E76` | `+$64E` |
+| DS:`$1E91` (picture flag) | DS:`$10CD` | moved |
+
+**The picture buffer** is one, at segment `1400h`, in the PCjr pages' layout (row y at
+`(y & 3) * 0x2000 + (y >> 2) * 160`): each byte holds the visual picture's dot pattern
+(composite.rs, `PATTERN`) in its high nibble and the priority in its low. The PCjr keeps
+the two in pages of their own (`1800:0` and `1000:0`).
+
+## Variables
+
+The scripts are a revision whose variables are mostly renumbered (disk-layout.md).
+`tools/varmap.py` gives the PC's number for a PCjr variable, from the pairs of bytes
+that differ where each room's two scripts align. The ones the routes use:
+
+| PCjr | PC | PCjr | PC |
+|---|---|---|---|
+| 1-48 | unchanged | 133 | 136 |
+| 51, 53, 55 | 53, 55, 57 | 147 | 49 |
+| 101 | 103 | 149 | 151 |
+| 107 | 109 | 165, 178, 184, 186 | 167, 180, 186, 188 |
+| 110 | 112 | 210, 212 | 213, 215 |
+
+Mostly 2 more from 49 and 3 more from about 126, with some moved (147 to 49, 120 to 50,
+152 to 124). 212 has too few pairs for the tool's rule on its own (10 of 15 for 215);
+its neighbour 210's 213 settles it.

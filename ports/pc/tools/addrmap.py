@@ -11,6 +11,10 @@ instructions and grows to 40 until the match is unique. An address with no uniqu
 match is looked for near where its neighbour went (marked `~`, with how many of 16
 shapes agree).
 
+With --data, data addresses instead: wherever a run of 16 shapes is found once in each
+engine, the two instructions' memory operands are paired, and each PCjr data address is
+given the PC address it was paired with most (and how often).
+
 With no ADDR, every address cited as `$XXXX` in the PCjr port's engine sources is
 mapped. Prints `PCJR PC LENGTH` per address (`-` where there is no unique match), then a
 summary. Needs capstone.
@@ -40,10 +44,58 @@ def shapes(code, start, end):
     return out
 
 
+def data_map(jr, pc, a, b):
+    """The data addresses: along every run of 16 shapes found once in each engine,
+    the two instructions' memory operands paired; PCjr address -> {PC address: count}."""
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md.detail = True
+
+    def mems(code, addr):
+        i = next(md.disasm(code[addr:addr + 8], addr), None)
+        if i is None:
+            return []
+        out = []
+        for o in i.operands:
+            if o.type == capstone.x86.X86_OP_MEM and o.mem.disp >= 0x10:
+                out.append(o.mem.disp & 0xFFFF)
+            elif o.type == capstone.x86.X86_OP_IMM and i.mnemonic == 'mov' and 0x100 <= (o.imm & 0xFFFF) < 0x2400:
+                out.append(o.imm & 0xFFFF)
+        return out
+    sa = [s for _, s in a]
+    sb = [s for _, s in b]
+    index = {}
+    for j in range(len(sb) - 16):
+        index.setdefault(tuple(sb[j:j + 16]), []).append(j)
+    pairs = {}
+    for k in range(len(sa) - 16):
+        hits = index.get(tuple(sa[k:k + 16]), [])
+        if len(hits) != 1:
+            continue
+        x, y = mems(jr, a[k][0]), mems(pc, b[hits[0]][0])
+        for u, v in zip(x, y):
+            pairs.setdefault(u, {}).setdefault(v, 0)
+            pairs[u][v] += 1
+    return pairs
+
+
 def main():
+    data = '--data' in sys.argv
+    if data:
+        sys.argv.remove('--data')
     jr = open(sys.argv[1], 'rb').read()
     pc = open(sys.argv[2], 'rb').read()
     a, b = shapes(jr, *PCJR_CODE), shapes(pc, *PC_CODE)
+    if data:
+        pairs = data_map(jr, pc, a, b)
+        want = [int(x, 16) for x in sys.argv[3:]] or sorted(pairs)
+        for u in want:
+            seen = pairs.get(u)
+            if not seen:
+                print(f'{u:04X} -')
+                continue
+            v, n = max(seen.items(), key=lambda kv: kv[1])
+            print(f'{u:04X} {v:04X} ({n} of {sum(seen.values())} uses, {v - u:+#x})')
+        return
     at_a = {addr: k for k, (addr, _) in enumerate(a)}
     sb = [s for _, s in b]
     addrs = [int(x, 16) for x in sys.argv[3:]]

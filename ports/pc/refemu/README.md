@@ -21,7 +21,7 @@ copies.
   real drive (see "Timing").
 - **No IBM ROM.** The BIOS services the game calls are answered natively. Any other
   call stops the run with a note naming it.
-  - `INT 10h`: AH=00h (mode), 01h, 02h, 03h, 06h (scroll), 09h, 0Bh, 0Eh
+  - `INT 10h`: AH=00h (mode), 01h, 02h, 03h, 05h (page), 06h (scroll), 09h, 0Bh, 0Eh
     (characters), 0Fh.
   - `INT 11h`, `INT 12h`: the equipment and the memory size.
   - `INT 13h`: read, write, format.
@@ -96,6 +96,23 @@ emptied by a jump) was tried in place of the flat charge, and was further off on
 One pass is one call of `$293A` (the PCjr's `$14F2`, the same code with its data
 `$606` on): the actors move and animate, then the cycle rules run. The variables are at
 DS:`$1609`, the actor table at DS:`$17E7` (30 bytes an actor).
+
+## The routes
+
+Two tools on refemu-pc's runner (`src/runner.rs`, refemu-pcjr's with the PC's
+addresses) record the reference the port is replayed against: the event log (the
+timer's ticks, the keys and the disk swaps against the checkpoints, kq1-pc's
+`checkpoints.rs`), the trace, and the screens.
+
+- **`kqplan-pc DISK PLAN`** plays a plan (`../routes/*.plan`): keys at given passes,
+  answers at prompts, the disk swaps answered as a player would.
+- **`kqroute-pc DISK ROUTE`** plays a route (`../routes/*.route`) with refemu-pcjr's
+  autopilot, which reads the original's memory (the PC's data addresses).
+
+The runner answers "Please insert your Play / Master diskette" from the message the game
+last wrote (`last_row`): the game clears its message box by writing memory, which the
+emulator's record of the characters doesn't see. Making a Play diskette copies the disk
+with no pass of the game cycle, many swaps over (minutes of the PC's time).
 
 ## Running
 

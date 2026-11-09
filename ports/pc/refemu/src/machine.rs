@@ -83,6 +83,10 @@ pub struct Machine {
     pub keys: VecDeque<u16>,
     /// The character in each text cell (25 rows of 40), as the BIOS last wrote it.
     pub text: [[u8; 40]; 25],
+    /// The text row the BIOS last drew a character in. The game clears its message box
+    /// by writing memory, which `text` doesn't see, so the current message is the one
+    /// round this row.
+    pub last_row: u8,
     pub cursor: (u8, u8),
     pub next_tick: u64,
     /// BIOS calls made: (vector, AH) -> count.
@@ -109,6 +113,11 @@ pub struct Machine {
     pub cga_wait: u64,
     cga_accesses: u64,
     pub sectors_read: u64,
+    /// Checkpoints passed so far (the port's clock's), counted by the runner.
+    pub checkpoint: u64,
+    /// The event log: ticks, keys and disk swaps against the checkpoint count, for
+    /// replaying in the port (refemu-pcjr's format).
+    pub events: Option<String>,
 }
 
 impl Machine {
@@ -124,6 +133,7 @@ impl Machine {
             drive: 0,
             keys: VecDeque::new(),
             text: [[b' '; 40]; 25],
+            last_row: 0,
             cursor: (0, 0),
             next_tick: CYCLES_PER_TICK,
             calls: HashMap::new(),
@@ -139,6 +149,8 @@ impl Machine {
             cga_wait: 4,
             cga_accesses: 0,
             sectors_read: 0,
+            checkpoint: 0,
+            events: None,
         };
         // Interrupt vectors -> stubs; the diskette parameters; the BIOS data area.
         for n in 0..256u32 {
@@ -154,9 +166,31 @@ impl Machine {
         m
     }
 
-    /// A key into the BIOS keyboard buffer.
+    /// A key into the BIOS keyboard buffer, logged.
     pub fn push_key(&mut self, k: u16) {
+        if let Some(e) = self.events.as_mut() {
+            e.push_str(&format!(
+                "K {} {k:04X}
+",
+                self.checkpoint
+            ));
+        }
         self.keys.push_back(k);
+    }
+
+    /// Disk `n` (0: the Master; 1: the Play diskette) into the drive, logged.
+    pub fn insert(&mut self, n: usize) {
+        if let Some(e) = self.events.as_mut() {
+            e.push_str(&format!(
+                "D {} {n}
+",
+                self.checkpoint
+            ));
+        }
+        while self.disks.len() <= n {
+            self.disks.push(Disk::default());
+        }
+        self.drive = n;
     }
 
     fn w16(&mut self, a: u32, v: u16) {
@@ -224,6 +258,14 @@ impl Machine {
         if cpu.cycles >= self.next_tick {
             if cpu.flags & IF != 0 && self.pic_mask & 1 == 0 {
                 self.next_tick += CYCLES_PER_TICK;
+                if let Some(e) = self.events.as_mut() {
+                    let ip = if cpu.s[CS] == 0x60 { cpu.ip } else { 0xFFFF };
+                    e.push_str(&format!(
+                        "T {} {ip:04X}
+",
+                        self.checkpoint
+                    ));
+                }
                 cpu.interrupt(self, 8);
             } else if cpu.cycles > self.next_tick + CYCLES_PER_TICK {
                 // Interrupts held off for a whole tick: the tick is lost, as on hardware.
@@ -322,6 +364,9 @@ impl Machine {
                 cpu.r[DX] = (self.cursor.0 as u16) << 8 | self.cursor.1 as u16;
                 cpu.r[CX] = 0x0607;
             }
+            // The shown page, in the text modes (the game's Play-diskette screens): the
+            // characters are kept as text either way.
+            5 => self.ram[0x462] = al,
             6 => {
                 let (ch, cl) = ((cpu.r[CX] >> 8) as u8, cpu.r[CX] as u8);
                 self.scroll(al, (ch, cl), (dh, dl));
@@ -359,6 +404,7 @@ impl Machine {
     fn draw_char(&mut self, row: u8, col: u8, ch: u8, attr: u8) {
         if row < 25 && col < 40 {
             self.text[row as usize][col as usize] = ch;
+            self.last_row = row;
         }
         if attr & 0x80 != 0 {
             return;

@@ -1,0 +1,5 @@
+# The PCjr port's routes/restore_play.plan, unchanged (its keys and words are this release's
+# too). Run: kqplan-pc DISK routes/restore_play.plan
+# On a fresh start, restore slot A from the Play diskette that save_restore.plan made
+# (its run's diskette; the test makes it by replaying that route), then walk left.
+w30, @play, >restore game, p>a, w60, L, w40, S, w10

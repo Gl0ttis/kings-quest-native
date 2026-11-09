@@ -25,7 +25,8 @@
 //!   default 1.5 and 4).
 //!
 //! Debug switches: `REFEMU_TIMELINE` (every 0.1 s: the pass, the room, how many of the
-//! CGA's bytes changed, the disk reads), `REFEMU_WORK` (each pass's wait for the timer).
+//! CGA's bytes changed, the disk reads), `REFEMU_WORK` (each pass's wait for the timer),
+//! `REFEMU_RAM=FILE` (the whole memory at the end).
 
 use kq1_pc::composite::{self, Mode};
 use kq1_pc_refemu::{cpu, machine};
@@ -265,6 +266,10 @@ fn main() {
         }
     }
     eprintln!("stopped after {:.1} s ({} cycles), {passes} passes", cpu.cycles as f64 / CPU_HZ, cpu.cycles);
+    // REFEMU_RAM=FILE: the whole memory at the end, for inspection.
+    if let Some(p) = std::env::var_os("REFEMU_RAM") {
+        std::fs::write(p, &m.ram).expect("REFEMU_RAM");
+    }
     if let Some(p) = &trace_path {
         std::fs::write(p, &trace).expect("write the trace");
     }

@@ -28,27 +28,24 @@ both have it working.
 | Composite colour | **Done** ([src/composite.rs](../src/composite.rs)). The engine draws only colours 0 and 7, so the signal is two levels a dot, and the colours are the monitor's decoding of the dot patterns. Two modes from one model: each 4-dot group in its own colour, and the signal decoded dot by dot with the fringes between colours. Its hue, saturation and level are measured from the original in 86Box (IBM's BIOS, the CGA's composite output; [tools/86box/](../tools/86box/README.md)): within 6/255 in flat areas. The engine's colour table (DS:`$12BA`) gives each PCjr colour's pattern. |
 | 4. Measuring tool | **Working** ([refemu/](../refemu/README.md)). The PCjr's 8086 core on an IBM PC with the CGA, no IBM ROM. It starts the engine as the loader does (the protection's code calls into IBM's ROM, and then starts the engine at the same place), runs plans of keys and records a trace per pass and the screen in composite colour. The pass is `$293A`, the PCjr's `$14F2`. Timing, fitted to 86Box running the original: walking within 1%, a room's drawing within 5%, a room change within 8%. The game paces itself on the timer: a pass is a whole number of ticks. |
 | Address map | **Done** ([engine.md](engine.md), `tools/addrmap.py`): 174 of the 207 addresses the PCjr port cites found in the PC engine, and all 22 checkpoints. For citing and measuring only; the engine is rewritten from its behaviour. |
-| 5-10 | To do: next, the reference routes, then the engine. |
+| Reference routes | **Ten**, as on the PCjr: three plans (`routes/*.plan`, `kqplan-pc`: the walk through rooms 1 and 16, making a Play diskette and saving and restoring, restoring that diskette on a fresh start) and seven routes (`routes/*.route`, `kqroute-pc`: three deaths, the gold key, the maximum score, the magic ring, the giant with the sling), the PCjr's with this revision's variable numbers. In room 52 the walk through the hole to room 51 is given by hand: the autopilot finds no landing there (the PCjr's doesn't any more either). |
+| 5-10 | To do: next, the engine. |
 
 ## Next steps
 
-1. **The reference routes**: refemu-pc's own runs of whole playthroughs. Fork
-   refemu-pcjr's autopilot (`kqroute`) and the PCjr's routes, edited for this
-   revision's scripts and vocabulary, and the event log the port replays (the timer's
-   ticks against the checkpoints, the keys). Record the traces and the screens.
-2. **The engine**, forked from the PCjr port's (`src/engine`), which reimplements the
+1. **The engine**, forked from the PCjr port's (`src/engine`), which reimplements the
    engine natively from its documented behaviour. The same rule holds here: no
    instruction-by-instruction translation. The PC's routines are the same design at
    other addresses ([engine.md](engine.md): the address map and the checkpoints);
    each difference from the PCjr is found by comparing pass by pass, described, and
    then implemented. Expect the variable renumbering in the scripts to come from the
    engine's own variables.
-3. **The screen.** The PC's picture buffer and its copy to the CGA (`$1966`), and the
+2. **The screen.** The PC's picture buffer and its copy to the CGA (`$1966`), and the
    text in 640-dot mode, shown through the composite model.
-4. **Sound.** Find how the engine plays the sound-chip streams on the speaker (the
+3. **Sound.** Find how the engine plays the sound-chip streams on the speaker (the
    timer's channel 2 at `$158B`-`$15C8`, port `61h`), and play them as it does.
-5. **Timing**, as on the PCjr: a cost model fitted to refemu-pc.
-6. **The player**: the PCjr's, with the speaker, and the composite display in either
+4. **Timing**, as on the PCjr: a cost model fitted to refemu-pc.
+5. **The player**: the PCjr's, with the speaker, and the composite display in either
    mode (the group colours by default, the signal with its fringes as an option).
 
 ## Decisions to make
