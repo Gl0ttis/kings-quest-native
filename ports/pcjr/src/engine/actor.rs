@@ -137,6 +137,7 @@ impl World {
         self.cost.chars = std::mem::take(&mut self.text.drawn);
         self.cost.scrolled = std::mem::take(&mut self.text.scrolled);
         let done = std::mem::take(&mut self.cost);
+        self.loading_before += done.loading_cycles();
         if let Some(t) = self.cost_trace.as_mut() {
             t.push(done);
         }

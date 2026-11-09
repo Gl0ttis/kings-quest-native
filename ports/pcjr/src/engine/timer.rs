@@ -1,8 +1,8 @@
 //! The game's timer handler (INT 1Ch, `$0808`), 18.2 times a second:
 //! 1. the music: the next record when its time is up;
 //! 2. the messages: the next word of the first queued one (every v24 + 1 ticks);
-//! 3. the joystick, every other tick when no key is waiting (none is connected: the
-//!    read times out);
+//! 3. the joystick, every other tick when no key is waiting (in refemu-pcjr none is
+//!    connected, and the read times out);
 //! 4. the keyboard: control keys act at once; the first character typed goes into the
 //!    key ring for the input line.
 
@@ -17,6 +17,8 @@ const KEY_CODES: usize = 0x0D2A;
 const KEYPAD: usize = 0x0D04;
 /// Alt-letter scan codes 10h-32h (DS:0DA5): all ignored.
 const ALT_CODES: usize = 0x0DA5;
+/// The joystick's directions (DS:0D11), by 4 left / 8 right + 1 up / 2 down.
+const JOY_DIRS: usize = 0x0D11;
 
 impl World {
     /// `$0808`.
@@ -38,13 +40,52 @@ impl World {
         if self.g.joy_skip {
             self.g.joy_skip = false;
         } else if self.keys.is_empty() {
-            // $0563: no joystick: the axes never settle and the read times out.
-            self.cost.joystick += 1;
-            self.g.joy_skip = true;
-            self.g.joy_timeout = 1;
-            self.g.joy_dir = 0;
+            self.joystick();
         }
         self.key_tick();
+    }
+
+    /// `$0563`: read the joystick. Its axes' one-shots are fired and the port polled
+    /// until both have ended; one that runs 41 turns is a time-out (no joystick).
+    /// Button 1 is the `-` key held down: v16 while it is down (the key toggles v16,
+    /// and v31 marks that toggle, which a button that is up leaves alone); button 2 is
+    /// the `0` key, the jump (v17). The stick's direction goes in DS:1278, for the next
+    /// pass to take when the keypad gives none.
+    fn joystick(&mut self) {
+        self.g.joy_skip = true;
+        self.g.joy_timeout = 0;
+        let stick = self.clock.joystick().filter(|j| j.x < 41 && j.y < 41);
+        let Some(j) = stick else {
+            self.cost.joystick += 1;
+            self.g.joy_timeout = 1;
+            self.g.joy_dir = 0;
+            return;
+        };
+        self.cost.joystick_turns += j.x.max(j.y) as u32 + 1;
+        if !(self.vars[31] == 1 && !j.buttons[0]) {
+            self.vars[16] = j.buttons[0] as u8;
+            self.vars[31] = 0;
+        }
+        if j.buttons[1] {
+            self.vars[31] = 0;
+            self.vars[17] = 1;
+        }
+        // (A key that came during the read would end it here, the direction kept; the
+        // read only starts with none waiting, and the port's keys come at checkpoints.)
+        let col = match j.x {
+            0..=6 => 4,
+            7..=18 => 0,
+            _ => 8,
+        };
+        let row = match j.y {
+            0..=6 => 1,
+            7..=18 => 0,
+            _ => 2,
+        };
+        self.g.joy_dir = self.res.ds[JOY_DIRS + col + row];
+        if self.g.joy_dir != 0 {
+            self.vars[31] = 0;
+        }
     }
 
     /// `$0844`: send the next record to the sound chip and take its duration. 0 ends

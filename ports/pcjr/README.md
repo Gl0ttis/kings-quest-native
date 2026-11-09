@@ -22,8 +22,12 @@ cargo run --release -p kq1-pcjr --bin kq-pcjr
 `original/` (or give its path). It plays in a window at the PCjr's speed, with its
 sound. The keys are the PCjr's: the arrows and Home, PgUp, End and PgDn walk (the same
 key again stops), typing enters commands, Enter submits, Tab shows the inventory, Esc
-pauses, 0 jumps. F11 and F12 make the game slower and faster, F8 turns the sound off
-and on, and Alt+Enter is full screen. Saves go on the Play diskette, which the game
+pauses, 0 jumps. A joystick or game controller is the PCjr's joystick: the stick or
+d-pad walks, button 1 is the `-` key held down and button 2 jumps (`--no-joystick`
+leaves it out). F11 and F12 make the game slower and faster, F9 turns fast loads on and
+off (`--fast-loads`: a room change's disk reads and picture drawing take no time, the
+rest keeps the PCjr's pace), F8 turns the sound off and on, and Alt+Enter is full
+screen. Saves go on the Play diskette, which the game
 makes itself ("copy disk"); it is kept as `KQ1 Play.img` next to the game's disk.
 When the game asks for the Play or the Master diskette, it is put in for you: press
 Enter as asked.

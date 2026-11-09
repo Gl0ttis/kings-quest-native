@@ -385,6 +385,10 @@ pub struct World {
     /// cycle left over.
     charged: f64,
     carry: f64,
+    /// Of `cycles`, those of loading (cost::Cost::loading_cycles), as the clock was
+    /// last told; those of the passes before this one.
+    pub loading_cycles: u64,
+    loading_before: f64,
     /// The whole frame at the start of pass N (`frame_at`), once reached.
     pub frame_at: Option<u64>,
     pub frame: Option<Vec<u8>>,
@@ -518,6 +522,8 @@ impl World {
             cost_trace: None,
             charged: 0.0,
             carry: 0.0,
+            loading_cycles: 0,
+            loading_before: 0.0,
             on_frame: None,
             next_frame: 0,
             frame_at: None,
@@ -560,6 +566,11 @@ impl World {
             let whole = self.carry.floor();
             self.cycles += whole as u64;
             self.carry -= whole;
+        }
+        let loading = (self.loading_before + self.cost.loading_cycles()) as u64;
+        if loading != self.loading_cycles {
+            self.loading_cycles = loading;
+            self.clock.loading(loading);
         }
     }
 

@@ -123,6 +123,37 @@ pub trait Clock {
     fn poll(&mut self, _cycles: u64) -> Vec<Event> {
         Vec::new()
     }
+    /// The joystick, when the timer reads it: None when none is connected (the read
+    /// times out), as with the original in refemu-pcjr, which has none.
+    fn joystick(&mut self) -> Option<Joystick> {
+        None
+    }
+    /// The speed model has counted `cycles` of loading in all (disk sectors and
+    /// picture drawing; part of the cycles passed to [`Clock::at`]). A clock for play
+    /// can skip their time (fast loads).
+    fn loading(&mut self, _cycles: u64) {}
+}
+
+/// The PCjr joystick as the game's read finds it (`$0563`): for each axis, the turns
+/// of its loop until the axis's one-shot ended (6 or fewer left or up, 19 or more right
+/// or down, 41 or more a time-out); whether each button is down.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Joystick {
+    pub x: u8,
+    pub y: u8,
+    pub buttons: [bool; 2],
+}
+
+impl Joystick {
+    /// The turns for a stick at rest.
+    pub const CENTRE: u8 = 12;
+    /// From positions 0.0-1.0 across each axis (0.5 at rest): the turns grow with the
+    /// stick's resistance, 25 across, so that a quarter of the way from the middle
+    /// either way the direction changes.
+    pub fn from_position(x: f64, y: f64, buttons: [bool; 2]) -> Joystick {
+        let turns = |p: f64| (p.clamp(0.0, 1.0) * 25.0).round() as u8;
+        Joystick { x: turns(x), y: turns(y), buttons }
+    }
 }
 
 /// Events logged by refemu-pcjr (`--events`), replayed at the same checkpoints.

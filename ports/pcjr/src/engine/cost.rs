@@ -27,7 +27,8 @@ const BLIT: f64 = 60.13; // per byte copied to the displayed page
 const CHAR: f64 = 3_374.0; // per character the BIOS draws
 const SCROLLED: f64 = 13_816.0; // per text row scrolled
 const TICK: f64 = 2_140.0; // per timer tick served
-const JOYSTICK: f64 = 6_975.0; // per joystick read (it times out)
+const JOYSTICK: f64 = 6_975.0; // per joystick read that times out (41 turns of its loop)
+const JOYSTICK_TURN: f64 = JOYSTICK / 41.0; // per turn, a connected stick's read
 const SOUND: f64 = 249.3; // per byte sent to the sound chip
 const BELOW: f64 = 156.8; // per row looked down for a priority under 15
                           // Loading: the disk and the picture.
@@ -58,10 +59,12 @@ pub struct Cost {
     /// Characters drawn by the BIOS, and text rows scrolled.
     pub chars: u32,
     pub scrolled: u32,
-    /// Timer ticks served (`$0808`); of them, those that read the joystick (none is
-    /// connected: the read times out); sound bytes sent to the chip.
+    /// Timer ticks served (`$0808`); of them, those that read the joystick and it
+    /// timed out (none connected); with a stick, the turns of the read's loop until
+    /// both axes settled; sound bytes sent to the chip.
     pub ticks: u32,
     pub joystick: u32,
+    pub joystick_turns: u32,
     pub sound: u32,
     /// Rows looked down for a priority under 15 while drawing actors (`$32BF`).
     pub below: u32,
@@ -149,10 +152,8 @@ impl Cost {
     /// The original's cycles for this much work.
     pub fn cycles(&self) -> f64 {
         let cp = |a: u16| CHECKPOINTS.iter().position(|&x| x == a).map_or(0, |i| self.checkpoints[i]) as f64;
-        let p = &self.pic;
         ACTOR * cp(0x1665)
             + RULE * cp(0x47F8)
-            + PICTURE * cp(0x34F5)
             + CONDITION * self.conditions as f64
             + BACKGROUND * self.background as f64
             + CEL_WRITTEN * self.cel_written as f64
@@ -162,8 +163,18 @@ impl Cost {
             + SCROLLED * self.scrolled as f64
             + TICK * self.ticks as f64
             + JOYSTICK * self.joystick as f64
+            + JOYSTICK_TURN * self.joystick_turns as f64
             + SOUND * self.sound as f64
             + BELOW * self.below as f64
+            + self.loading_cycles()
+    }
+
+    /// Of [`Cost::cycles`], those of loading a room: the sectors read and the
+    /// pictures drawn (a player's fast loads skip their time).
+    pub fn loading_cycles(&self) -> f64 {
+        let cp = |a: u16| CHECKPOINTS.iter().position(|&x| x == a).map_or(0, |i| self.checkpoints[i]) as f64;
+        let p = &self.pic;
+        PICTURE * cp(0x34F5)
             + SECTOR * self.sectors as f64
             + ABS_STEP * p.abs_steps as f64
             + TO_STEP * p.to_steps as f64

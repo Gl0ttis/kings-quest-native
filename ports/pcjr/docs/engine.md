@@ -23,8 +23,11 @@ function's comment names the routine (`/// $14F2: ...`).
   the countdowns and the redraw (`$2C3C`); the cycle rules, the global script's (again
   while they ask) then the room's; v17 cleared.
 - **The timer** (INT 1Ch, `$0808`, 18.2 times a second): the music; the next word of
-  the queued messages (every v24 + 1 ticks); the joystick; the keys, the first typed
-  character into an 80-key ring.
+  the queued messages (every v24 + 1 ticks); the joystick, when no key waits (`$0563`:
+  its direction for the next cycle, when the keypad gives none; button 1 holds v16 as
+  the `-` key toggles it, button 2 is the `0` key's jump, v17; a clock for play
+  supplies the stick, `Clock::joystick`); the keys, the first typed character into an
+  80-key ring.
 
 ## Differences from the Apple version
 
@@ -106,8 +109,9 @@ lengths show what was missing):
   packed sizes differ from frame to frame; without them the error was three times
   larger;
 - the characters the BIOS draws and the text rows it scrolls;
-- the timer handler: each tick, each joystick read (none is connected, so the read
-  times out), each byte sent to the sound chip;
+- the timer handler: each tick, each joystick read (none is connected in refemu, so
+  the read times out after 41 turns of its loop; with a stick, the turns until both
+  axes settle), each byte sent to the sound chip;
 - loading: sectors read; for a picture, a fixed part (clearing, the frame, the colours
   merged), the line steps (the absolute line's by error terms; the others' by a
   multiply and a divide each), the lines, and the fills' bytes and runs.

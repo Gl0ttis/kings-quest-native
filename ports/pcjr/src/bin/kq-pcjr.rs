@@ -1,4 +1,5 @@
-//! kq-pcjr [DISK] [--speed N] [--mute] [--fullscreen] [--font FILE] [--play FILE] [--scale N]
+//! kq-pcjr [DISK] [--speed N] [--fast-loads] [--mute] [--fullscreen] [--no-joystick]
+//!         [--font FILE] [--play FILE] [--scale N]
 //!
 //! Plays the IBM PCjr King's Quest in a window, with the native engine, at the
 //! original's speed (engine::cost: each pass lasts as long as it did on a PCjr, and the
@@ -15,8 +16,15 @@
 //! stops), typing enters commands, Enter submits, Tab shows the inventory, Esc pauses,
 //! 0 jumps.
 //!
+//! A joystick or game controller is the PCjr's joystick (--no-joystick to leave it
+//! out): the stick (or the d-pad) walks Graham while it is pushed, button 1 is the `-`
+//! key held down and button 2 the `0` key (the jump). The original reads it whenever
+//! the timer finds no key waiting, as it does with none connected.
+//!
 //! Front-end keys: F11/F12 slower/faster (--speed N starts at N times the original's
-//! speed). F8 sound on/off (--mute). Alt+Enter full screen (--fullscreen). The window
+//! speed). F9 fast loads (--fast-loads): the disk reads and the picture drawing (a room
+//! change's few seconds) take no time, and the rest keeps the original's pace; the game's
+//! own time still passes as it would. F8 sound on/off (--mute). Alt+Enter full screen (--fullscreen). The window
 //! can be resized (--scale N: N times 320 × 240 to start, at the display's scale); the
 //! picture keeps the PCjr screen's 4:3 shape.
 //!
@@ -30,7 +38,7 @@
 //! text on it printed.
 
 use kq1_pcjr::disk::{Disk, IMAGE_LEN};
-use kq1_pcjr::engine::clock::{Clock, Event, CPU_HZ, CYCLES_PER_TICK};
+use kq1_pcjr::engine::clock::{Clock, Event, Joystick, CPU_HZ, CYCLES_PER_TICK};
 use kq1_pcjr::engine::screen::{HEIGHT, WIDTH};
 use kq1_pcjr::engine::World;
 use kq1_pcjr::font::Font;
@@ -57,6 +65,8 @@ struct Shared {
     /// Keys for the game (as the PCjr's BIOS gives them: scan code << 8 | character).
     keys: VecDeque<u16>,
     speed: f64,
+    /// Fast loads: the loading's time (World::loading_cycles) isn't waited for.
+    fast_loads: bool,
     quit: bool,
     /// Why the game stopped, when it has.
     ended: Option<String>,
@@ -89,11 +99,22 @@ struct PlayerClock {
     origin: Instant,
     speed: f64,
     ticks: u64,
+    /// The loading cycles so far, and of them those skipped by fast loads (not waited
+    /// for: the wall clock runs `skipped` cycles behind the game's).
+    loading: u64,
+    skipped: u64,
+    /// Read the joystick (not --no-joystick).
+    joystick: bool,
 }
 
 impl PlayerClock {
+    fn new(shared: Arc<Mutex<Shared>>, speed: f64, joystick: bool) -> PlayerClock {
+        PlayerClock { shared, origin: Instant::now(), speed, ticks: 0, loading: 0, skipped: 0, joystick }
+    }
+
     /// Wait until the game's cycle `cycles` is due.
     fn pace(&mut self, cycles: u64) {
+        let cycles = cycles.saturating_sub(self.skipped);
         let speed = self.shared.lock().unwrap().speed;
         if speed != self.speed {
             // Keep the present where it is when the speed changes.
@@ -141,6 +162,17 @@ impl Clock for PlayerClock {
     /// A timed delay (the title's): its time passes in real time too.
     fn poll(&mut self, cycles: u64) -> Vec<Event> {
         self.at(0, cycles)
+    }
+
+    fn joystick(&mut self) -> Option<Joystick> {
+        self.joystick.then(joystick::read).flatten()
+    }
+
+    fn loading(&mut self, cycles: u64) {
+        if self.shared.lock().unwrap().fast_loads {
+            self.skipped += cycles - self.loading;
+        }
+        self.loading = cycles;
     }
 }
 
@@ -223,7 +255,14 @@ fn headless(disk: &Disk, font: &Font, plan: &str, until: f64, shot: &str) {
         let rgb: Vec<u8> = screen.iter().flat_map(|&c| kq1_pcjr::color::rgb(c)).collect();
         std::fs::write(&shot_path, kq1_apple2::png::encode_rgb(320, 200, &rgb)).expect("write the shot");
         let text: Vec<String> = (0..25).map(|r| w.text.row(r)).filter(|r| !r.trim().is_empty()).collect();
-        println!("at {:.1} s, pass {}, room {}:\n{}", w.cycles as f64 / CPU_HZ, w.passes, w.vars[1], text.join("\n"));
+        println!(
+            "at {:.1} s ({:.1} s of it loading: the disk and the pictures), pass {}, room {}:\n{}",
+            w.cycles as f64 / CPU_HZ,
+            w.loading_cycles as f64 / CPU_HZ,
+            w.passes,
+            w.vars[1],
+            text.join("\n")
+        );
         w.stop("the end of the script".into());
     }));
     w.run();
@@ -534,14 +573,18 @@ fn main() {
     } else {
         false
     };
-    let mute = if let Some(p) = args.iter().position(|a| a == "--mute") {
-        args.remove(p);
-        true
-    } else {
-        false
+    let mut flag = |name: &str| -> bool {
+        let p = args.iter().position(|a| a == name);
+        if let Some(p) = p {
+            args.remove(p);
+        }
+        p.is_some()
     };
+    let mute = flag("--mute");
+    let fast_loads = flag("--fast-loads");
+    let use_joystick = !flag("--no-joystick");
     if args.iter().any(|a| a.starts_with("--")) || args.len() > 1 {
-        eprintln!("usage: kq-pcjr [DISK] [--speed N] [--mute] [--fullscreen] [--font FILE] [--play FILE] [--scale N]");
+        eprintln!("usage: kq-pcjr [DISK] [--speed N] [--fast-loads] [--mute] [--fullscreen] [--no-joystick] [--font FILE] [--play FILE] [--scale N]");
         std::process::exit(2);
     }
     let disk_path = find_disk(args.first().map(String::as_str)).unwrap_or_else(|e| fatal(&e));
@@ -567,6 +610,7 @@ fn main() {
         seq: 0,
         keys: VecDeque::new(),
         speed,
+        fast_loads,
         quit: false,
         ended: None,
     }));
@@ -579,7 +623,7 @@ fn main() {
         let shared = shared.clone();
         let audio = audio.clone();
         std::thread::spawn(move || {
-            let clock = PlayerClock { shared: shared.clone(), origin: Instant::now(), speed, ticks: 0 };
+            let clock = PlayerClock::new(shared.clone(), speed, use_joystick);
             let mut w = World::new(&disk, Box::new(clock)).expect("the engine");
             if let Ok(img) = std::fs::read(&play_path) {
                 if img.len() == IMAGE_LEN {
@@ -592,13 +636,21 @@ fn main() {
             let mut saved_writes = w.disks[1].writes;
             let mut pending_save = false;
             let s2 = shared.clone();
+            let mut loading = 0;
             w.on_frame = Some(Box::new(move |w: &mut World| {
-                render(w, &font, &mut screen);
-                scale(&screen, &colours, &mut rgb);
+                // While a fast load goes by, its frames needn't be drawn.
+                let fast = s2.lock().unwrap().fast_loads;
+                let skip = fast && w.loading_cycles != std::mem::replace(&mut loading, w.loading_cycles);
+                if !skip {
+                    render(w, &font, &mut screen);
+                    scale(&screen, &colours, &mut rgb);
+                }
                 {
                     let mut s = s2.lock().unwrap();
-                    s.rgb.copy_from_slice(&rgb);
-                    s.seq += 1;
+                    if !skip {
+                        s.rgb.copy_from_slice(&rgb);
+                        s.seq += 1;
+                    }
                     if s.quit {
                         drop(s);
                         w.stop("the window was closed".into());
@@ -646,7 +698,11 @@ fn main() {
     window.set_input_callback(Box::new(Chars(shared.clone())));
     let mut full = Fullscreen::default();
     let mut want_full = start_fullscreen;
-    println!("F11/F12: slower/faster, F8: sound, Alt+Enter: full screen");
+    println!("F11/F12: slower/faster, F9: fast loads, F8: sound, Alt+Enter: full screen");
+    let fast_title = |on: bool| format!("{TITLE}{}", if on { " - fast loads" } else { "" });
+    if fast_loads {
+        window.set_title(&fast_title(true));
+    }
     let mut buf = vec![0u32; OUT_W * OUT_H];
     let mut last_seq = u64::MAX;
     while window.is_open() {
@@ -681,6 +737,11 @@ fn main() {
                     let mut a = audio.lock().unwrap();
                     a.on = !a.on;
                     window.set_title(&format!("{TITLE}{}", if a.on { "" } else { " - muted" }));
+                }
+                Key::F9 => {
+                    let mut s = shared.lock().unwrap();
+                    s.fast_loads = !s.fast_loads;
+                    window.set_title(&fast_title(s.fast_loads));
                 }
                 Key::F11 | Key::F12 => {
                     let mut s = shared.lock().unwrap();
@@ -850,6 +911,107 @@ fn fatal(msg: &str) -> ! {
         unsafe { MessageBoxW(0, text.as_ptr(), caption.as_ptr(), 0x10) };
     }
     std::process::exit(1)
+}
+
+/// The joystick through Windows (winmm: any game controller), as positions 0.0-1.0
+/// across each axis; the hat (d-pad) pushes to the edges. None if there's none.
+#[cfg(windows)]
+mod joystick {
+    use kq1_pcjr::engine::clock::Joystick;
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct JoyInfoEx {
+        size: u32,
+        flags: u32,
+        x: u32,
+        y: u32,
+        z: u32,
+        r: u32,
+        u: u32,
+        v: u32,
+        buttons: u32,
+        button_number: u32,
+        pov: u32,
+        reserved1: u32,
+        reserved2: u32,
+    }
+    #[link(name = "winmm")]
+    extern "system" {
+        fn joyGetPosEx(id: u32, info: *mut JoyInfoEx) -> u32;
+    }
+
+    pub fn read() -> Option<Joystick> {
+        let mut j = JoyInfoEx { size: std::mem::size_of::<JoyInfoEx>() as u32, flags: 0xFF, ..Default::default() };
+        if unsafe { joyGetPosEx(0, &mut j) } != 0 {
+            return None;
+        }
+        let (mut x, mut y) = (j.x.min(65535) as f64 / 65535.0, j.y.min(65535) as f64 / 65535.0);
+        if j.pov != 0xFFFF {
+            let a = (j.pov as f64 / 100.0).to_radians();
+            (x, y) = (0.5 + 0.5 * a.sin(), 0.5 - 0.5 * a.cos());
+        }
+        Some(Joystick::from_position(x, y, [j.buttons & 1 != 0, j.buttons & 2 != 0]))
+    }
+}
+
+/// The joystick through Linux's joystick device (`/dev/input/js0`, any game
+/// controller): its first two axes (or the hat, axes 6 and 7, when pushed) and buttons
+/// 1 and 2. The device is opened at the first read and reopened if it goes away.
+#[cfg(target_os = "linux")]
+mod joystick {
+    use kq1_pcjr::engine::clock::Joystick;
+    use std::{fs::File, io::Read, os::unix::fs::OpenOptionsExt, sync::Mutex};
+
+    struct State {
+        dev: Option<File>,
+        axes: [i16; 8],
+        buttons: [bool; 2],
+    }
+    static STATE: Mutex<State> = Mutex::new(State { dev: None, axes: [0; 8], buttons: [false; 2] });
+    /// O_NONBLOCK.
+    const NONBLOCK: i32 = 0o4000;
+
+    pub fn read() -> Option<Joystick> {
+        let mut st = STATE.lock().unwrap();
+        if st.dev.is_none() {
+            st.dev = std::fs::OpenOptions::new().read(true).custom_flags(NONBLOCK).open("/dev/input/js0").ok();
+        }
+        let dev = st.dev.as_mut()?;
+        // struct js_event { u32 time; i16 value; u8 type; u8 number }, 8 bytes each.
+        let mut buf = [0u8; 8 * 64];
+        let mut events = Vec::new();
+        loop {
+            match dev.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => events
+                    .extend(buf[..n - n % 8].chunks(8).map(|e| (i16::from_le_bytes([e[4], e[5]]), e[6] & 0x7F, e[7]))),
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(_) => {
+                    st.dev = None;
+                    return None;
+                }
+            }
+        }
+        for (value, kind, number) in events {
+            match kind {
+                1 if (number as usize) < 2 => st.buttons[number as usize] = value != 0,
+                2 if (number as usize) < 8 => st.axes[number as usize] = value,
+                _ => {}
+            }
+        }
+        let pos = |v: i16| (v as f64 + 32768.0) / 65535.0;
+        let (hx, hy) = (st.axes[6], st.axes[7]);
+        let (x, y) = if hx != 0 || hy != 0 { (pos(hx), pos(hy)) } else { (pos(st.axes[0]), pos(st.axes[1])) };
+        Some(Joystick::from_position(x, y, st.buttons))
+    }
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+mod joystick {
+    pub fn read() -> Option<kq1_pcjr::engine::clock::Joystick> {
+        None
+    }
 }
 
 /// A hook in front of minifb's window procedure (Windows): Alt+Enter, and all painting,

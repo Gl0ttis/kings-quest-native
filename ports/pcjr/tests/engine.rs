@@ -5,7 +5,7 @@
 //! Skipped without the original's disk in original/.
 
 use kq1_pcjr::disk::Disk;
-use kq1_pcjr::engine::clock::Replay;
+use kq1_pcjr::engine::clock::{Clock, Event, Joystick, Replay, CPU_HZ, CYCLES_PER_TICK};
 use kq1_pcjr::engine::World;
 use std::path::Path;
 
@@ -106,4 +106,79 @@ fn the_magic_ring_route_matches_the_original() {
 fn the_giant_sling_route_matches_the_original() {
     let Some(disk) = original() else { return };
     assert_eq!(replay(&disk, "giant_sling"), 20463);
+}
+
+/// A clock for play without pacing: the timer's ticks by the game's time, keys at given
+/// times, and a joystick: at rest, then pushed right from a given time.
+struct StickClock {
+    ticks: u64,
+    keys: Vec<(u64, u16)>,
+    push_at: u64,
+    cycles: u64,
+}
+
+impl Clock for StickClock {
+    fn at(&mut self, _n: u64, cycles: u64) -> Vec<Event> {
+        self.cycles = cycles;
+        let mut out = Vec::new();
+        while self.keys.first().is_some_and(|&(t, _)| t <= cycles) {
+            out.push(Event::Key(self.keys.remove(0).1));
+        }
+        while (self.ticks + 1) * CYCLES_PER_TICK <= cycles {
+            self.ticks += 1;
+            out.push(Event::Tick(0xFFFF));
+        }
+        out
+    }
+    fn waiting(&mut self, n: u64, _cycles: u64) -> Vec<Event> {
+        self.at(n, (self.ticks + 1) * CYCLES_PER_TICK)
+    }
+    fn poll(&mut self, cycles: u64) -> Vec<Event> {
+        self.at(0, cycles)
+    }
+    fn joystick(&mut self) -> Option<Joystick> {
+        let x = if self.cycles >= self.push_at { 1.0 } else { 0.5 };
+        Some(Joystick::from_position(x, 0.5, [false; 2]))
+    }
+}
+
+/// Past the title and the credits (Enter at 4, 8, 12 and 16 s) into the first room,
+/// then right from 22 s, by the stick or the keypad's right arrow (or not at all): the
+/// ego's x at 22 s and at 30 s.
+fn ego_walk(disk: &Disk, stick: bool, arrow: bool) -> (u8, u8) {
+    use std::{cell::Cell, rc::Rc};
+    let s = |t: f64| (t * CPU_HZ) as u64;
+    let mut keys: Vec<(u64, u16)> = [4.0, 8.0, 12.0, 16.0].map(|t| (s(t), 0x1C0D)).to_vec();
+    if arrow {
+        keys.push((s(22.0), 0x4D00));
+    }
+    let clock = StickClock { ticks: 0, keys, push_at: if stick { s(22.0) } else { u64::MAX }, cycles: 0 };
+    let mut w = World::new(disk, Box::new(clock)).expect("engine");
+    let at22 = Rc::new(Cell::new(None));
+    let seen = at22.clone();
+    w.on_frame = Some(Box::new(move |w: &mut World| {
+        if w.cycles >= s(22.0) && seen.get().is_none() {
+            seen.set(Some(w.actors[0].x));
+        }
+        if w.cycles >= s(30.0) {
+            w.stop("30 s".into());
+        }
+    }));
+    w.run();
+    assert_eq!(w.vars[1], 1, "in the first room");
+    (at22.get().expect("22 s reached"), w.actors[0].x)
+}
+
+/// The joystick (none in refemu-pcjr's PCjr): at rest it leaves Graham standing, and
+/// pushed right it walks him right as far as the keypad's right arrow does (to the
+/// moat's bank under the tree).
+#[test]
+fn the_joystick_walks_graham() {
+    let Some(disk) = original() else { return };
+    let (a, b) = ego_walk(&disk, false, false);
+    assert_eq!(a, b, "the stick at rest");
+    let (_, by_arrow) = ego_walk(&disk, false, true);
+    assert!(by_arrow > a, "the arrow: x {a} to {by_arrow}");
+    let (a2, by_stick) = ego_walk(&disk, true, false);
+    assert_eq!((a2, by_stick), (a, by_arrow), "the stick");
 }
