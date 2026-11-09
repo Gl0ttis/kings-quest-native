@@ -340,9 +340,11 @@ impl Driver {
             return true;
         }
         let live = |c: &Vec<(usize, bool, u8)>| c.iter().all(|&(v, eq, val)| (self.v(v) == val) == eq);
-        self.g.deadly.get(&self.v(1)).filter(|_| !self.ignore_deadly).is_some_and(|zones| {
-            zones.iter().any(|(z, c)| x >= z[0] && x <= z[2] && y >= z[1] && y <= z[3] && live(c))
-        })
+        self.g
+            .deadly
+            .get(&self.v(1))
+            .filter(|_| !self.ignore_deadly)
+            .is_some_and(|zones| zones.iter().any(|(z, c)| x >= z[0] && x <= z[2] && y >= z[1] && y <= z[3] && live(c)))
     }
 
     /// Is (x, y) in the edge margin (where only backing out is allowed)? The margin
@@ -1113,7 +1115,8 @@ fn run_line_inner(d: &mut Driver, line: &str) -> Result<(), String> {
         "if" => {
             // if V VALUE STEP: the step only when vV == VALUE.
             let mut w = rest.splitn(3, ' ');
-            let (v, val) = (w.next().and_then(|x| x.parse::<usize>().ok()), w.next().and_then(|x| x.parse::<u8>().ok()));
+            let (v, val) =
+                (w.next().and_then(|x| x.parse::<usize>().ok()), w.next().and_then(|x| x.parse::<u8>().ok()));
             let (Some(v), Some(val), Some(then)) = (v, val, w.next()) else { return Err("if V VALUE STEP".into()) };
             if d.v(v) == val {
                 run_line(d, then)
@@ -1257,7 +1260,7 @@ fn play(d0: Driver, route: &str, from: usize) -> (Driver, Option<(usize, String)
             // before it (a doorway's room can't be left and re-entered by its exits), and
             // the lines from there played again.
             'trips: for back in 0..=5usize.min(i) {
-                    for k in [2, 4, 6, 8, 10, 1, 3, 5, 7, 9, 11] {
+                for k in [2, 4, 6, 8, 10, 1, 3, 5, 7, 9, 11] {
                     let from = i - back;
                     let mut t = snaps[from].clone();
                     let mut redone = Vec::new();
@@ -1269,7 +1272,8 @@ fn play(d0: Driver, route: &str, from: usize) -> (Driver, Option<(usize, String)
                         if j > from {
                             redone.push(t.clone());
                         }
-                        let at = format!("{:4}: {l}   [pass {}, room {}, score {}]", m + 1, t.r.passes, t.v(1), t.v(19));
+                        let at =
+                            format!("{:4}: {l}   [pass {}, room {}, score {}]", m + 1, t.r.passes, t.v(1), t.v(19));
                         t.events.push(at);
                         r = run_line(&mut t, l);
                     }
@@ -1277,7 +1281,10 @@ fn play(d0: Driver, route: &str, from: usize) -> (Driver, Option<(usize, String)
                         eprintln!("line {}: {k} round trips from line {}: {r:?}", n + 1, lines[from].0 + 1);
                     }
                     if r.is_ok() {
-                        t.events.push(format!("      (after {k} round trips to a neighbouring room from line {})", lines[from].0 + 1));
+                        t.events.push(format!(
+                            "      (after {k} round trips to a neighbouring room from line {})",
+                            lines[from].0 + 1
+                        ));
                         snaps.truncate(from + 1);
                         snaps.extend(redone);
                         d = t;

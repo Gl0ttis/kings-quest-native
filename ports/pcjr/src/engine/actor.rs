@@ -5,10 +5,6 @@ use super::res::{Script, View};
 use super::{Actor, CelRef, World, ACTORS};
 use std::rc::Rc;
 
-/// CPU cycles for a sector read (refemu-pcjr's figure) and a pixel plotted (an
-/// estimate), for the speed model.
-pub const SECTOR_CYCLES: u64 = 100_000;
-pub const PLOT_CYCLES: u64 = 60;
 /// The loop for each direction, for views with 2 loops (DS:174F) and 4 (DS:1758).
 const LOOPS_2: usize = 0x174F;
 const LOOPS_4: usize = 0x1758;
@@ -25,7 +21,7 @@ impl World {
         self.g.keys_on = false;
         self.checkpoint(0x4D93);
         self.site(super::clock::Site::Disk);
-        self.cycles += n as u64 * SECTOR_CYCLES;
+        self.cost.sectors += n as u32;
         self.g.keys_on = true;
     }
 
@@ -134,6 +130,15 @@ impl World {
         self.trace.push(row);
         if self.keep_vars {
             self.vars_trace.push(self.vars);
+        }
+        // The pass that ended: its work, with the characters the BIOS drew in it.
+        self.charge();
+        self.charged = 0.0;
+        self.cost.chars = std::mem::take(&mut self.text.drawn);
+        self.cost.scrolled = std::mem::take(&mut self.text.scrolled);
+        let done = std::mem::take(&mut self.cost);
+        if let Some(t) = self.cost_trace.as_mut() {
+            t.push(done);
         }
         if self.frame_hashes.is_some() || self.frame_at == Some(self.passes) {
             let f = self.frame();

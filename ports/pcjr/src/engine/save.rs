@@ -322,7 +322,7 @@ impl World {
         b.resize(3 * 512, 0);
         self.g.keys_on = false;
         loop {
-            self.cycles += 3 * super::actor::SECTOR_CYCLES;
+            self.cost.sectors += 3;
             match self.disk(true, Self::slot_sector(slot), 3, &mut b) {
                 0 => break,
                 3 => {
@@ -373,7 +373,7 @@ impl World {
         self.g.keys_on = false;
         self.checkpoint(0x4D93);
         self.site(super::clock::Site::Disk);
-        self.cycles += n as u64 * super::actor::SECTOR_CYCLES;
+        self.cost.sectors += n as u32;
         self.g.keys_on = true;
     }
 
@@ -635,7 +635,7 @@ impl World {
     /// `$3DD6`: a write, retried (after "Disk Write Error!" and Enter) until it works.
     fn write_retrying(&mut self, lba: usize, count: usize, data: &mut Vec<u8>) {
         loop {
-            self.cycles += count as u64 * super::actor::SECTOR_CYCLES;
+            self.cost.sectors += count as u32;
             if self.disk(true, lba, count, data) == 0 {
                 return;
             }
@@ -652,7 +652,7 @@ impl World {
     fn format_play(&mut self) {
         for track in 0..80usize {
             loop {
-                self.cycles += 9 * super::actor::SECTOR_CYCLES;
+                self.cost.sectors += 9;
                 let d = &mut self.disks[self.drive];
                 if !d.write_protected {
                     d.image[track * 9 * 512..(track + 1) * 9 * 512].fill(0xF6);

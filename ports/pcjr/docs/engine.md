@@ -88,6 +88,53 @@ prints the ego and the keys at each pass, and `kqprobe-pcjr` (refemu) prints the
 from the original replaying the same log. `KQ_CPS=FROM-TO` prints the checkpoints
 numbered FROM-TO as they pass, in both (the first that differs is where to look).
 
+## Speed
+
+See [src/engine/cost.rs](../src/engine/cost.rs). The original has no speed control: a
+pass takes as long as the 8088 needs. The port counts the work the original's time goes
+on and turns it into cycles with fitted constants, added to `cycles` at every
+checkpoint; the paced clock fires the timer's ticks from them, so the game runs at the
+original's speed and its ticks fall where they did.
+
+**What is counted**, found by profiling the original pass by pass (`kqprofile-pcjr`
+in refemu: cycles by code address; two passes with the same counts but different
+lengths show what was missing):
+- the rules tested and the actors updated (their checkpoints, `$47F8` and `$1665`);
+- the actors' drawing: background bytes saved and put back, cel pixels written, bytes
+  copied to the displayed page, rows looked down for a priority under 15, and the
+  packed cel's nibbles, since every draw unpacks its cel again (`$3418`). The cels'
+  packed sizes differ from frame to frame; without them the error was three times
+  larger;
+- the characters the BIOS draws and the text rows it scrolls;
+- the timer handler: each tick, each joystick read (none is connected, so the read
+  times out), each byte sent to the sound chip;
+- loading: sectors read; for a picture, a fixed part (clearing, the frame, the colours
+  merged), the line steps (the absolute line's by error terms; the others' by a
+  multiply and a divide each), the lines, and the fills' bytes and runs.
+
+Busy waits for the timer (the messages printing, `$462F`) aren't work: the clock takes
+them to the tick that ends them.
+
+**The fit** (`tools/costfit.py`, on `examples/costdump.rs`'s counts against the
+reference traces) uses the max-score and magic-ring routes. Every constant is kept
+`>= 0`, since time doesn't run backwards. Measured on the gold-key and giant-sling
+routes, which the fit didn't see (`examples/speedcmp.rs`, the model running in the
+engine):
+
+| Passes | Median error | 90% within | Total |
+|---|---|---|---|
+| Ordinary | 1.5–1.6% | 3.6–3.9% | −0.27% to −0.01% |
+| Loading (disk, picture) | 0.71% | 2.4% | −0.10% to −0.05% |
+| Busy waits (the clock's) | 3.4% | 7.6–8.1% | +2.7% to +3.2% |
+| The whole run | | | +0.04% (giant sling, 24 min), +0.20% (gold key, 26 min) |
+
+**Start-up** is 4.1 s by the model to the first pass, 4.5 s in refemu. Most of the
+difference is the title screen's wait, which in refemu is its own automatic RETURN
+after an idle stretch; in play it is the player's.
+
+**The reference is refemu's timing**, which is within about 10% of 86Box's (refemu's
+README, "Timing").
+
 ## Routine index
 
 | Original | Port |

@@ -28,7 +28,7 @@ engine draws.
 | 5. The engine | **Running** ([src/engine/](../src/engine/mod.rs), [engine.md](engine.md)). A native reimplementation, routine by routine, in the Apple port's style: decoded resources, named state, native screen planes. The timer interrupt (messages, music, keys) is replayed from refemu-pcjr's event log at the same points in the code. **Both reference routes match the original on every pass**: the walk (900 passes) and the save/restore (1,000 passes: making a Play diskette, saving, restoring), with every checkpoint in the same order (tests in `tests/engine.rs`). Saves are written in the original's format. Not yet: the speed model and the player; the text screens and inventory are ported but no route uses them yet. |
 | 6. Pass-by-pass comparison | **Done.** Nine routes, played on the original by refemu's autopilot (`kqroute-pcjr`), match on every pass: the walk, save/restore, three deaths, the gold key, the maximum score, the magic ring and the giant with the sling (about 89,000 passes; `tests/engine.rs`). |
 | 8. The screen | **Done.** `kqframes-pcjr` compares the screen at every pass in the hardware's terms (the displayed page's picture bytes and the character cells): every screen of the nine routes is the same. The original's frame hashes are in `reference/*.frames`, checked by the tests. |
-| 9. Timing | In progress. |
+| 9. Timing | **Done** ([engine.md](engine.md), "Speed"). A fitted cost model of each pass's work, charged at every checkpoint; whole routes within 0.2% of the original's time, passes within 1.6% (median). |
 | 10. The player | Not started. |
 
 ## Findings so far

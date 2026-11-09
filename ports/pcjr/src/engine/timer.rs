@@ -39,6 +39,7 @@ impl World {
             self.g.joy_skip = false;
         } else if self.keys.is_empty() {
             // $0563: no joystick: the axes never settle and the read times out.
+            self.cost.joystick += 1;
             self.g.joy_skip = true;
             self.g.joy_timeout = 1;
             self.g.joy_dir = 0;
@@ -63,6 +64,7 @@ impl World {
             if self.g.sound_on {
                 self.sound_out.push(b);
             }
+            self.cost.sound += 1;
         }
         let d = s.data.get(s.at).copied().unwrap_or(0);
         s.at += 1;

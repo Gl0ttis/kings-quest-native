@@ -16,6 +16,20 @@ pub const HEIGHT: usize = 168;
 /// edge. Fills stop at it.
 pub const FRAME: usize = 0x1981;
 
+/// What the drawing did, for the speed model: line steps (the absolute line's, by
+/// error terms; the others', by a multiply and a divide each), lines drawn, and the
+/// fills' bytes written, bytes scanned for runs, runs filled and seeds tried.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Work {
+    pub abs_steps: u32,
+    pub to_steps: u32,
+    pub lines: u32,
+    pub fill_bytes: u32,
+    pub fill_scans: u32,
+    pub fill_runs: u32,
+    pub fill_seeds: u32,
+}
+
 pub struct Picture {
     /// 168 rows of 160: priority << 4 | colour (the Apple painter's layout).
     pub buf: Vec<u8>,
@@ -24,6 +38,7 @@ pub struct Picture {
     /// Bytes of the picture read, up to and including its end.
     pub end: usize,
     pub warnings: Vec<String>,
+    pub work: Work,
 }
 
 impl Picture {
@@ -113,6 +128,7 @@ struct Painter<'a> {
     tx: u8,
     plots: u32,
     warnings: Vec<String>,
+    work: Work,
 }
 
 impl Painter<'_> {
@@ -176,7 +192,9 @@ impl Painter<'_> {
         let (dx, xstep) = if self.tx >= bx { (self.tx - bx, 1u8) } else { (bx - self.tx, 0xFF) };
         let (n, mut al, mut ah) = if dx >= dy { (dx, 0u8, dx >> 1) } else { (dy, dy >> 1, 0u8) };
         let mut cx = n as u16;
+        self.work.lines += 1;
         loop {
+            self.work.abs_steps += 1;
             ah = ah.wrapping_add(dy);
             if ah >= n {
                 ah = ah.wrapping_sub(n);
@@ -222,12 +240,14 @@ impl Painter<'_> {
             }
             q
         };
+        self.work.lines += 1;
         if dx > dy {
             // $381F
             let mut i = 0u8;
             while i != dx {
                 i = i.wrapping_add(1);
                 let oy = step(i, dy, dx);
+                self.work.to_steps += 1;
                 let (x, y) = at(self, i, oy);
                 self.plot_at(x, y);
             }
@@ -237,6 +257,7 @@ impl Painter<'_> {
             while i != dy {
                 i = i.wrapping_add(1);
                 let ox = step(i, dx, dy);
+                self.work.to_steps += 1;
                 let (x, y) = at(self, ox, i);
                 self.plot_at(x, y);
             }
@@ -246,11 +267,12 @@ impl Painter<'_> {
     }
 
     /// `$794`: the run of `dh` bytes through `di`: (its left end, its length).
-    fn span(&self, seg: u32, di: u16, dh: u8) -> (u16, u16) {
+    fn span(&mut self, seg: u32, di: u16, dh: u8) -> (u16, u16) {
         // Backward: REPE SCASB with DF set, at most 255 bytes.
         let (mut d, mut cx) = (di, 0xFFu16);
         while cx != 0 {
             let v = self.read(seg, d);
+            self.work.fill_scans += 1;
             d = d.wrapping_sub(1);
             cx -= 1;
             if v != dh {
@@ -262,6 +284,7 @@ impl Painter<'_> {
         let (mut d, mut cx) = (left, 0xFFu16);
         while cx != 0 {
             let v = self.read(seg, d);
+            self.work.fill_scans += 1;
             d = d.wrapping_add(1);
             cx -= 1;
             if v != dh {
@@ -274,13 +297,15 @@ impl Painter<'_> {
     /// `$7AF`: from a seed, the run to fill: the seed's own run if it is still fillable,
     /// else the run at the next fillable byte within `count` bytes forward (the width of
     /// the run it was queued from, `$7B8`).
-    fn seed_run(&self, seg: u32, di: u16, count: u16, dh: u8) -> Option<(u16, u16)> {
+    fn seed_run(&mut self, seg: u32, di: u16, count: u16, dh: u8) -> Option<(u16, u16)> {
+        self.work.fill_seeds += 1;
         if self.read(seg, di) == dh {
             return Some(self.span(seg, di, dh));
         }
         let (mut d, mut cx) = (di, count);
         while cx != 0 {
             let v = self.read(seg, d);
+            self.work.fill_scans += 1;
             d = d.wrapping_add(1);
             cx -= 1;
             if v == dh {
@@ -327,6 +352,8 @@ impl Painter<'_> {
                 stack.push((len, above));
             }
             // Fill the run, and the priority page too for FC.
+            self.work.fill_runs += 1;
+            self.work.fill_bytes += len as u32;
             for k in 0..len {
                 self.write(seg, left.wrapping_add(k), colour);
                 self.plots += 1;
@@ -396,6 +423,7 @@ pub fn draw(m: &mut dyn Mem, state: &mut State) -> Picture {
         tx: state.tx,
         plots: 0,
         warnings: Vec::new(),
+        work: Work::default(),
     };
     let mut op = p.next();
     loop {
@@ -516,5 +544,5 @@ pub fn draw(m: &mut dyn Mem, state: &mut State) -> Picture {
         };
     }
     *state = State { mode: p.mode, toggle: p.toggle, vis: p.vis, pri: p.pri, y: p.y, x: p.x, ty: p.ty, tx: p.tx };
-    Picture { buf: Vec::new(), plots: p.plots, end: p.pos, warnings: p.warnings }
+    Picture { buf: Vec::new(), plots: p.plots, end: p.pos, warnings: p.warnings, work: p.work }
 }

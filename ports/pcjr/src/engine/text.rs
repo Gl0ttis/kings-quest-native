@@ -27,6 +27,9 @@ pub struct Text {
     /// The text screen is up.
     pub text_mode: bool,
     pub cursor: (u8, u8),
+    /// Characters drawn and rows scrolled since last taken (the speed model's counts).
+    pub drawn: u32,
+    pub scrolled: u32,
 }
 
 impl Text {
@@ -48,6 +51,7 @@ impl Text {
 
     /// INT 10h AH=9: a character at the cursor, which doesn't move.
     pub fn put_attr(&mut self, c: u8, attr: u8) {
+        self.drawn += 1;
         let (r, col) = self.cursor;
         if r < 25 && col < 40 {
             let g = self.grid_mut();
@@ -71,6 +75,7 @@ impl Text {
         }
         let height = bottom - top + 1;
         let lines = if lines == 0 || lines > height { height } else { lines };
+        self.scrolled += height as u32;
         let g = self.grid_mut();
         for r in top..=bottom {
             let src = r + lines;

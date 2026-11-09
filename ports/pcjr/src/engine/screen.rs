@@ -83,7 +83,15 @@ impl World {
     fn interpret(&mut self, data: &[u8]) {
         let mut p = Pages { s: &mut self.screen, data };
         let r = pic::draw(&mut p, &mut self.g.pic);
-        self.cycles += r.plots as u64 * super::actor::PLOT_CYCLES;
+        self.cost.plots += r.plots;
+        let (c, w) = (&mut self.cost.pic, r.work);
+        c.abs_steps += w.abs_steps;
+        c.to_steps += w.to_steps;
+        c.lines += w.lines;
+        c.fill_bytes += w.fill_bytes;
+        c.fill_scans += w.fill_scans;
+        c.fill_runs += w.fill_runs;
+        c.fill_seeds += w.fill_seeds;
     }
 
     /// `$34F5`: op 06: the loaded room picture: both pages cleared, the frame, the

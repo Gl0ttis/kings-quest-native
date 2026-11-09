@@ -406,6 +406,7 @@ impl World {
         let top = x.y as i32 - h as i32 + 1;
         let left = x.x as i32;
         let saved = std::mem::take(&mut self.actors[a].saved);
+        self.cost.background += (rows(h) * w as i32) as u32;
         let mut k = 0;
         for r in 0..rows(h) {
             for c in 0..w as i32 {
@@ -425,6 +426,7 @@ impl World {
         let top = x.new_y as i32 - h as i32 + 1;
         let left = x.new_x as i32;
         let n = rows(h) as usize * w as usize;
+        self.cost.background += n as u32;
         let mut saved = std::mem::take(&mut self.actors[a].saved);
         if saved.len() < n {
             saved.resize(n, 0);
@@ -441,7 +443,7 @@ impl World {
 
     /// The first priority below (x, y), down the column, that isn't 15 (`$32BF`); the
     /// permanent draw drifts a column left on every row after the first (`$33E1`).
-    fn below(&self, x: i32, y: i32, drift: bool) -> u8 {
+    fn below(&mut self, x: i32, y: i32, drift: bool) -> u8 {
         let (mut x, mut y) = (x, y);
         let mut first = true;
         loop {
@@ -450,6 +452,7 @@ impl World {
                 x -= 1;
             }
             first = false;
+            self.cost.below += 1;
             if y >= HEIGHT as i32 {
                 return 0;
             }
@@ -491,6 +494,9 @@ impl World {
                 }
             }
         }
+        self.cost.cel_pixels += cel.height as u32 * cel.width as u32;
+        self.cost.cel_nibbles += cel.nibbles;
+        self.cost.cel_written += shown;
         self.set_hidden(a, ego, shown == 0);
     }
 
@@ -579,6 +585,7 @@ impl World {
         if cols & 1 != 0 {
             cols = cols.wrapping_add(1);
         }
+        self.cost.blit += (rows(rows_n) * cols as i32) as u32;
         for r in 0..rows(rows_n) {
             for c in 0..cols as i32 {
                 let (px, py) = (left as i32 + c, top as i32 + r);

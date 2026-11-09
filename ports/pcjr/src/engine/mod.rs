@@ -17,6 +17,7 @@
 
 pub mod actor;
 pub mod clock;
+pub mod cost;
 pub mod input;
 pub mod motion;
 pub mod res;
@@ -315,6 +316,8 @@ pub struct PassRow {
     pub ego_dir: u8,
     pub score: u8,
     pub vars_hash: u64,
+    /// The speed model's cycles since power-on, at the pass's start.
+    pub cycles: u64,
 }
 
 pub struct World {
@@ -367,6 +370,14 @@ pub struct World {
     /// Each pass's screen as the player sees it ([`World::frame`]), hashed, at the
     /// start of the pass (as the trace rows), when Some.
     pub frame_hashes: Option<Vec<u64>>,
+    /// The work of the pass under way (the speed model's counts), and, when Some,
+    /// every finished pass's.
+    pub cost: cost::Cost,
+    pub cost_trace: Option<Vec<cost::Cost>>,
+    /// The cycles of the pass's work already added to `cycles`, and the fraction of a
+    /// cycle left over.
+    charged: f64,
+    carry: f64,
     /// The whole frame at the start of pass N (`frame_at`), once reached.
     pub frame_at: Option<u64>,
     pub frame: Option<Vec<u8>>,
@@ -496,6 +507,10 @@ impl World {
                 Some((a.parse().ok()?, b.parse().ok()?))
             }),
             frame_hashes: None,
+            cost: cost::Cost::default(),
+            cost_trace: None,
+            charged: 0.0,
+            carry: 0.0,
             frame_at: None,
             frame: None,
             cps: std::env::var("KQ_CPS").ok().and_then(|v| {
@@ -513,7 +528,9 @@ impl World {
         while let Some(e) = self.pending.pop_front() {
             self.event(e);
         }
+        self.charge();
         self.checkpoint += 1;
+        self.cost.checkpoint(at);
         if self.cps.is_some_and(|(a, b)| (a..=b).contains(&self.checkpoint)) {
             eprintln!("checkpoint {} at {at:04X}, v25 {}", self.checkpoint, self.vars[25]);
         }
@@ -521,6 +538,19 @@ impl World {
             t.push(at);
         }
         self.pending = self.clock.at(self.checkpoint, self.cycles).into();
+    }
+
+    /// The speed model: the cycles of the work counted since the last charge added to
+    /// `cycles` (the original's time; the paced clock's ticks follow it).
+    pub fn charge(&mut self) {
+        let est = self.cost.cycles() + cost::Cost::text_cycles(self.text.drawn, self.text.scrolled);
+        self.carry += est - self.charged;
+        self.charged = est;
+        if self.carry >= 1.0 {
+            let whole = self.carry.floor();
+            self.cycles += whole as u64;
+            self.carry -= whole;
+        }
     }
 
     /// At `site` in the code: the interval's events up to the last tick that
@@ -562,6 +592,7 @@ impl World {
             }
             if let Some(e) = self.pending.pop_front() {
                 if matches!(e, Event::Tick(_)) {
+                    self.cost.wait_ticks += 1;
                     self.cycles = (self.cycles / clock::CYCLES_PER_TICK + 1) * clock::CYCLES_PER_TICK;
                 }
                 self.event(e);
@@ -573,6 +604,7 @@ impl World {
         match e {
             Event::Tick(_) => {
                 if self.timer_on {
+                    self.cost.ticks += 1;
                     self.int1c();
                 }
             }
@@ -633,6 +665,7 @@ impl World {
             ego_dir: self.actors[0].motion,
             score: self.vars[19],
             vars_hash,
+            cycles: self.cycles,
         }
     }
 }

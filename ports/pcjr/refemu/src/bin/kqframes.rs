@@ -32,7 +32,8 @@ fn show_diff(pass: u64, orig: &[u8], port: &[u8]) {
     if let (Some(a), Some(b)) = (pic(orig), pic(port)) {
         let rows: Vec<usize> = (0..168).filter(|&y| a[y * 160..(y + 1) * 160] != b[y * 160..(y + 1) * 160]).collect();
         if !rows.is_empty() {
-            let cols: Vec<usize> = (0..160).filter(|&x| rows.iter().any(|&y| a[y * 160 + x] != b[y * 160 + x])).collect();
+            let cols: Vec<usize> =
+                (0..160).filter(|&x| rows.iter().any(|&y| a[y * 160 + x] != b[y * 160 + x])).collect();
             let n = rows.iter().map(|&y| (0..160).filter(|&x| a[y * 160 + x] != b[y * 160 + x]).count()).sum::<usize>();
             println!(
                 "  picture: {n} bytes differ, rows {}-{}, columns {}-{} (bytes, two pixels each)",
@@ -43,7 +44,8 @@ fn show_diff(pass: u64, orig: &[u8], port: &[u8]) {
             );
             for &y in rows.iter().take(12) {
                 let (x0, x1) = (cols[0].saturating_sub(2), (cols[cols.len() - 1] + 3).min(160));
-                let hex = |p: &[u8]| p[y * 160 + x0..y * 160 + x1].iter().map(|b| format!("{b:02X}")).collect::<String>();
+                let hex =
+                    |p: &[u8]| p[y * 160 + x0..y * 160 + x1].iter().map(|b| format!("{b:02X}")).collect::<String>();
                 println!("  y {y:3} x {x0:3}: orig {}\n                port {}", hex(&a), hex(&b));
             }
         }
@@ -52,7 +54,9 @@ fn show_diff(pass: u64, orig: &[u8], port: &[u8]) {
     for r in 0..25 {
         let (ra, rb) = (&ta[r * 40..(r + 1) * 40], &tb[r * 40..(r + 1) * 40]);
         if ra != rb {
-            let s = |x: &[u8]| x.iter().map(|&c| if (0x20..0x7F).contains(&c) { c as char } else { '.' }).collect::<String>();
+            let s = |x: &[u8]| {
+                x.iter().map(|&c| if (0x20..0x7F).contains(&c) { c as char } else { '.' }).collect::<String>()
+            };
             println!("  text row {r:2}: orig |{}|\n               port |{}|", s(ra), s(rb));
         }
     }

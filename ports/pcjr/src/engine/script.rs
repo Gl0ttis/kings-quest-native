@@ -116,14 +116,14 @@ impl World {
     }
 
     /// `$480E`: a block: in if the conditions hold, over it if not.
-    fn block(&self, s: &Script, si: &mut usize) -> Then {
+    fn block(&mut self, s: &Script, si: &mut usize) -> Then {
         match self.conditions(s, si) {
             true => Then::Skip,
             false => Then::Jump,
         }
     }
 
-    fn test(&self, s: &Script, si: &mut usize) -> Then {
+    fn test(&mut self, s: &Script, si: &mut usize) -> Then {
         match self.conditions(s, si) {
             true => Then::Act,
             false => Then::Fail,
@@ -149,7 +149,8 @@ impl World {
 
     /// `$48B7`: the ego at (`ex`, `ey`) in x1..=x2, y1..=y2 (x1 given)? A failed test
     /// leaves `si` where it stopped.
-    fn ego_in(&self, s: &Script, si: &mut usize, x1: u8, ex: u8, ey: u8) -> bool {
+    fn ego_in(&mut self, s: &Script, si: &mut usize, x1: u8, ex: u8, ey: u8) -> bool {
+        self.cost.conditions += 1;
         if ex < x1 {
             return false;
         }
@@ -171,8 +172,9 @@ impl World {
     /// `$48CD`: `var value` pairs up to FE. A failed test stops there, leaving `si`
     /// after it. A failed "not equal" on v255 counts as passing, and also stops there
     /// (the failure path's `inc bl` wraps to 0).
-    fn conditions(&self, s: &Script, si: &mut usize) -> bool {
+    fn conditions(&mut self, s: &Script, si: &mut usize) -> bool {
         loop {
+            self.cost.conditions += 1;
             let var = s.at(*si);
             *si += 1;
             if var == 0xFE {

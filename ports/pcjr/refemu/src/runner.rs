@@ -41,6 +41,9 @@ pub struct Runner {
     replay: Option<std::collections::VecDeque<(u64, Replayed)>>,
     /// Print the checkpoints numbered FROM-TO as they pass (KQ_CPS=FROM-TO).
     cps: Option<(u64, u64)>,
+    /// When Some, the cycles spent at each 16-byte block of the engine's code
+    /// (CS 0060h; the last bucket for any other code), added up until taken.
+    pub profile: Option<Vec<u64>>,
 }
 
 /// A key press or a disk swap from an event log.
@@ -83,6 +86,7 @@ impl Runner {
             wait_since: None,
             resume: false,
             replay: None,
+            profile: None,
             cps: std::env::var("KQ_CPS").ok().and_then(|v| {
                 let (a, b) = v.split_once('-')?;
                 Some((a.parse().ok()?, b.parse().ok()?))
@@ -270,7 +274,14 @@ impl Runner {
                     return Ok(Stopped::Prompt);
                 }
             }
-            self.m.step(&mut self.cpu);
+            if let Some(p) = self.profile.as_mut() {
+                let (cs, ip, before) = (self.cpu.s[CS], self.cpu.ip, self.cpu.cycles);
+                self.m.step(&mut self.cpu);
+                let b = if cs == 0x60 { ip as usize >> 4 } else { 0x1000 };
+                p[b] += self.cpu.cycles - before;
+            } else {
+                self.m.step(&mut self.cpu);
+            }
         }
     }
 

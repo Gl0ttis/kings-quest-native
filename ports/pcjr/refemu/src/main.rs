@@ -262,6 +262,7 @@ fn main() {
     let mut first_pass_cycle = 0;
     let mut trace = String::from("pass,cycles,delta,room,ego_x,ego_y,ego_dir,score,vars_hash\n");
     let mut frames: Vec<u8> = Vec::new();
+    let mut engine_entered = false;
     let mut last_frame: Vec<u8> = Vec::new();
     let mut deltas: Vec<u64> = Vec::new();
     let mut hits: HashMap<(u16, u16), u64> = HashMap::new();
@@ -280,6 +281,10 @@ fn main() {
             if cpu.s[CS] == 0x60 && WATCH.contains(&cpu.ip) {
                 *entries.entry(cpu.ip).or_default() += 1;
             }
+        }
+        if cpu.s[CS] == 0x60 && !engine_entered {
+            engine_entered = true;
+            eprintln!("engine entered at 0060:{:04X} after {} cycles", cpu.ip, cpu.cycles);
         }
         let at_checkpoint = cpu.s[CS] == 0x60 && checkpoints[cpu.ip as usize];
         if at_checkpoint {
