@@ -76,7 +76,10 @@ Found reading the code; each is reproduced.
   top moves past its sections, `$4D06`; a view likewise, `$4BC2`; clearing the actors
   goes back to the room's script, `$472D`) and writes the same pointers. Its save
   blocks are the original's byte for byte, and the original restores them as its own
-  (test `the_play_diskette_is_the_originals`, routes/restore_play.plan).
+  (test `the_play_diskette_is_the_originals`, routes/restore_play.plan; and in 86Box,
+  with IBM's BIOS: the port's slot A save, put on a copy of the cracked disk in the
+  slot's sectors 282h-284h, which it leaves empty, restored by the original there,
+  Graham back where he was saved and the game going on).
 
 ## The timer in the port
 
