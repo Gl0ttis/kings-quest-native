@@ -60,15 +60,17 @@ use std::time::{Duration, Instant};
 
 const TITLE: &str = "King's Quest (IBM PCjr, native engine)";
 /// The output buffer: the PCjr's 320 × 200, each row and column scaled to a 4:3 shape.
-const OUT_W: usize = 640;
-const OUT_H: usize = 480;
+const OUT_W: usize = 320;
+const OUT_H: usize = 200;
 const AUDIO_RATE: u32 = 44_100;
 
 type Link = Arc<Mutex<Shared>>;
 
 /// Between the window, the engine and the sound.
 struct Shared {
-    /// The screen in RGB (OUT_W × OUT_H), and a count of the frames sent.
+    /// The screen in RGB, the PCjr's 320 × 200 (OUT_W × OUT_H), and a count of the
+    /// frames sent. It is scaled to the window in one step (4:3, its pixels 1.2 times
+    /// as tall as wide), so that its rows and columns are even to within a pixel.
     rgb: Vec<u32>,
     seq: u64,
     /// Keys for the game (as the PCjr's BIOS gives them: scan code << 8 | character).
@@ -425,10 +427,34 @@ fn palette() -> [u32; 16] {
 
 /// The 320 × 200 screen into the window's 640 × 480 buffer, in RGB.
 fn scale(screen: &[u8], palette: &[u32; 16], buf: &mut [u32]) {
-    for y in 0..OUT_H {
-        let sy = y * 200 / OUT_H;
-        for x in 0..OUT_W {
-            buf[y * OUT_W + x] = palette[screen[sy * 320 + x / 2] as usize & 15];
+    for (o, &c) in buf.iter_mut().zip(screen) {
+        *o = palette[c as usize & 15];
+    }
+}
+
+/// Where the screen goes in a `cw` × `ch` window: the largest 4:3 rectangle, centred
+/// (x, y, width, height).
+fn screen_rect(cw: usize, ch: usize) -> (usize, usize, usize, usize) {
+    let (w, h) = if cw * 3 > ch * 4 { (ch * 4 / 3, ch) } else { (cw, cw * 3 / 4) };
+    ((cw - w) / 2, (ch - h) / 2, w, h)
+}
+
+/// The 320 × 200 screen into a `cw` × `ch` buffer in one step (nearest pixel), in its
+/// 4:3 rectangle, the rest black.
+#[cfg_attr(windows, allow(dead_code))]
+fn fit(src: &[u32], cw: usize, ch: usize, out: &mut Vec<u32>) {
+    out.clear();
+    out.resize(cw * ch, 0);
+    let (x0, y0, w, h) = screen_rect(cw, ch);
+    if w == 0 || h == 0 {
+        return;
+    }
+    let cols: Vec<usize> = (0..w).map(|x| x * OUT_W / w).collect();
+    for y in 0..h {
+        let row = &src[(y * OUT_H / h) * OUT_W..][..OUT_W];
+        let line = &mut out[(y0 + y) * cw + x0..][..w];
+        for (o, &sx) in line.iter_mut().zip(&cols) {
+            *o = row[sx];
         }
     }
 }
@@ -859,6 +885,8 @@ fn main() {
         window.set_title(&fast_title(true));
     }
     let mut buf = vec![0u32; OUT_W * OUT_H];
+    #[cfg(not(windows))]
+    let mut fitted: Vec<u32> = Vec::new();
     let mut last_seq = u64::MAX;
     while window.is_open() {
         let (seq, ended) = {
@@ -873,7 +901,17 @@ fn main() {
             println!("the game stopped: {why}");
             break;
         }
+        // Windows: the hook paints, stretching the screen to the window itself.
+        #[cfg(windows)]
         window.update_with_buffer(&buf, OUT_W, OUT_H).ok();
+        // Elsewhere: scaled here to the window's size, so minifb doesn't scale again.
+        #[cfg(not(windows))]
+        {
+            let (cw, ch) = window.get_size();
+            let (cw, ch) = (cw.max(1), ch.max(1));
+            fit(&buf, cw, ch, &mut fitted);
+            window.update_with_buffer(&fitted, cw, ch).ok();
+        }
         // After an update, so that minifb sees the size change.
         #[cfg(not(windows))]
         let alt_enter = (window.is_key_down(Key::LeftAlt) || window.is_key_down(Key::RightAlt))
@@ -1174,7 +1212,7 @@ mod joystick {
 /// the main loop (and minifb) wait.
 #[cfg(windows)]
 mod hook {
-    use super::{Link, OUT_H, OUT_W};
+    use super::{screen_rect, Link, OUT_H, OUT_W};
     use std::{cell::RefCell, ffi::c_void};
     type Hwnd = *mut c_void;
     type WndProc = unsafe extern "system" fn(Hwnd, u32, usize, isize) -> isize;
@@ -1219,6 +1257,7 @@ mod hook {
     }
     #[link(name = "gdi32")]
     extern "system" {
+        fn SetStretchBltMode(dc: *mut c_void, mode: i32) -> i32;
         fn StretchDIBits(
             dc: *mut c_void,
             x: i32,
@@ -1349,9 +1388,11 @@ mod hook {
                 return;
             }
             let (bw, bh) = (OUT_W as i32, OUT_H as i32);
-            let (w, hh) = if cw * bh > ch * bw { (ch * bw / bh, ch) } else { (cw, cw * bh / bw) };
-            let (x, y) = ((cw - w) / 2, (ch - hh) / 2);
+            // The 320 × 200 screen stretched to its 4:3 rectangle in one step.
+            let (x, y, w, hh) = screen_rect(cw as usize, ch as usize);
+            let (x, y, w, hh) = (x as i32, y as i32, w as i32, hh as i32);
             let dc = GetDC(h);
+            SetStretchBltMode(dc, 3); // COLORONCOLOR: whole pixels, never blended
             let black = GetStockObject(4);
             for b in [
                 Rect { left: 0, top: 0, right: cw, bottom: y },
@@ -1388,5 +1429,37 @@ mod hook {
     pub fn install(_win: &minifb::Window, _link: super::Link) {}
     pub fn take_alt_enter() -> bool {
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Scaled in one step, the screen's rows are all within a pixel of each other in
+    /// height, and its columns in width, whatever the window's size; and the picture
+    /// keeps its 4:3 shape.
+    #[test]
+    fn rows_and_columns_scale_evenly() {
+        // Each source pixel its own colour number, so that the output says where each is.
+        let src: Vec<u32> = (0..(OUT_W * OUT_H) as u32).collect();
+        let mut out = Vec::new();
+        for (cw, ch) in [(640, 480), (960, 720), (1440, 1080), (1000, 700), (1920, 1080), (801, 599)] {
+            fit(&src, cw, ch, &mut out);
+            let (x0, y0, w, h) = screen_rect(cw, ch);
+            assert!((w as f64 / h as f64 - 4.0 / 3.0).abs() < 0.01, "{cw}x{ch}: {w}x{h}");
+            let mut heights = vec![0usize; OUT_H];
+            for y in 0..h {
+                heights[out[(y0 + y) * cw + x0] as usize / OUT_W] += 1;
+            }
+            let mut widths = vec![0usize; OUT_W];
+            for x in 0..w {
+                widths[out[y0 * cw + x0 + x] as usize % OUT_W] += 1;
+            }
+            for (name, v) in [("rows", &heights), ("columns", &widths)] {
+                let (lo, hi) = (v.iter().min().unwrap(), v.iter().max().unwrap());
+                assert!(hi - lo <= 1 && *lo > 0, "{cw}x{ch}: {name} from {lo} to {hi} pixels");
+            }
+        }
     }
 }
