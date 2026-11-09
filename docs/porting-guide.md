@@ -70,6 +70,9 @@ crate is `kq1-pcjr`.
 2. **Releases.** Add the crates to `release-please-config.json` and
    `.release-please-manifest.json`.
    - Exclude the refemu folder from the port's package (`exclude-paths`).
+   - Give the package the `extra-files` rule that updates its crate's version in the
+     root `Cargo.lock` (copy the Apple port's, with the crate's name). The
+     `cargo-workspace` plugin, which would do it, isn't used: it bumps refemu too.
    - Leave refemu out of release-please altogether. It's a tool that is never
      published, so it needs no versions or releases. Don't use `skip-github-release`
      to hide it: release-please then can't find the package's last release, and keeps
