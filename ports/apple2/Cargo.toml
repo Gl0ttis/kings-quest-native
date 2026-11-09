@@ -53,8 +53,10 @@ path = "src/bin/kqview.rs"
 name = "kqroom"
 path = "src/bin/kqroom.rs"
 
+# Shipped as `kq` (the release archive renames it); `kq-apple2` in the workspace, where
+# each port's player needs a name of its own.
 [[bin]]
-name = "kq"
+name = "kq-apple2"
 path = "src/bin/kq.rs"
 required-features = ["player"]
 

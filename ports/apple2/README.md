@@ -29,7 +29,7 @@ Players download `kq` from the releases page; [PLAYING.md](PLAYING.md) is their 
 (and the README in the release archive). From source:
 
 ```
-cargo run --release --bin kq -- [FOLDER | disk1 disk2 disk3]
+cargo run --release --bin kq-apple2 -- [FOLDER | disk1 disk2 disk3]
 ```
 
 With no disks given, `kq` looks for them next to the executable, then in the current

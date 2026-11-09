@@ -8,10 +8,10 @@ original's speed.
 
 Download the archive for your system from the
 [releases page](https://github.com/Gl0ttis/kings-quest-native/releases) and unpack
-it anywhere:
+it into a folder of its own (another port's `kq` would clash in the same one):
 
-- Windows: `kq-apple2-windows-x64.zip`, containing `kq.exe`.
-- Linux: `kq-apple2-linux-x64.tar.gz`, containing `kq`. It needs X11 (or XWayland)
+- Windows: `kq-apple2-<version>-windows-x64.zip`, containing `kq.exe`.
+- Linux: `kq-apple2-<version>-linux-x64.tar.gz`, containing `kq`. It needs X11 (or XWayland)
   and ALSA, which desktop systems already have.
 
 Nothing else needs installing.

@@ -60,6 +60,8 @@ struct Painter<'a> {
     /// For draw_partial: the buffer as it stood after `limit` plots.
     shown: Option<Vec<u8>>,
     limit: u32,
+    /// Picture colour index -> stored visual value (COLOR_TABLE for the Apple).
+    colors: &'a [u8; 16],
 }
 
 impl Painter<'_> {
@@ -133,7 +135,7 @@ impl Painter<'_> {
 
     /// $0D26 (the table value is ORed in whole, as the engine does)
     fn set_visual(&mut self, c: u8) {
-        let v = match COLOR_TABLE.get(c as usize) {
+        let v = match self.colors.get(c as usize) {
             Some(&v) => v,
             None => {
                 self.warnings.push(format!("colour index {c} outside 16-entry table at offset {}", self.pos - 1));
@@ -447,16 +449,22 @@ pub fn draw(data: &[u8]) -> Picture {
 /// Draw a picture resource over an existing buffer, as the engine does when it draws
 /// a second picture without clearing first (script opcode `redraw_picture`).
 pub fn draw_onto(buf: Vec<u8>, data: &[u8]) -> Picture {
-    paint(buf, data, None)
+    paint(buf, data, None, &COLOR_TABLE)
 }
 
 /// The buffer after the first `plots` plots of drawing `data` over `buf`: what the
 /// screen shows part way through, since the engine plots to the screen as it goes.
 pub fn draw_partial(buf: Vec<u8>, data: &[u8], plots: u32) -> Vec<u8> {
-    paint(buf, data, Some(plots)).buf
+    paint(buf, data, Some(plots), &COLOR_TABLE).buf
 }
 
-fn paint(buf: Vec<u8>, data: &[u8], limit: Option<u32>) -> Picture {
+/// `draw_onto` with another version's colour mapping (the IBM PCjr keeps the picture's
+/// colour indices as they are).
+pub fn draw_with_colors(buf: Vec<u8>, data: &[u8], colors: &[u8; 16]) -> Picture {
+    paint(buf, data, None, colors)
+}
+
+fn paint(buf: Vec<u8>, data: &[u8], limit: Option<u32>, colors: &[u8; 16]) -> Picture {
     assert_eq!(buf.len(), WIDTH * HEIGHT);
     let shown = limit.map(|_| buf.clone());
     let mut p = Painter {
@@ -478,6 +486,7 @@ fn paint(buf: Vec<u8>, data: &[u8], limit: Option<u32>) -> Picture {
         new_command: false,
         shown,
         limit: limit.unwrap_or(u32::MAX),
+        colors,
     };
     let mut op = p.next();
     // $0BB1: $FF or any byte below $F0 in opcode position ends the picture.
