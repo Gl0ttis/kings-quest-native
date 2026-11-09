@@ -1,8 +1,9 @@
 //! The text font. The original draws its text through the PCjr's BIOS, in the ROM's
 //! 8 × 8 font, which can't be shipped. The port has its own: an original 5 × 7 design in
 //! the 8 × 8 cell (a column to the left, two to the right, a row below, which the
-//! descenders of g, j, p, q and y use), for the printable ASCII characters. A dump of
-//! the player's own ROM font can be used instead ([`Font::from_dump`]).
+//! descenders of g, j, p, q and y use), for the printable ASCII characters. The
+//! player's own ROM font can be used instead ([`Font::from_dump`]): a dump of it, or
+//! the whole PCjr BIOS image it is in.
 
 /// Characters 20h-7Eh, a byte a row, top row first, the leftmost pixel the high bit.
 const BUILT_IN: [[u8; 8]; 95] = [
@@ -103,6 +104,9 @@ const BUILT_IN: [[u8; 8]; 95] = [
     [0x00, 0x00, 0x20, 0x54, 0x08, 0x00, 0x00, 0x00], // 7E ~
 ];
 
+/// Where the PCjr BIOS (F000:0000) keeps its 8 × 8 font for codes 0-127.
+const BIOS_FONT: usize = 0xFA6E;
+
 /// 8 × 8 glyphs for character codes 0-255; those it doesn't have are blank.
 #[derive(Clone)]
 pub struct Font {
@@ -119,12 +123,26 @@ impl Default for Font {
 
 impl Font {
     /// A font dump, 8 bytes a character from code 0: 1,024 bytes (codes 0-127, as the
-    /// PCjr's ROM holds them at F000:FA6E) or 2,048 (0-255). Codes it lacks keep the
+    /// PCjr's ROM holds them at F000:FA6E) or 2,048 (0-255); or a 64 KB PCjr BIOS image
+    /// (F000:0000-FFFF), the font taken from F000:FA6E. Codes it lacks keep the
     /// built-in glyphs.
     pub fn from_dump(bytes: &[u8]) -> Result<Font, String> {
-        if bytes.len() != 1024 && bytes.len() != 2048 {
-            return Err(format!("a font dump is 1,024 or 2,048 bytes, not {}", bytes.len()));
-        }
+        let bytes = match bytes.len() {
+            1024 | 2048 => bytes,
+            0x10000 => {
+                let font = &bytes[BIOS_FONT..BIOS_FONT + 1024];
+                // The space blank, the letters inked: a font, not some other 64 KB.
+                let looks_right = font[0x20 * 8..0x21 * 8].iter().all(|&b| b == 0)
+                    && (b'A'..=b'Z').all(|c| font[c as usize * 8..c as usize * 8 + 8].iter().any(|&b| b != 0));
+                if !looks_right {
+                    return Err("no font at F000:FA6E: not a PCjr BIOS image".into());
+                }
+                font
+            }
+            n => {
+                return Err(format!("a font is a 1,024- or 2,048-byte dump or a 64 KB PCjr BIOS image, not {n} bytes"))
+            }
+        };
         let mut f = Font::default();
         for (i, g) in bytes.chunks(8).enumerate() {
             f.glyphs[i].copy_from_slice(g);
@@ -151,5 +169,21 @@ mod tests {
         }
         // Inside the cell: the leftmost column and the two rightmost are clear.
         assert!((0x20u8..0x7F).all(|c| f.glyph(c).iter().all(|&r| r & 0x83 == 0)));
+    }
+
+    #[test]
+    fn a_bios_image_gives_its_font() {
+        // A made-up BIOS image: its font at F000:FA6E, every glyph but the space inked.
+        let mut rom = vec![0u8; 0x10000];
+        for c in 0..128usize {
+            if c != 0x20 {
+                rom[BIOS_FONT + c * 8] = c as u8 | 1;
+            }
+        }
+        let f = Font::from_dump(&rom).expect("a font");
+        assert_eq!(f.glyph(b'A')[0], b'A' | 1);
+        assert!(f.glyph(b' ').iter().all(|&r| r == 0));
+        // 64 KB of something else.
+        assert!(Font::from_dump(&vec![0u8; 0x10000]).is_err());
     }
 }

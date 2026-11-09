@@ -32,8 +32,11 @@ makes itself ("copy disk"); it is kept as `KQ1 Play.img` next to the game's disk
 When the game asks for the Play or the Master diskette, it is put in for you: press
 Enter as asked.
 
-The text is in the port's own font: the PCjr's is in its ROM, which isn't shipped.
-`--font FILE` uses a dump of yours.
+The PCjr's font is in its ROM, which isn't shipped. If you have the PCjr BIOS image
+(64 KB, as in an emulator's ROM set, for example 86Box's `roms/machines/ibmpcjr/bios.rom`),
+put it next to the game's disk as `bios.rom` and the text is in the original font; or
+give it with `--font FILE` (a 1,024-byte dump of the font alone works too). Otherwise
+the text is in the port's own font.
 
 ## What you need
 

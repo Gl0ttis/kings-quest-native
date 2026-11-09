@@ -1,5 +1,5 @@
 //! kq-pcjr [DISK] [--speed N] [--fast-loads] [--mute] [--fullscreen] [--no-joystick]
-//!         [--font FILE] [--play FILE] [--scale N]
+//!         [--font FILE] [--no-rom-font] [--play FILE] [--scale N]
 //!
 //! Plays the IBM PCjr King's Quest in a window, with the native engine, at the
 //! original's speed (engine::cost: each pass lasts as long as it did on a PCjr, and the
@@ -29,9 +29,12 @@
 //! can be resized (--scale N: N times 320 × 240 to start, at the display's scale); the
 //! picture keeps the PCjr screen's 4:3 shape.
 //!
-//! --font FILE uses a dump of the PCjr's ROM font (1,024 bytes, from F000:FA6E; or a
-//! 2,048-byte 256-character font) for the text; the port ships no ROM, and has its own
-//! font otherwise.
+//! The text is in the PCjr's own font when you have its ROM: --font FILE takes the PCjr
+//! BIOS image (64 KB, F000:0000-FFFF, as in emulators' ROM sets: the font is at
+//! F000:FA6E) or a dump of the font alone (1,024 bytes; or a 2,048-byte 256-character
+//! font). Without --font, a PCjr BIOS image next to the disk or in the current folder
+//! is used if there is one (`bios.rom`, or a .rom or .bin with "pcjr" in its name).
+//! The port ships no ROM, and has its own font otherwise (--no-rom-font keeps it).
 //!
 //! --headless "SECONDS:KEYS;..." --until SECONDS --shot FILE.png runs without a window
 //! or pacing: the keys are typed at those times of the game (`|` is Enter, `<U>` `<D>`
@@ -394,6 +397,30 @@ fn special(k: Key) -> Option<u16> {
 
 /// The game's disk: given, or found next to the program, in the current folder or
 /// its `original` folder.
+/// A PCjr BIOS image next to the disk, in the current folder or in `original`, and
+/// its font: a file named `bios.rom`, or a .rom or .bin with "pcjr" in its name, that
+/// holds one.
+fn find_bios_font(disk: &Path) -> Option<(PathBuf, Font)> {
+    let dirs = [disk.parent().unwrap_or(Path::new(".")).to_path_buf(), PathBuf::from("."), PathBuf::from("original")];
+    for d in dirs {
+        let Ok(rd) = std::fs::read_dir(&d) else { continue };
+        let mut names: Vec<PathBuf> = rd.filter_map(|e| e.ok().map(|e| e.path())).collect();
+        names.sort();
+        for p in names {
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_ascii_lowercase();
+            let rom =
+                name == "bios.rom" || (name.contains("pcjr") && (name.ends_with(".rom") || name.ends_with(".bin")));
+            if !rom || std::fs::metadata(&p).map_or(true, |m| m.len() != 0x10000) {
+                continue;
+            }
+            if let Some(f) = std::fs::read(&p).ok().and_then(|b| Font::from_dump(&b).ok()) {
+                return Some((p, f));
+            }
+        }
+    }
+    None
+}
+
 fn find_disk(given: Option<&str>) -> Result<PathBuf, String> {
     if let Some(p) = given {
         return Ok(PathBuf::from(p));
@@ -605,8 +632,9 @@ fn main() {
     let mute = flag("--mute");
     let fast_loads = flag("--fast-loads");
     let use_joystick = !flag("--no-joystick");
+    let no_rom_font = flag("--no-rom-font");
     if args.iter().any(|a| a.starts_with("--")) || args.len() > 1 {
-        eprintln!("usage: kq-pcjr [DISK] [--speed N] [--fast-loads] [--mute] [--fullscreen] [--no-joystick] [--font FILE] [--play FILE] [--scale N]");
+        eprintln!("usage: kq-pcjr [DISK] [--speed N] [--fast-loads] [--mute] [--fullscreen] [--no-joystick] [--font FILE] [--no-rom-font] [--play FILE] [--scale N]");
         std::process::exit(2);
     }
     let disk_path = find_disk(args.first().map(String::as_str)).unwrap_or_else(|e| fatal(&e));
@@ -617,7 +645,14 @@ fn main() {
             let bytes = std::fs::read(&f).unwrap_or_else(|e| fatal(&format!("{f}: {e}")));
             Font::from_dump(&bytes).unwrap_or_else(|e| fatal(&format!("{f}: {e}")))
         }
-        None => Font::default(),
+        None if no_rom_font => Font::default(),
+        None => match find_bios_font(&disk_path) {
+            Some((p, f)) => {
+                println!("the font from {}", p.display());
+                f
+            }
+            None => Font::default(),
+        },
     };
     if let Some(plan) = plan {
         headless(&disk, &font, &plan, until, &shot);
