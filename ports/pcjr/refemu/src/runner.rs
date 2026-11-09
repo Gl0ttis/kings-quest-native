@@ -58,7 +58,7 @@ impl Runner {
     /// diskette.
     pub fn new(raw: &[u8]) -> Result<Runner, String> {
         let mut disk = if raw.starts_with(b"HXCMFM\0") {
-            Disk::from_tracks(&kq1_pcjr::mfm::decode(raw)?)
+            Disk::from_tracks(&kq1_formats::mfm::decode(raw)?)
         } else {
             let mut d = Disk::default();
             for (i, s) in raw.chunks(512).enumerate() {

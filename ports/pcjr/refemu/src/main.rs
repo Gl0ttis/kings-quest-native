@@ -222,7 +222,7 @@ fn main() {
     let raw = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
     let game = kq1_pcjr::disk::Disk::from_file(raw.clone()).ok();
     let disk = if raw.starts_with(b"HXCMFM\0") {
-        Disk::from_tracks(&kq1_pcjr::mfm::decode(&raw).unwrap_or_else(|e| panic!("{path}: {e}")))
+        Disk::from_tracks(&kq1_formats::mfm::decode(&raw).unwrap_or_else(|e| panic!("{path}: {e}")))
     } else {
         // A 360K sector image: 9 sectors of 512 bytes a track.
         let mut d = Disk::default();

@@ -30,8 +30,8 @@ marked otherwise.
   filler `F6`.
 - **The images people have.** Two kinds:
   - **The original as dumped.** An HxC `.mfm` image (each track's raw bitstream) is
-    read directly: [src/mfm.rs](../src/mfm.rs) decodes it to sectors and checks
-    every CRC. The verified dump checked here, "[cp] [!]", has MD5
+    read directly: the shared [mfm decoder](../../../crates/kq1-formats/src/mfm.rs)
+    decodes it to sectors and checks every CRC. The verified dump checked here, "[cp] [!]", has MD5
     `95c63bfd099cdefad07f7daea078ece6`. Its `.86f` twin is not read yet.
   - **The crack.** A 360K sector image ("[cr]", MD5
     `bec03858f1d4ae20a74d37c84f52a49f`). It has the engine copied, byte for byte, to

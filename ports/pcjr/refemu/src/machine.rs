@@ -28,7 +28,7 @@ pub struct Disk {
 }
 
 impl Disk {
-    pub fn from_tracks(tracks: &[kq1_pcjr::mfm::Track]) -> Disk {
+    pub fn from_tracks(tracks: &[kq1_formats::mfm::Track]) -> Disk {
         let mut d = Disk::default();
         for t in tracks {
             for s in &t.sectors {

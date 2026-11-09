@@ -322,7 +322,8 @@ the docs.
 **Probably reusable in idea, not code:**
 - the script VM and the picture reader. The view, script and vocabulary readers
   are already shared: `crates/kq1-formats`, which the Apple and PCjr ports both use
-  (the PCjr passes in its own script operand table). Move more into `crates/` only
+  (the PCjr passes in its own script operand table), and so is the HxC MFM image
+  decoder, which the PCjr and PC ports use. Move more into `crates/` only
   once a second port actually needs it, and keep every port's tests green while
   moving.
 
