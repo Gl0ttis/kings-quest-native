@@ -69,9 +69,14 @@ Found reading the code; each is reproduced.
   memory (part of each pass through the video pages); then it saves to slot 0,
   restarts, and restores it. Before saving to a slot, it writes the start of its data
   segment over the diskette's boot sector. A save holds the variables, the objects, and
-  the actor table with the globals after it, as they are in memory, pointers included:
-  the port writes the same blocks, with its own view addresses, and reads a cel back by
-  where its pointer is in its view.
+  the actor table with the globals after it, as they are in memory, pointers included.
+  The original's restore takes the pointers as they are: the room's script, run again,
+  loads its views where they were. So the port keeps the layout of the original's
+  resource memory (from DS:1F62 up: a room script or sound group goes at the top and the
+  top moves past its sections, `$4D06`; a view likewise, `$4BC2`; clearing the actors
+  goes back to the room's script, `$472D`) and writes the same pointers. Its save
+  blocks are the original's byte for byte, and the original restores them as its own
+  (test `the_play_diskette_is_the_originals`, routes/restore_play.plan).
 
 ## The timer in the port
 

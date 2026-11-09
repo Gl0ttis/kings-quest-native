@@ -2,6 +2,7 @@
 //! things and add, place and clear actors (`$41D5`-`$47CB`, `$4AFC`-`$4E0B`).
 
 use super::res::{Script, View};
+use super::save::SAVE_OFFSETS;
 use super::{Actor, CelRef, World, ACTORS};
 use std::rc::Rc;
 
@@ -25,7 +26,8 @@ impl World {
         self.g.keys_on = true;
     }
 
-    /// `$4B18`: room-table entry `n`'s script (v1 = n; v3, v6, v21, v22 = 0).
+    /// `$4B18`: room-table entry `n`'s script (v1 = n; v3, v6, v21, v22 = 0). It goes
+    /// at the top of the resource memory (`$4D06`), which then moves past its sections.
     pub fn load_room_script(&mut self, n: u8) -> Rc<Script> {
         self.vars[3] = 0;
         self.vars[6] = 0;
@@ -35,7 +37,12 @@ impl World {
         for r in self.res.script_reads(n) {
             self.read_sectors(r);
         }
-        self.res.script(n)
+        let s = self.res.script(n);
+        let base = self.g.heap;
+        let at = |o: usize| base.wrapping_add(o as u16);
+        self.g.room_ptrs = [base, at(s.cycle), at(s.parser), at(s.messages)];
+        self.g.heap = at(s.data.len());
+        s
     }
 
     /// `$4B39`: room `n`'s picture, for op 06 or 25 to draw.
@@ -46,16 +53,33 @@ impl World {
         self.g.picture = Some(self.res.picture(n));
     }
 
-    /// `$4BC2`: view `v`, read from the disk (every time it is asked for).
-    pub fn load_view(&mut self, v: u8) -> Option<Rc<View>> {
+    /// `$4BC2`: view `v`, read from the disk (every time it is asked for), at the top
+    /// of the resource memory, which moves past it; and where it went. An actor whose
+    /// record (from a restored save) points there has it from now on.
+    pub fn load_view(&mut self, v: u8) -> (Option<Rc<View>>, u16) {
         for r in self.res.view_reads(v) {
             self.read_sectors(r);
         }
         let x = self.res.view(v);
-        if x.is_none() {
-            self.log.push(format!("view {v} isn't on the disk"));
+        let addr = self.g.heap;
+        match &x {
+            Some(view) => {
+                self.g.heap = addr.wrapping_add(view.len);
+                for a in &mut self.actors {
+                    if a.pending_view == Some(addr) {
+                        a.pending_view = None;
+                        a.view = Some(view.clone());
+                        for c in [&mut a.cel_drawn, &mut a.cel_new] {
+                            if let Some((lp, cel)) = view.cel_at(c.ptr.wrapping_sub(addr) as usize) {
+                                *c = CelRef { view: Some(view.clone()), lp, cel, ptr: c.ptr };
+                            }
+                        }
+                    }
+                }
+            }
+            None => self.log.push(format!("view {v} isn't on the disk")),
         }
-        x
+        (x, addr)
     }
 
     /// `$41D8`: op 2C: the group of four sounds holding sound `n`: room-table entry
@@ -80,7 +104,8 @@ impl World {
     /// `$4C08`: actor `a` to `cel` of loop `lp`; the loop's cel count.
     pub fn select_cel(&mut self, a: usize, lp: u8, cel: u8) -> u8 {
         let x = &mut self.actors[a];
-        x.cel_new = CelRef { view: x.view.clone(), lp, cel };
+        let ptr = x.view.as_ref().map_or(0, |v| x.view_addr.wrapping_add(v.cel_offset(lp, cel) as u16));
+        x.cel_new = CelRef { view: x.view.clone(), lp, cel, ptr };
         x.header(lp)[3]
     }
 
@@ -388,13 +413,17 @@ impl World {
     /// room 1 (v1 = 1), loop 0 (with cel 6's pointer, cel number 0).
     pub fn reset_ego(&mut self) {
         self.wait_print_done();
-        let v = self.load_view(0);
+        let (v, addr) = self.load_view(0);
         self.view_table[0] = v.clone();
+        self.view_table_addr[0] = addr;
         let (ox, oy) = (self.objects[0].x, self.objects[0].y);
+        let save_offset = self.res.ds_word(SAVE_OFFSETS);
         let e = &mut self.actors[0];
         e.view = v;
+        e.view_addr = addr;
         e.view_num = 0;
         e.slot = 0;
+        e.save_offset = save_offset;
         e.cel = 0;
         e.lp = 0;
         e.countdown = 1;
@@ -420,13 +449,16 @@ impl World {
         let slot = self.g.actor_count as usize;
         self.actors[slot] = Actor::default();
         self.wait_print_done();
-        let v = self.load_view(n);
+        let (v, addr) = self.load_view(n);
         let o = &mut self.objects[n as usize];
         o.slot = slot as u8;
         let (ox, oy) = (o.x, o.y);
+        let save_offset = self.res.ds_word(SAVE_OFFSETS + 2 * slot);
         let x = &mut self.actors[slot];
         x.view = v;
+        x.view_addr = addr;
         x.slot = slot as u8;
+        x.save_offset = save_offset;
         x.room = 0xFF;
         x.view_num = n;
         x.x = ox;
@@ -463,6 +495,8 @@ impl World {
         }
         self.g.actor_count = 0;
         self.actors[1].room = 0;
+        // $472D: the resource memory back to the room's script.
+        self.g.heap = self.g.room_marks[0];
     }
 
     /// `$457B`: ops 04 and 37: room `r`.
@@ -519,6 +553,8 @@ impl World {
         self.g.text_col = 2;
         self.wait_print_done();
         self.text.cursor = (0x18, 2);
+        // $4621: the room script's sections kept, for clearing the actors.
+        self.g.room_marks = self.g.room_ptrs;
     }
 
     /// `$47AB`: the text rows 21-24 cleared; the cursor to the start of row 24.
@@ -626,6 +662,8 @@ impl World {
         e.x = e.x.wrapping_sub(n);
         e.view_num = v;
         e.view = self.view_table[v as usize].clone();
+        e.view_addr = self.view_table_addr[v as usize];
+        e.pending_view = None;
         e.cel = 0;
         self.g.kept_loop_cel = (e.lp, 0);
         self.set_default_loop(0);
@@ -643,6 +681,8 @@ impl World {
         let Some(view) = self.view_table[v as usize].clone() else { return };
         let e = &mut self.actors[0];
         e.view = Some(view);
+        e.view_addr = self.view_table_addr[v as usize];
+        e.pending_view = None;
         e.cel = 0;
         let old = e.view_num;
         e.view_num = v;

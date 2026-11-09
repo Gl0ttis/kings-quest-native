@@ -28,7 +28,9 @@ leaves it out). F11 and F12 make the game slower and faster, F9 turns fast loads
 off (`--fast-loads`: a room change's disk reads and picture drawing take no time, the
 rest keeps the PCjr's pace), F8 turns the sound off and on, and Alt+Enter is full
 screen. Saves go on the Play diskette, which the game
-makes itself ("copy disk"); it is kept as `KQ1 Play.img` next to the game's disk.
+makes itself ("copy disk"); it is kept as `KQ1 Play.img` next to the game's disk. It
+is the original's Play diskette, saves and all: the original restores the port's saves
+and the other way round.
 When the game asks for the Play or the Master diskette, it is put in for you: press
 Enter as asked.
 

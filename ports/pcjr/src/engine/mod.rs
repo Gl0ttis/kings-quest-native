@@ -41,12 +41,14 @@ pub const ACTORS: usize = 5;
 /// Objects in the object table.
 pub const OBJECTS: usize = 111;
 
-/// A cel of a view: its loop and its number.
+/// A cel of a view: its loop and its number, and where it is in the original's memory
+/// (the actor records hold that pointer, and a save keeps it).
 #[derive(Clone, Default)]
 pub struct CelRef {
     pub view: Option<Rc<View>>,
     pub lp: u8,
     pub cel: u8,
+    pub ptr: u16,
 }
 
 impl CelRef {
@@ -69,8 +71,14 @@ impl CelRef {
 pub struct Actor {
     /// v1 while on screen, FF off screen; 0 ends the table.
     pub room: u8,
-    /// The view (+01).
+    /// The view (+01), and where it is in the original's memory (the pointer the
+    /// record holds).
     pub view: Option<Rc<View>>,
+    pub view_addr: u16,
+    /// Restored from a save: the view pointer, until a view is loaded there (the
+    /// original's restore relies on the room's script loading its views where they
+    /// were); meanwhile the view named by the record's view number stands in.
+    pub pending_view: Option<u16>,
     pub lp: u8,
     /// 1: ignores the barriers; 2: stopped by one this cycle.
     pub no_move: u8,
@@ -92,8 +100,10 @@ pub struct Actor {
     pub dir: u8,
     /// Its slot, which picks where its background is saved.
     pub slot: u8,
-    /// The background saved under it.
+    /// The background saved under it, and where (+11: its slot's offset, DS:0D1C,
+    /// given when the actor is added; 0 in a record never used).
     pub saved: Vec<u8>,
+    pub save_offset: u16,
     /// The cel last drawn, and the cel to draw.
     pub cel_drawn: CelRef,
     pub cel_new: CelRef,
@@ -261,6 +271,14 @@ pub struct Globals {
     pub wander_toggle: u8,
     /// 1815: the random byte's place in the engine's code; 1817 the wander timer.
     pub random: u16,
+    /// The original's memory for resources, from DS:1F62 up: its top (DS:1F60), where
+    /// the next resource goes; the last room script's sections (DS:1F58-1F5E); and the
+    /// room's, kept by new_room (DS:0FC4-0FCA), to which clearing the actors goes back.
+    /// The port reads its resources from its own copy of the disk; it keeps these only
+    /// for the pointers the actor records hold, which a save keeps.
+    pub heap: u16,
+    pub room_ptrs: [u16; 4],
+    pub room_marks: [u16; 4],
     pub wander_timer: u16,
     /// 1820-1826: the last three (key, slot) pairs of the draw order, which the sort
     /// includes but never refills.
@@ -329,6 +347,8 @@ pub struct World {
     pub actors: [Actor; ACTORS],
     /// The view table (DS:1103): views loaded by op 24, by number.
     pub view_table: Vec<Option<Rc<View>>>,
+    /// Where each of them is in the original's memory.
+    pub view_table_addr: Vec<u16>,
     /// The scripts: the global one (room 0), the room's, and op 40's extra one.
     pub global: Option<Rc<Script>>,
     pub room: Option<Rc<Script>>,
@@ -461,6 +481,9 @@ impl World {
             current: 0,
             wander_toggle: 0,
             random: u16::from_le_bytes([res.ds[0x1815], res.ds[0x1816]]),
+            heap: res.ds_word(0x1F60),
+            room_ptrs: std::array::from_fn(|i| res.ds_word(0x1F58 + 2 * i)),
+            room_marks: std::array::from_fn(|i| res.ds_word(0x0FC4 + 2 * i)),
             wander_timer: u16::from_le_bytes([res.ds[0x1817], res.ds[0x1818]]),
             order_spare: [(0, 0); 3],
             restoring: false,
@@ -474,7 +497,9 @@ impl World {
             text_cursor: (res.ds[0x1EF8], res.ds[0x1EF7]),
             gfx_cursor: (0, 0),
             // The engine's start writes SP's high byte there (`$0554`).
-            bios_hpos: 0x9B,
+            // What the BIOS leaves after the game's mode 9 at start-up ($07C3): its
+            // CRTC table's register 2 (F000:F0D6).
+            bios_hpos: 0x56,
             hpos_gfx: res.ds[0x1EF3],
             hpos_text: res.ds[0x1EF6],
             hpos: res.ds[0x127B],
@@ -490,6 +515,7 @@ impl World {
             objects,
             actors: Default::default(),
             view_table: vec![None; 256],
+            view_table_addr: vec![0; 256],
             global: None,
             room: None,
             extra: None,

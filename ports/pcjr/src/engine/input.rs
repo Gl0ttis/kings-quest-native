@@ -201,6 +201,8 @@ impl World {
         self.title_clear_rows();
         self.text.cursor = (0x18, 0);
         self.g.keys_on = true;
+        // $4A6C: the resource memory from its start.
+        self.g.heap = 0x1F62;
         self.wait_until("the tune to end", |w| w.vars[15] != 0);
     }
 

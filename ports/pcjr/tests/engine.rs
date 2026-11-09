@@ -20,6 +20,11 @@ fn original() -> Option<Disk> {
 
 /// Replay route `name` and compare every pass; the number compared.
 fn replay(disk: &Disk, name: &str) -> usize {
+    replay_with(disk, name, None).0
+}
+
+/// The same, with `play` as the Play diskette (else a blank one); and the game after.
+fn replay_with(disk: &Disk, name: &str, play: Option<Vec<u8>>) -> (usize, World) {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("reference");
     let events = std::fs::read_to_string(dir.join(format!("{name}.events"))).expect("the event log");
     let trace = std::fs::read_to_string(dir.join(format!("{name}.csv"))).expect("the trace");
@@ -29,6 +34,9 @@ fn replay(disk: &Disk, name: &str) -> usize {
         .ok()
         .map(|t| t.lines().map(|l| u64::from_str_radix(l, 16).expect("a frame hash")).collect());
     let mut w = World::new(disk, Box::new(Replay::parse(&events))).expect("engine");
+    if let Some(img) = play {
+        w.disks[1].image = img;
+    }
     // With a front end watching, as the player's: pictures are then shown as they are
     // drawn (their work charged as it goes), which mustn't change the game.
     w.on_frame = Some(Box::new(|_: &mut World| {}));
@@ -53,7 +61,7 @@ fn replay(disk: &Disk, name: &str) -> usize {
             assert_eq!(a, b, "{name}: the screen at pass {} differs (kqframes-pcjr shows how)", k + 1);
         }
     }
-    reference.len()
+    (reference.len(), w)
 }
 
 #[test]
@@ -66,6 +74,25 @@ fn the_walk_route_matches_the_original() {
 fn the_save_restore_route_matches_the_original() {
     let Some(disk) = original() else { return };
     assert_eq!(replay(&disk, "save_restore"), 1000);
+}
+
+/// The Play diskette is the original's: the save the port writes in the save/restore
+/// route is the original's, byte for byte (its hash; the block holds game data, so only
+/// the hash is kept), view and cel pointers included, which the original's restore takes
+/// as they are. And on a fresh start the game restores it as the original did
+/// (routes/restore_play.plan, recorded with the original's own diskette from that run;
+/// in refemu-pcjr the original restores the port's diskette the same, every pass and
+/// screen).
+#[test]
+fn the_play_diskette_is_the_originals() {
+    use kq1_pcjr::engine::frame_hash;
+    let Some(disk) = original() else { return };
+    let (_, w) = replay_with(&disk, "save_restore", None);
+    let play = w.disks[1].image.clone();
+    // Slot A: 3 sectors from 282h, of which the block (1,306 bytes) is read back.
+    let block = &play[0x282 * 512..0x282 * 512 + 1306];
+    assert_eq!(frame_hash(block), 0x3d28_e0df_c999_0095, "the save block differs from the original's");
+    assert_eq!(replay_with(&disk, "restore_play", Some(play)).0, 300);
 }
 
 /// The death routes (routes/death_*.route, played by kqroute-pcjr): the river, the rock

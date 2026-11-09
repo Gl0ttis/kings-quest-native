@@ -4,9 +4,12 @@
 //! sector 282h), holding "vrsn#", the slot, the variables, the object table, and the
 //! actor table with the globals after it, as they are in its memory. The port writes
 //! the same blocks, so its Play diskettes and the original's are the same. The actor
-//! records hold pointers into the engine's heap (to a view, and to a cel in it); the
-//! port writes a view's base as 2000h + 100h × its number, and reads a cel back from
-//! where its pointer is relative to its view's base, so the original's saves read too.
+//! records hold pointers into the original's memory (to a view, and to a cel in it),
+//! which its restore takes as they are: the room's script, run again, loads its views
+//! where they were. The port keeps that memory's layout (`g.heap`, actor.rs) and writes
+//! the same pointers; restoring, it takes a record's view when one is loaded where it
+//! points (until then the view of the record's view number). Saves the port wrote
+//! before it kept the layout name a view as 2000h + 100h × its number; they read too.
 //!
 //! Restarting restores slot FFh (the Master holds it at sector 27Fh), then clears most
 //! of the state again: of it, only the object table and two bytes stay.
@@ -22,10 +25,10 @@ const ACTORS_AT: usize = OBJECTS_AT + 8 * OBJECTS;
 const RECORDS: usize = 4;
 const GLOBALS_AT: usize = ACTORS_AT + 30 * RECORDS;
 pub const SAVE_LEN: usize = GLOBALS_AT + 0x24;
-/// Where the port says a view is, in the actor records it saves.
+/// Where the port's earlier saves said a view was: 2000h + 100h × its number.
 const VIEW_BASE: u16 = 0x2000;
 /// The background save offset of each slot (DS:0D1C).
-const SAVE_OFFSETS: usize = 0x0D1C;
+pub const SAVE_OFFSETS: usize = 0x0D1C;
 /// "Games may only be saved on your Play diskette.", "Disk Write Error!...".
 const NOT_ON_PLAY: usize = 0x1E28;
 const WRITE_ERROR: usize = 0x1DE8;
@@ -54,16 +57,8 @@ impl World {
 
     // ---- The save block.
 
-    /// A cel pointer as the port writes it.
-    fn cel_pointer(c: &CelRef) -> u16 {
-        match &c.view {
-            Some(v) => VIEW_BASE + 0x100 * v.num as u16 + v.cel_offset(c.lp, c.cel) as u16,
-            None => 0,
-        }
-    }
-
     fn encode_actor(&self, a: &Actor, out: &mut [u8]) {
-        let base = a.view.as_ref().map_or(0, |v| VIEW_BASE + 0x100 * v.num as u16);
+        let base = a.pending_view.unwrap_or(a.view_addr);
         out[0] = a.room;
         out[1..3].copy_from_slice(&base.to_le_bytes());
         out[3] = a.lp;
@@ -80,10 +75,10 @@ impl World {
         out[14] = a.cycle;
         out[15] = a.motion;
         out[16] = a.dir;
-        out[17..19].copy_from_slice(&self.res.ds_word(SAVE_OFFSETS + 2 * a.slot as usize).to_le_bytes());
+        out[17..19].copy_from_slice(&a.save_offset.to_le_bytes());
         out[19] = a.slot;
-        out[20..22].copy_from_slice(&Self::cel_pointer(&a.cel_drawn).to_le_bytes());
-        out[22..24].copy_from_slice(&Self::cel_pointer(&a.cel_new).to_le_bytes());
+        out[20..22].copy_from_slice(&a.cel_drawn.ptr.to_le_bytes());
+        out[22..24].copy_from_slice(&a.cel_new.ptr.to_le_bytes());
         out[24] = a.x;
         out[25] = a.y;
         out[26] = a.new_x;
@@ -95,25 +90,27 @@ impl World {
     fn decode_actor(&mut self, b: &[u8], keep_saved: Vec<u8>) -> Actor {
         let word = |i: usize| u16::from_le_bytes([b[i], b[i + 1]]);
         let base = word(1);
-        // The view: the port's own pointer names it; otherwise the view number.
-        let num = if base >= VIEW_BASE && (base - VIEW_BASE).is_multiple_of(0x100) && (base - VIEW_BASE) / 0x100 < 111 {
-            ((base - VIEW_BASE) / 0x100) as u8
-        } else {
-            b[5]
-        };
+        // The view: a save the port wrote before it kept the original's memory names
+        // it by its pointer; otherwise the view number stands in until a view is loaded
+        // where the pointer points (load_view).
+        let old_port =
+            base >= VIEW_BASE && (base - VIEW_BASE).is_multiple_of(0x100) && (base - VIEW_BASE) / 0x100 < 111;
+        let num = if old_port { ((base - VIEW_BASE) / 0x100) as u8 } else { b[5] };
         let view = if base == 0 { None } else { self.res.view(num) };
         let cel = |p: u16| -> CelRef {
             match &view {
                 Some(v) => {
                     let (lp, cel) = v.cel_at(p.wrapping_sub(base) as usize).unwrap_or((b[3], b[8]));
-                    CelRef { view: Some(v.clone()), lp, cel }
+                    CelRef { view: Some(v.clone()), lp, cel, ptr: p }
                 }
-                None => CelRef::default(),
+                None => CelRef { ptr: p, ..CelRef::default() },
             }
         };
         Actor {
             room: b[0],
             view: view.clone(),
+            view_addr: base,
+            pending_view: (base != 0 && !old_port).then_some(base),
             lp: b[3],
             no_move: b[4],
             view_num: b[5],
@@ -129,6 +126,7 @@ impl World {
             dir: b[16],
             slot: b[19],
             saved: keep_saved,
+            save_offset: word(17),
             cel_drawn: cel(word(20)),
             cel_new: cel(word(22)),
             x: b[24],
@@ -319,6 +317,8 @@ impl World {
             let mut boot: Vec<u8> = (0..512u16).map(|i| self.res.code_byte(0x4E30 + i)).collect();
             self.disk(true, 0, 1, &mut boot);
         }
+        // $3ACE: the BIOS's horizontal screen position goes in the save (DS:127B).
+        self.g.hpos = self.g.bios_hpos;
         let mut b = self.encode(slot);
         b.resize(3 * 512, 0);
         self.g.keys_on = false;
@@ -424,6 +424,8 @@ impl World {
         self.clear_actors();
         self.stop_music();
         self.room = Some(self.load_room_script(r));
+        // $3955: the room script's sections kept, as new_room keeps them.
+        self.g.room_marks = self.g.room_ptrs;
         self.vars[29] = 1;
         self.vars[25] = 0;
     }
@@ -517,11 +519,14 @@ impl World {
         self.extra = None;
         self.vars = [0; 256];
         self.view_table = vec![None; 256];
+        self.view_table_addr = vec![0; 256];
         self.actors = Default::default();
         let mut g = [0u8; 0x24];
         (g[0x21], g[0x22], g[0x23]) = kept;
         self.set_globals_bytes(&g);
         self.clear_actors();
+        // $0A58: the resource memory from its start.
+        self.g.heap = 0x1F62;
         self.vars[24] = 3;
     }
 
@@ -591,9 +596,11 @@ impl World {
                 break;
             }
         }
-        // $3CBE: back to graphics (mode 9 clears the displayed page); "ready".
+        // $3CBE: back to graphics (mode 9 clears the displayed page), at the graphics
+        // screen's horizontal position; "ready".
         self.screen.shown.fill(0);
         self.text.text_mode = false;
+        self.g.bios_hpos = self.g.hpos_gfx;
         self.text.graphics = Default::default();
         self.text.cursor = (0, 0);
         for b in self.res.ds_bytes(PLAY_READY, 0) {

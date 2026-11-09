@@ -473,8 +473,9 @@ impl World {
             }
             0x24 => {
                 self.wait_print_done();
-                let v = self.load_view(a0);
+                let (v, addr) = self.load_view(a0);
                 self.view_table[a0 as usize] = v;
+                self.view_table_addr[a0 as usize] = addr;
                 p + 1
             }
             0x25 => {
@@ -540,9 +541,12 @@ impl World {
                 if a0 != a1 {
                     let a = self.sel(a0);
                     self.view_table[a0 as usize] = self.actors[a].view.clone();
+                    self.view_table_addr[a0 as usize] = self.actors[a].view_addr;
                 }
                 let a = self.g.selected;
                 self.actors[a].view = self.view_table[a1 as usize].clone();
+                self.actors[a].view_addr = self.view_table_addr[a1 as usize];
+                self.actors[a].pending_view = None;
                 self.actors[a].cel = 0;
                 self.actors[a].lp = 0;
                 let n = self.select_loop_cel(a, 0, 0);

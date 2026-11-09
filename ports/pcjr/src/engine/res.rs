@@ -30,9 +30,11 @@ impl Script {
     }
 }
 
-/// A view, its number, and its bytes as the engine holds them (after the length).
+/// A view, its number, its length (the word before its bytes), and its bytes as the
+/// engine holds them (after the length).
 pub struct View {
     pub num: u8,
+    pub len: u16,
     pub view: crate::view::View,
     pub raw: Vec<u8>,
 }
@@ -206,7 +208,8 @@ impl Resources {
         }
         let raw = self.disk.view(v as usize)?;
         let view = crate::view::decode(raw).ok()?;
-        let x = Rc::new(View { num: v, view, raw: raw.get(2..).unwrap_or(&[]).to_vec() });
+        let len = u16::from_le_bytes([raw.first().copied().unwrap_or(0), raw.get(1).copied().unwrap_or(0)]);
+        let x = Rc::new(View { num: v, len, view, raw: raw.get(2..).unwrap_or(&[]).to_vec() });
         self.views.borrow_mut()[v as usize] = Some(x.clone());
         Some(x)
     }

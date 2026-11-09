@@ -324,6 +324,15 @@ impl Machine {
             0 => {
                 self.video_mode = al & 0x7F;
                 self.ram[0x449] = self.video_mode;
+                // 0040:0089, the horizontal screen position: register 2 of the mode's
+                // CRTC table, as IBM's BIOS sets it (its tables at F000:F0A4, 16 bytes
+                // each: modes 0-1, 2-3, 4-8, 9 and up).
+                self.ram[0x489] = match self.video_mode {
+                    0 | 1 => 0x2C,
+                    2 | 3 => 0x5A,
+                    4..=8 => 0x2B,
+                    _ => 0x56,
+                };
                 // 32 KB modes use pages 6-7 on a 128 KB PCjr, 16 KB modes page 7.
                 let page = if matches!(self.video_mode, 9 | 10) { 6 } else { 7 };
                 self.crt_page = page;
