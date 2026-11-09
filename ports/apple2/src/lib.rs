@@ -4,9 +4,9 @@ pub mod engine;
 pub mod kq;
 pub mod nib;
 pub mod pic;
-pub mod png;
 pub mod savedisk;
-pub mod script;
 pub mod sound;
-pub mod view;
-pub mod vocab;
+
+// The resource formats, shared with the other ports (crates/kq1-formats), under the
+// paths they had here.
+pub use kq1_formats::{png, script, view, vocab};

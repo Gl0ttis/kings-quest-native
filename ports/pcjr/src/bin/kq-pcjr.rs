@@ -343,7 +343,7 @@ fn headless(disk: &Disk, font: &Font, plan: &str, until: f64, shot: &str, rate: 
         let mut screen = vec![0u8; 320 * 200];
         render(w, &f, &mut screen);
         let rgb: Vec<u8> = screen.iter().flat_map(|&c| kq1_pcjr::color::rgb(c)).collect();
-        std::fs::write(&shot_path, kq1_apple2::png::encode_rgb(320, 200, &rgb)).expect("write the shot");
+        std::fs::write(&shot_path, kq1_formats::png::encode_rgb(320, 200, &rgb)).expect("write the shot");
         let text: Vec<String> = (0..25).map(|r| w.text.row(r)).filter(|r| !r.trim().is_empty()).collect();
         println!(
             "at {:.1} s ({:.1} s of it loading: the disk and the pictures), pass {}, room {}:\n{}",

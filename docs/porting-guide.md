@@ -319,10 +319,11 @@ the docs.
 - the documentation layout.
 
 **Probably reusable in idea, not code:**
-- the script VM and the picture, view and vocabulary readers. If the PCjr resources
-  turn out to be the same formats, or close, move the shared code into a crate under
-  `crates/`, as the root README plans. Do that only once a second port actually needs
-  it, and keep the Apple port's tests green while moving.
+- the script VM and the picture reader. The view, script and vocabulary readers
+  are already shared: `crates/kq1-formats`, which the Apple and PCjr ports both use
+  (the PCjr passes in its own script operand table). Move more into `crates/` only
+  once a second port actually needs it, and keep every port's tests green while
+  moving.
 
 **Not reusable:**
 - anything about the Apple's disk encoding, double hi-res, the 6502 or refemu's machine
