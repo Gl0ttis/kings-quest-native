@@ -247,7 +247,7 @@ impl World {
         let a0 = s.at(p);
         let a1 = s.at(p + 1);
         let a2 = s.at(p + 2);
-        if matches!(op, 0x08 | 0x09 | 0x10 | 0x11 | 0x12 | 0x35 | 0x36) {
+        if matches!(op, 0x08 | 0x09 | 0x0A | 0x10 | 0x11 | 0x12 | 0x35 | 0x36) {
             self.site(crate::engine::clock::Site::Op(op));
         }
         Ok(match op {

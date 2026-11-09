@@ -195,6 +195,7 @@ impl World {
     /// `$0A7D`: queue a message for the timer to print (dropped if 8 are queued);
     /// v23 = 1.
     pub fn queue_message(&mut self, text: Rc<Vec<u8>>, at: usize) {
+        self.site(super::clock::Site::QueueAdd);
         if self.g.queue.len() < 8 {
             self.g.queue.push_back(Msg { text, at });
         }

@@ -73,13 +73,19 @@ pub enum Event {
 pub enum Site {
     /// A disk read (`$4D93`-`$4E2F`).
     Disk,
-    /// The game cycle's start (`$14F2`-`$14FD`), before it reads the keypad's direction
-    /// (DS:1279) at `$14FE`: a key the timer takes there steers this pass.
+    /// The game cycle's start (`$14F2`-`$14FE`), before it reads the keypad's direction
+    /// (DS:1279) at `$14FE`: a key the timer takes there steers this pass. (A tick's
+    /// address is the instruction it interrupted, still to run: at `$14FE`, the read.)
     CycleStart,
     /// Action `n`'s dispatch (`$1ABB`-`$1AD3`, `$2479`-`$248B`) and its handler, up to
     /// the jump back to `$1ABB`, for the actions that write a variable (08-12, 35, 36:
-    /// set, reset, increment, decrement, assign, and the room tests).
+    /// set, reset, increment, decrement, assign, and the room tests); and for print (0A),
+    /// up to its first message queued (`$1BA4`-`$1BAD`, the queueing itself below).
     Op(u8),
+    /// Queueing a message (`$0A6F`-`$0A85`, up to its `cli`): a tick there finds the
+    /// queue as it was, which the timer's print countdown runs on only when it isn't
+    /// empty.
+    QueueAdd,
     /// wait_key's timer countdown (v2, v9-v12) and its tests up to v23's (`$1445`-
     /// `$14A0`): a tick there that prints the last queued message (v23 = 0) lets this
     /// loop return to the line editor.
@@ -90,10 +96,12 @@ impl Site {
     pub fn contains(self, ip: u16) -> bool {
         match self {
             Site::Disk => (0x4D93..0x4E30).contains(&ip),
-            Site::CycleStart => (0x14F2..0x14FE).contains(&ip),
+            Site::CycleStart => (0x14F2..=0x14FE).contains(&ip),
             Site::WaitKeyTimers => (0x1445..=0x14A0).contains(&ip),
+            Site::QueueAdd => (0x0A6F..=0x0A85).contains(&ip),
             Site::Op(op) => {
                 let handler = match op {
+                    0x0A => 0x1BA4..0x1BAE,
                     0x08 => 0x1B7C..0x1B8D,
                     0x09 => 0x1B90..0x1BA1,
                     0x10 => 0x1CA1..0x1CC7,
