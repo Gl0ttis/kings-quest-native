@@ -401,6 +401,14 @@ pub struct World {
     /// timing it against the original's, examples/drawcmp.rs).
     pub drawing_trace: Option<Vec<Vec<(usize, crate::pic::Work)>>>,
     drawing_room: bool,
+    /// A front end's fixed rate (`--rate`): every pass lasts this many cycles of the
+    /// game's time, whatever its work (busy waits and delays still take theirs), and
+    /// the pass's start. None: the speed model's time.
+    pub fixed_pass_cycles: Option<u64>,
+    pass_start: u64,
+    /// A front end's starting room (`--room`): the title is skipped and the game goes
+    /// there from room 1, before room 1's script runs.
+    pub start_room: Option<u8>,
     /// A front end's look at the game, about 60 times a second of the game's time (at
     /// checkpoints and in busy waits): to show the screen, play the sound bytes, put
     /// the disk asked for in the drive, keep the Play diskette.
@@ -553,6 +561,9 @@ impl World {
             cost_trace: None,
             drawing_trace: None,
             drawing_room: false,
+            fixed_pass_cycles: None,
+            pass_start: 0,
+            start_room: None,
             charged: 0.0,
             carry: 0.0,
             loading_cycles: 0,
@@ -595,6 +606,11 @@ impl World {
         let est = self.cost.cycles() + cost::Cost::text_cycles(self.text.drawn, self.text.scrolled);
         self.carry += est - self.charged;
         self.charged = est;
+        if self.fixed_pass_cycles.is_some() {
+            // The pass's time is fixed (at its end, actor.rs); the work doesn't count.
+            self.carry = 0.0;
+            return;
+        }
         if self.carry >= 1.0 {
             let whole = self.carry.floor();
             self.cycles += whole as u64;

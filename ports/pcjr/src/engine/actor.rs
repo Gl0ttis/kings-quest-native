@@ -159,6 +159,10 @@ impl World {
         // The pass that ended: its work, with the characters the BIOS drew in it.
         self.charge();
         self.charged = 0.0;
+        if let Some(n) = self.fixed_pass_cycles {
+            self.cycles = self.cycles.max(self.pass_start + n);
+            self.pass_start = self.cycles;
+        }
         self.cost.chars = std::mem::take(&mut self.text.drawn);
         self.cost.scrolled = std::mem::take(&mut self.text.scrolled);
         let done = std::mem::take(&mut self.cost);

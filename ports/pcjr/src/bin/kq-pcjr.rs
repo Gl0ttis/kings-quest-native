@@ -1,5 +1,6 @@
 //! kq-pcjr [DISK] [--speed N] [--fast-loads] [--mute] [--fullscreen] [--no-joystick]
-//!         [--font FILE] [--no-rom-font] [--play FILE] [--scale N] [--route NAME]
+//!         [--font FILE] [--no-rom-font] [--play FILE] [--scale N] [--rate N] [--room N]
+//!         [--route NAME]
 //!
 //! Plays the IBM PCjr King's Quest in a window, with the native engine, at the
 //! original's speed (engine::cost: each pass lasts as long as it did on a PCjr, and the
@@ -35,6 +36,12 @@
 //! font). Without --font, a PCjr BIOS image next to the disk or in the current folder
 //! is used if there is one (`bios.rom`, or a .rom or .bin with "pcjr" in its name).
 //! The port ships no ROM, and has its own font otherwise (--no-rom-font keeps it).
+//!
+//! --rate N plays at a fixed N passes a second (each a moment of the game: the actors
+//! move a step), instead of each pass lasting as long as the original's did; the
+//! game's timer keeps time with the passes, and loads and pictures take a pass.
+//! --room N starts in room N (the title skipped, Graham where he enters room 1), for
+//! looking round; the rooms are numbered as in the game's scripts (1-80).
 //!
 //! --route NAME plays a recorded route (an event log of the original, refemu-pcjr
 //! `--events`: reference/NAME.events, or a file): the game runs exactly as the original
@@ -322,8 +329,10 @@ impl Clock for ScriptClock {
 }
 
 /// --headless: play the script, then write the screen at `until` seconds of the game.
-fn headless(disk: &Disk, font: &Font, plan: &str, until: f64, shot: &str) {
+fn headless(disk: &Disk, font: &Font, plan: &str, until: f64, shot: &str, rate: Option<u64>, room: Option<u8>) {
     let mut w = World::new(disk, Box::new(ScriptClock::parse(plan))).expect("the engine");
+    w.fixed_pass_cycles = rate;
+    w.start_room = room;
     let end = (until * CPU_HZ) as u64;
     let shot_path = shot.to_string();
     let f = font.clone();
@@ -711,6 +720,16 @@ fn main() {
     let play_file = opt("--play");
     let scale_n: Option<usize> = opt("--scale").map(|s| s.parse().expect("--scale N"));
     let route = opt("--route");
+    // --rate N: passes a second, as cycles a pass of the game's time.
+    let rate: Option<u64> = opt("--rate").map(|r| {
+        let n: f64 = r.parse().ok().filter(|n: &f64| *n > 0.0).unwrap_or_else(|| fatal("--rate N: passes a second"));
+        (CPU_HZ / n) as u64
+    });
+    let room: Option<u8> = opt("--room")
+        .map(|r| r.parse().ok().filter(|n| (1..=80).contains(n)).unwrap_or_else(|| fatal("--room N: 1-80")));
+    if route.is_some() && (rate.is_some() || room.is_some()) {
+        fatal("--route plays the original's own run: not with --rate or --room");
+    }
     let plan = opt("--headless");
     let until: f64 = opt("--until").map_or(30.0, |s| s.parse().expect("--until SECONDS"));
     let shot = opt("--shot").unwrap_or_else(|| "kq-pcjr.png".into());
@@ -732,7 +751,7 @@ fn main() {
     let use_joystick = !flag("--no-joystick");
     let no_rom_font = flag("--no-rom-font");
     if args.iter().any(|a| a.starts_with("--")) || args.len() > 1 {
-        eprintln!("usage: kq-pcjr [DISK] [--speed N] [--fast-loads] [--mute] [--fullscreen] [--no-joystick] [--font FILE] [--no-rom-font] [--play FILE] [--scale N] [--route NAME]");
+        eprintln!("usage: kq-pcjr [DISK] [--speed N] [--fast-loads] [--mute] [--fullscreen] [--no-joystick] [--font FILE] [--no-rom-font] [--play FILE] [--scale N] [--rate N] [--room N] [--route NAME]");
         std::process::exit(2);
     }
     let disk_path = find_disk(args.first().map(String::as_str)).unwrap_or_else(|e| fatal(&e));
@@ -753,7 +772,7 @@ fn main() {
         },
     };
     if let Some(plan) = plan {
-        headless(&disk, &font, &plan, until, &shot);
+        headless(&disk, &font, &plan, until, &shot, rate, room);
         return;
     }
     let play_path = play_file
@@ -794,6 +813,8 @@ fn main() {
                 None => Box::new(play),
             };
             let mut w = World::new(&disk, clock).expect("the engine");
+            w.fixed_pass_cycles = rate;
+            w.start_room = room;
             // A route starts with the Play diskette the original had (a blank one), and
             // keeps it in memory.
             if !replaying {

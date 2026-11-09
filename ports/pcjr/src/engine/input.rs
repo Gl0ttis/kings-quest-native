@@ -134,17 +134,25 @@ impl World {
         // The music starts with silence.
         self.g.music = Some(super::Stream { data: self.res.ds.clone(), at: SILENCE });
         self.g.music_on = true;
+        let start_room = if self.g.first_start { self.start_room.take() } else { None };
         if self.g.first_start {
             self.g.first_start = false;
             self.timer_on = true;
             self.vars[24] = 3;
-            self.title();
+            if start_room.is_none() {
+                self.title();
+            } else {
+                self.g.keys_on = true;
+            }
         }
         let s = self.load_room_script(0);
         self.global = Some(s.clone());
         self.objects[0].x = 0x78;
         self.objects[0].y = 0x78;
         self.match_cycle_rules(&s);
+        if let Some(r) = start_room {
+            self.new_room(r);
+        }
     }
 
     /// `$48E8`: the title: the copyright, the Sierra logo (picture 82), then the title

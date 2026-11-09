@@ -92,6 +92,8 @@ Add these after `kq-pcjr` when starting it from a terminal:
 | `--mute` | Start with the sound off. |
 | `--scale N` | Starting window size, N times 320 × 240 (default 3). The window can also be resized. |
 | `--play FILE` | Keep the Play diskette in FILE instead. |
+| `--rate N` | A fixed N moments of the game a second (Graham moves a step each), instead of the original's speed, which varies with what's on the screen. |
+| `--room N` | Start in room N (1-80), skipping the title, to look round. |
 | `--no-joystick` | Ignore any joystick. |
 | `--font FILE` / `--no-rom-font` | Use, or don't use, the PCjr's own font from a ROM image. |
 
