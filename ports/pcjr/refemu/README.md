@@ -64,10 +64,10 @@ walking exactly but loaded the room in 4.2 s, because it counts the data transfe
 Closer agreement needs a cycle-level 8088 (the prefetch queue, string-instruction
 timing).
 
-**86Box is not the last word.** It adds no PCjr wait states for this game (only through
-the B800 window, which the game doesn't use), and a real PCjr does. The real figure needs
-real hardware. Until then the cycle counts are an estimate, good to about 10% against
-86Box.
+**86Box is the timing reference.** No working PCjr is available to measure. 86Box adds
+no PCjr wait states for this game (only through the B800 window, which the game doesn't
+use), where a real PCjr would, so the port runs at 86Box's speed, the one a player of
+the game today sees. `--wait-states` stays for experiments.
 
 ## The game cycle
 

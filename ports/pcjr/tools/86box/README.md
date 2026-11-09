@@ -35,5 +35,6 @@ all.
 **86Box adds no PCjr wait states for this game.** It applies the Video Gate Array's
 wait states only to accesses through the B800 window, and the game draws into its pages
 at 1000:0 and 1800:0 directly. So 86Box measures the 8088 alone. A real PCjr also slows
-every access to its shared RAM (IBM: two wait states on average), so it should be
-slower than 86Box. Measuring real hardware is still to do.
+every access to its shared RAM (IBM: two wait states on average), so it would be
+slower. No working PCjr is available, so **86Box is the timing reference** for the
+port.
