@@ -1,0 +1,183 @@
+//! Running the original a pass at a time, for tools that decide what to press as it goes
+//! (the route autopilot, `kqroute-pcjr`). It runs as refemu-pcjr's main loop does: the
+//! checkpoints counted, the event log and the trace written, the disk swaps answered
+//! and RETURN pressed at the title. It stops at the start of each pass, and at a
+//! prompt that waits for keys outside the game cycle (the save dialog).
+
+use crate::cpu::{self, Cpu, CS};
+use crate::machine::{Disk, Machine};
+use std::rc::Rc;
+
+/// The start of a pass: `$14F2`, the game cycle.
+const MAIN_LOOP: (u16, u16) = (0x0060, 0x14F2);
+/// The engine's data segment.
+const DATA_SEG: u16 = 0x0543;
+
+/// Why the run stopped.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Stopped {
+    /// At the start of a pass.
+    Pass,
+    /// At a prompt, waiting for keys.
+    Prompt,
+}
+
+#[derive(Clone)]
+pub struct Runner {
+    pub m: Machine,
+    pub cpu: Cpu,
+    checkpoints: Rc<Vec<bool>>,
+    /// Passes started.
+    pub passes: u64,
+    /// The trace, refemu-pcjr's columns.
+    pub trace: String,
+    last_pass_cycle: Option<u64>,
+    wait_since: Option<u64>,
+    /// The instruction at the current position was counted already (the run stopped
+    /// there).
+    resume: bool,
+}
+
+impl Runner {
+    /// Power on with the original (an `.mfm` dump or the `.img`) and a blank Play
+    /// diskette.
+    pub fn new(raw: &[u8]) -> Result<Runner, String> {
+        let mut disk = if raw.starts_with(b"HXCMFM\0") {
+            Disk::from_tracks(&kq1_pcjr::mfm::decode(raw)?)
+        } else {
+            let mut d = Disk::default();
+            for (i, s) in raw.chunks(512).enumerate() {
+                d.sectors.insert(((i / 18) as u8, (i / 9 % 2) as u8, (i % 9 + 1) as u8, 2), s.to_vec());
+            }
+            d
+        };
+        disk.write_protected = true;
+        let mut m = Machine::new(disk);
+        m.disks.push(Disk::default());
+        m.events = Some(String::new());
+        let mut cpu = Cpu::new();
+        m.boot(&mut cpu)?;
+        let mut checkpoints = vec![false; 0x10000];
+        for &a in &kq1_pcjr::engine::clock::CHECKPOINTS {
+            checkpoints[a as usize] = true;
+        }
+        Ok(Runner {
+            m,
+            cpu,
+            checkpoints: Rc::new(checkpoints),
+            passes: 0,
+            trace: String::from("pass,cycles,delta,room,ego_x,ego_y,ego_dir,score,vars_hash\n"),
+            last_pass_cycle: None,
+            wait_since: None,
+            resume: false,
+        })
+    }
+
+    /// A byte of the engine's data segment.
+    pub fn ds(&self, off: u16) -> u8 {
+        self.m.ram[cpu::lin(DATA_SEG, off) as usize]
+    }
+    pub fn ds_w(&self, off: u16) -> u16 {
+        self.ds(off) as u16 | (self.ds(off.wrapping_add(1)) as u16) << 8
+    }
+    /// Variable `n`.
+    pub fn v(&self, n: u8) -> u8 {
+        self.ds(0x1003 + n as u16)
+    }
+    /// The priority at (x, y) in the work page (segment 1000h, low nibble).
+    pub fn priority(&self, x: usize, y: usize) -> u8 {
+        self.m.ram[0x10000 + (y & 3) * 0x2000 + (y >> 2) * 160 + x] & 0x0F
+    }
+
+    /// A key into the BIOS buffer now (logged).
+    pub fn press(&mut self, k: u16) {
+        self.m.push_key(k);
+    }
+
+    /// Run to the start of the next pass, or to a prompt waiting for keys (after
+    /// `prompt_wait` cycles idle), within `max_cycles`.
+    pub fn run(&mut self, prompt_wait: u64, max_cycles: u64) -> Result<Stopped, String> {
+        let limit = self.cpu.cycles + max_cycles;
+        loop {
+            if self.cpu.cycles > limit {
+                return Err(format!("no pass for {max_cycles} cycles at {:04X}:{:04X}", self.cpu.s[CS], self.cpu.ip));
+            }
+            if let Some(f) = &self.cpu.fault {
+                return Err(f.clone());
+            }
+            let resumed = std::mem::take(&mut self.resume);
+            let at_checkpoint = self.cpu.s[CS] == 0x60 && self.checkpoints[self.cpu.ip as usize];
+            if at_checkpoint && !resumed {
+                self.m.checkpoint += 1;
+            }
+            if (self.cpu.s[CS], self.cpu.ip) == MAIN_LOOP && !resumed {
+                self.passes += 1;
+                let n = self.passes;
+                if let Some(e) = self.m.events.as_mut() {
+                    e.push_str(&format!("P {} {n}\n", self.m.checkpoint));
+                }
+                self.wait_since = None;
+                self.m.idle_polls = 0;
+                let delta = self.last_pass_cycle.map_or(0, |l| self.cpu.cycles - l);
+                self.last_pass_cycle = Some(self.cpu.cycles);
+                let vars: u64 = (0..0xDFu16)
+                    .map(|v| self.ds(0x1003 + v) as u64)
+                    .fold(1469598103934665603u64, |h, b| (h ^ b).wrapping_mul(1099511628211));
+                self.trace += &format!(
+                    "{n},{},{delta},{},{},{},{},{},{vars:016x}\n",
+                    self.cpu.cycles,
+                    self.v(1),
+                    self.ds(0x11F9),
+                    self.ds(0x11FA),
+                    self.ds(0x11F0),
+                    self.v(19)
+                );
+                self.resume = true;
+                return Ok(Stopped::Pass);
+            }
+            // Waiting for a key outside the game cycle: the disk swaps are answered as
+            // refemu-pcjr answers them; RETURN at the title; otherwise the caller types.
+            if self.m.idle_polls > 0
+                && self.m.keys.is_empty()
+                && (at_checkpoint || self.m.blocked_reads > 0 || self.passes == 0)
+            {
+                let since = *self.wait_since.get_or_insert(self.cpu.cycles);
+                let waited = self.cpu.cycles - since;
+                let screen: String = self.m.text.iter().map(|r| String::from_utf8_lossy(r).to_string()).collect();
+                let swap = if screen.contains("insert your   Play") {
+                    Some(1)
+                } else if screen.contains("insert your  Master") {
+                    Some(0)
+                } else {
+                    None
+                };
+                if let Some(d) = swap.filter(|_| self.m.blocked_reads > 0) {
+                    self.m.insert(d);
+                    self.m.push_key(0x1C0D);
+                    self.wait_since = None;
+                    self.m.idle_polls = 0;
+                    self.m.blocked_reads = 0;
+                    self.m.step(&mut self.cpu);
+                    continue;
+                }
+                if self.passes == 0 && waited > 3_000_000 {
+                    self.m.push_key(0x1C0D);
+                    self.wait_since = None;
+                    self.m.idle_polls = 0;
+                    self.m.blocked_reads = 0;
+                } else if self.passes > 0 && waited > prompt_wait && (self.m.blocked_reads > 0 || at_checkpoint) {
+                    self.wait_since = None;
+                    self.m.idle_polls = 0;
+                    self.resume = at_checkpoint;
+                    return Ok(Stopped::Prompt);
+                }
+            }
+            self.m.step(&mut self.cpu);
+        }
+    }
+
+    /// The event log so far.
+    pub fn events(&self) -> &str {
+        self.m.events.as_deref().unwrap_or("")
+    }
+}

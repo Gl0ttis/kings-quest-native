@@ -39,6 +39,7 @@ impl Disk {
     }
 }
 
+#[derive(Clone)]
 pub struct Machine {
     pub ram: Vec<u8>,
     /// The Video Gate Array's page registers: the CRT page shown, and the CPU page the

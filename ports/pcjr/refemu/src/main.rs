@@ -6,8 +6,7 @@
 //! `.img`) and runs it on an 8086 core with 8088 timing. No IBM ROM: the BIOS services
 //! the game uses are answered natively (machine.rs). See README.md.
 
-mod cpu;
-mod machine;
+use kq1_pcjr_refemu::{cpu, machine};
 
 use cpu::{Cpu, CS};
 use machine::{Disk, Machine, CPU_HZ, CYCLES_PER_TICK};

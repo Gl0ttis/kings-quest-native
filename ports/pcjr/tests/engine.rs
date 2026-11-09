@@ -52,3 +52,13 @@ fn the_save_restore_route_matches_the_original() {
     let Some(disk) = original() else { return };
     assert_eq!(replay(&disk, "save_restore"), 1000);
 }
+
+/// The death routes (routes/death_*.route, played by kqroute-pcjr): the river, the rock
+/// and the stream, each with 100 passes after the death.
+#[test]
+fn the_death_routes_match_the_original() {
+    let Some(disk) = original() else { return };
+    for (name, passes) in [("death_river", 463), ("death_rock", 454), ("death_stream", 569)] {
+        assert_eq!(replay(&disk, name), passes, "{name}");
+    }
+}

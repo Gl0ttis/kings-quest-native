@@ -1,0 +1,8 @@
+# Translated from the Apple port's routes/death_stream.route: the PCjr's variable numbers
+# (docs/engine.md, "Variables"). Run: kqroute-pcjr DISK routes/death_stream.route
+# Death route: the stream in room 25. Stepping into it ([61,58,158,72] while v110 = 0)
+# starts the current: v110 = 1, then a timer, then the death flag.
+# Run with: kqroute extracted/disk1.do extracted/disk2.do extracted/disk3.do routes/death_stream.route
+room 25
+final 70 60 150 70
+dies 600

@@ -10,9 +10,17 @@ description = "Reference IBM PCjr (8088) used only to measure the original PCjr 
 [lints]
 workspace = true
 
+[lib]
+name = "kq1_pcjr_refemu"
+path = "src/lib.rs"
+
 [[bin]]
 name = "refemu-pcjr"
 path = "src/main.rs"
+
+[[bin]]
+name = "kqroute-pcjr"
+path = "src/bin/kqroute.rs"
 
 [dependencies]
 kq1-pcjr = { path = ".." }
