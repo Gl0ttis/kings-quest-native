@@ -108,6 +108,13 @@ timer's ticks, the keys and the disk swaps against the checkpoints, kq1-pc's
   answers at prompts, the disk swaps answered as a player would.
 - **`kqroute-pc DISK ROUTE`** plays a route (`../routes/*.route`) with refemu-pcjr's
   autopilot, which reads the original's memory (the PC's data addresses).
+- **`kqframes-pc DISK EVENTS --hashes OUT`** follows a route's event log exactly and
+  writes the screen's hash at every pass (the route's `.frames`); the followed run's
+  trace is checked against the recorded one's.
+
+The references are numbers only: the event log (`T`, `K`, `D` and `P` lines: the tick,
+key, disk swap or pass and the checkpoint count), the trace (refemu-pcjr's columns) and
+the frame hashes (FNV-1a of the CGA's picture area and the text).
 
 The runner answers "Please insert your Play / Master diskette" from the message the game
 last wrote (`last_row`): the game clears its message box by writing memory, which the

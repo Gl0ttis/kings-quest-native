@@ -29,3 +29,7 @@ path = "src/bin/kqroute.rs"
 [[bin]]
 name = "kqplan-pc"
 path = "src/bin/kqplan.rs"
+
+[[bin]]
+name = "kqframes-pc"
+path = "src/bin/kqframes.rs"

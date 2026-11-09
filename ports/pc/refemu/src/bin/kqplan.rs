@@ -118,9 +118,14 @@ screen:
         match stop {
             Stopped::Pass => {
                 if frames.is_some() {
-                    let h = r.frame().iter().fold(1469598103934665603u64, |h, &b| (h ^ b as u64).wrapping_mul(1099511628211));
-                    out_frames += &format!("{h:016x}
-");
+                    let h = r
+                        .frame()
+                        .iter()
+                        .fold(1469598103934665603u64, |h, &b| (h ^ b as u64).wrapping_mul(1099511628211));
+                    out_frames += &format!(
+                        "{h:016x}
+"
+                    );
                 }
                 if r.passes >= wait_until {
                     while items.front().is_some_and(|i| !i.starts_with('p')) {

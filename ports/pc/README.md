@@ -43,6 +43,10 @@ its colours and its timing.
 
 ## Tests
 
+The reference the port will be compared with is in `reference/`: ten runs of the
+original in refemu-pc, from `routes/` (numbers only: the event logs, the traces, the
+screens' hashes).
+
 `cargo test -p kq1-pc`. The tests that need the disk image skip themselves without it.
 They check that every resource decodes (the colour table included), that the original and the crack hold the same
 game, and the original's protection sector.

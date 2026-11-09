@@ -233,6 +233,9 @@ say eat house
 expect score 92
 
 # The mushroom (room 47): on the east bank of the Raging River, reached from room 48.
+# By way of room 38, as the PCjr's run went (from room 43 the planner turns into room
+# 42 and finds no way on).
+room 38
 room 48
 room 47 64 61 114 101
 area 64 61 114 101
