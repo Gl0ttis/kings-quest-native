@@ -99,3 +99,16 @@ that differ where each room's two scripts align. The ones the routes use:
 Mostly 2 more from 49 and 3 more from about 126, with some moved (147 to 49, 120 to 50,
 152 to 124). 212 has too few pairs for the tool's rule on its own (10 of 15 for 215);
 its neighbour 210's 213 settles it.
+
+## How the PC differs (found pass by pass)
+
+Each found by replaying a reference route in the port and comparing every pass with the
+original's (tests/engine.rs), then implemented in the port.
+
+- **Start-up:** before its start routine (`$2094`), the engine reads its resource
+  table, 2 sectors from sector 10 (`$5A`). The PCjr's is part of its engine.
+- **v5, the colour under the ego** on priority-0 ground: the PC's picture buffer holds
+  each colour's dot pattern (composite.rs, `PATTERN`), so v5 is the pattern (light
+  green, 10, is 11).
+- **The step's direction table** is at CS:`$430A`, before the step routine (`$431C`);
+  read at the PCjr's address it is code, and direction 0 steps.

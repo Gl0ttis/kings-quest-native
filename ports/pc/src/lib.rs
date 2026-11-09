@@ -5,6 +5,7 @@
 pub mod checkpoints;
 pub mod composite;
 pub mod disk;
+pub mod engine;
 pub mod pic;
 pub mod script;
 pub mod sound;

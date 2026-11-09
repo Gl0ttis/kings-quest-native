@@ -56,6 +56,9 @@ both have it working.
 
 ## Decisions
 
+- **The CGA+RGB edition** (`ports/pc2`, "BOOT v1.2") comes after this port is done (the
+  user's order), likely sharing most of it.
+
 - **Composite colour: both modes** (the user's choice), from one model of the signal.
   Each 4-dot group's own colour is the default. The signal decoded with its fringes is
   the option. The CGA's revision isn't a setting: with only colours 0 and 7 on
