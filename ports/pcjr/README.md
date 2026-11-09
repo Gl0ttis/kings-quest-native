@@ -43,5 +43,6 @@ each one.
 ## Documentation
 
 - [docs/port-plan.md](docs/port-plan.md): status, findings, next steps
+- [docs/picture-format.md](docs/picture-format.md): the picture commands and the PCjr drawing routines
 - [docs/disk-layout.md](docs/disk-layout.md): the image, boot, the resource table, the
   resource formats found so far

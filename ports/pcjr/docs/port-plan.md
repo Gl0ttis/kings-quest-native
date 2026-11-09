@@ -22,7 +22,9 @@ engine draws.
 | 1. Disk image | **Done.** The original as dumped (HxC `.mfm`: MFM decoded, CRCs checked) and the cracked 360K `.img`. The copy protection, 1 KB-sector tracks holding the engine, is worked out, and the two give the same engine and data (tested). |
 | 2. Disk layout | **Done** ([disk-layout.md](disk-layout.md)): boot chain, the engine's position, the resource table, its entry format, the read routine. |
 | 3. Static formats | **Done.** Pictures: all 79 draw cleanly (Apple decoder, IBM colours); the PCjr shows them in full, 160 × 168. Scripts: the PCjr operand table, read from the handlers; all 84 well-formed scripts parse. Rules: the Apple format, with the PCjr's word and variable numbers. Views: all 88 decode. Sounds: all 40 parse and render. Vocabulary: all 358 words decode. Colours: the default IBM palette. Left for the engine phase: a PCjr painter for the full picture, and room 64. |
-| 4. Measuring tool | **Working** ([refemu/](../refemu/README.md)). An 8086 core with 8088 timing, on a PCjr with no IBM ROM. It boots the original from the `.mfm` (the 1 KB-sector engine included), plays the title, takes keys from a plan or a key log, and records a trace per pass and the screen. Still to do: calibrate its timing (PCjr video memory contention, the BIOS's own time), saves and the Play diskette, and a font for text in screenshots. |
+| 4. Measuring tool | **Working** ([refemu/](../refemu/README.md)). An 8086 core with 8088 timing, on a PCjr with no IBM ROM. It boots the original from the `.mfm` (the 1 KB-sector engine included) and runs plans (routes) of keys, typed commands and prompt answers. It answers disk swaps, and makes, saves to and restores from a Play diskette. It records a trace per pass and the screen, and can draw every room picture with the engine's own code. Video Gate Array wait states are modelled at IBM's average (2 per shared-RAM access) and BIOS service times are estimated: **the timing is an estimate until calibrated against the original on real hardware or 86Box**. Still to do: that calibration, and a font for text in screenshots. |
+| Reference routes | `routes/walk_rooms_1_16.plan` (rooms 1 and 16) and `routes/save_restore.plan` (Play diskette, save, restore), recorded from the original as `reference/*.csv`. Compare the state columns; the cycles change with calibration. |
+| Picture painter | **Done** ([picture-format.md](picture-format.md)). The PCjr's own line, plot and fill routines, modelled literally; all 80 room pictures byte-identical to the engine's. |
 | 5–10. Engine onwards | Not started. |
 
 ## Findings so far
@@ -45,8 +47,13 @@ engine draws.
 - **Saves go to a "Play diskette"** that the game formats and fills itself.
 - **The copy protection** is only the 1 KB-sector tracks the engine loads from. The
   engine has no other check that I've found, and the crack changes no engine code.
-- **Room 64** may show no picture on the PCjr: the engine starts the picture a byte
-  early because of the script header defect (disk-layout.md). To confirm.
+- **Room 64 shows no picture on the PCjr** (confirmed): the engine starts the picture a
+  byte early because of the script header defect, and the interpreter stops at once.
+- **Saves need a Play diskette.** The Master is write-protected, and saving to it fails
+  ("Games may only be saved on your Play diskette"). "copy disk" makes a Play diskette:
+  the game formats a blank disk and copies its data across in four swaps. Saves go to
+  sectors `0x282 + 3 × slot`, signed `vrsn#` and the slot letter. A Play diskette holds
+  data and saves but no engine, so play still starts from the Master.
 - **More animation frames than the Apple version:** 722 cels to its 674.
 - **The game cycle is shaped differently.** One pass is one call of `$14F2`: the actors,
   then the cycle rules (global, repeating while asked, then the room's). The input
@@ -62,11 +69,12 @@ engine draws.
 
 ## Next
 
-1. **Finish the measuring tool:** calibrate its timing, saves to the Play diskette,
-   and a reference route recorded from the original (a walk through the first rooms,
-   then longer routes).
-2. **A PCjr painter** for the full 160 × 168 picture, from the PCjr's 15 picture
-   handlers (`$3534`), checked against the measuring tool's frames.
+1. **Calibrate the timing.** Measure the original on real hardware or 86Box (with its
+   own PCjr BIOS), for example how long Graham takes to walk across room 1, and set
+   the wait states and service times to match.
+2. **The engine**, headless, following the guide's phase 5: the world state, the
+   script VM with the PCjr operand table, the game cycle as the PCjr runs it (`$14F2`,
+   parser rules from the main loop), checked pass by pass against the reference routes.
 3. **The variable renumbering** between the versions, so the Apple port's knowledge of
    each variable carries over.
 4. **The 86F format**, so the `.86f` dump can be read too.

@@ -23,6 +23,8 @@ const PARAM_TABLE: u16 = 0x0010;
 pub struct Disk {
     pub sectors: HashMap<(u8, u8, u8, u8), Vec<u8>>,
     pub written: bool,
+    /// A write-protected disk (the Master): writes and formats fail with status 3.
+    pub write_protected: bool,
 }
 
 impl Disk {
@@ -62,11 +64,30 @@ pub struct Machine {
     pub notes: Vec<String>,
     /// Keyboard polls since the last key (INT 16h AH=0/1 with nothing waiting).
     pub idle_polls: u64,
+    /// Blocking keyboard reads (INT 16h AH=0) found nothing typed, since this was reset:
+    /// the game is waiting at a prompt.
+    pub blocked_reads: u64,
+    /// The last arrow key a plan pressed (for `S`, which presses it again).
+    pub last_arrow: u16,
     /// Cycle of the last joystick trigger (port 201h write).
     joy_trigger: u64,
+    /// Memory accesses to the shared RAM (the low 128 KB) during the current instruction.
+    shared_accesses: u64,
+    /// Wait states added for the Video Gate Array per access to the shared RAM.
+    pub wait_states: u64,
+    /// Cycles added for wait states so far.
+    pub wait_cycles: u64,
 }
 
 impl Machine {
+    /// Disk `n` (0: the Master; 1: the Play diskette) into the drive.
+    pub fn insert(&mut self, n: usize) {
+        while self.disks.len() <= n {
+            self.disks.push(Disk::default());
+        }
+        self.drive = n;
+    }
+
     pub fn new(game: Disk) -> Machine {
         let mut m = Machine {
             ram: vec![0; 0x100000],
@@ -86,7 +107,12 @@ impl Machine {
             unknown_ports: HashMap::new(),
             notes: Vec::new(),
             idle_polls: 0,
+            blocked_reads: 0,
+            last_arrow: 0x4D00,
             joy_trigger: 0,
+            shared_accesses: 0,
+            wait_states: 2,
+            wait_cycles: 0,
         };
         // Interrupt vectors -> stubs; the diskette parameters; the BIOS data area.
         for n in 0..256u32 {
@@ -142,7 +168,13 @@ impl Machine {
             cpu.cycles = cpu.cycles.max(self.next_tick);
             cpu.halted = false;
         } else {
+            self.shared_accesses = 0;
             cpu.step(self);
+            // The Video Gate Array shares the low 128 KB with the display and holds the
+            // CPU off with wait states: IBM gives an average of two per access.
+            let w = self.shared_accesses * self.wait_states;
+            cpu.cycles += w;
+            self.wait_cycles += w;
         }
         if cpu.cycles >= self.next_tick {
             if cpu.flags & IF != 0 && self.pic_mask & 1 == 0 {
@@ -172,6 +204,16 @@ impl Machine {
     fn service(&mut self, cpu: &mut Cpu, n: u8) {
         let ah = (cpu.r[AX] >> 8) as u8;
         *self.calls.entry((n, ah)).or_default() += 1;
+        // Rough times for the ROM routines this replaces (estimates, to calibrate): the
+        // timer tick, a keyboard check, a character drawn in graphics mode, a scroll.
+        cpu.cycles += match (n, ah) {
+            (0x08, _) => 250,
+            (0x16, _) => 150,
+            (0x10, 0x09) | (0x10, 0x0E) => 2_500,
+            (0x10, 0x06) => 40_000,
+            (0x10, _) => 300,
+            _ => 200,
+        };
         match n {
             0x08 => {
                 // Timer: count the tick, then INT 1Ch (which IRETs to the interrupted code).
@@ -353,8 +395,10 @@ impl Machine {
         let es = cpu.s[ES];
         let mut bx = cpu.r[BX];
         let mut disk = std::mem::take(&mut self.disks[self.drive]);
+        let protected = disk.write_protected && matches!(ah, 3 | 5);
         let (status, done) = match ah {
             0 => (0, 0),
+            _ if protected => (3, 0),
             2 | 3 => {
                 let mut done = 0u8;
                 let mut status = 0u8;
@@ -417,6 +461,10 @@ impl Machine {
         match ah {
             0 => match self.keys.pop_front() {
                 Some(k) => {
+                    self.blocked_reads = 0;
+                    if std::env::var_os("REFEMU_KEYLOG").is_some() {
+                        eprintln!("key {k:04X} read at cycle {}", cpu.cycles);
+                    }
                     cpu.r[AX] = k;
                     self.idle_polls = 0;
                     self.ret(cpu, None, None);
@@ -424,6 +472,7 @@ impl Machine {
                 None => {
                     // Nothing typed: run the INT 16h again (the BIOS waits in a loop).
                     self.idle_polls += 1;
+                    self.blocked_reads += 1;
                     cpu.iret(self);
                     cpu.ip = cpu.ip.wrapping_sub(2);
                     cpu.cycles += 200;
@@ -463,7 +512,10 @@ impl Machine {
 impl Bus for Machine {
     fn read(&mut self, a: u32) -> u8 {
         match a {
-            0..=0x1FFFF => self.ram[a as usize],
+            0..=0x1FFFF => {
+                self.shared_accesses += 1;
+                self.ram[a as usize]
+            }
             // The B800 window: the CPU page (32 KB in the 32 KB modes).
             0xB8000..=0xBFFFF => {
                 let page = (self.cpu_page & !1) as usize * 0x4000;
@@ -475,7 +527,10 @@ impl Bus for Machine {
     }
     fn write(&mut self, a: u32, v: u8) {
         match a {
-            0..=0x1FFFF => self.ram[a as usize] = v,
+            0..=0x1FFFF => {
+                self.shared_accesses += 1;
+                self.ram[a as usize] = v
+            }
             0xB8000..=0xBFFFF => {
                 let page = (self.cpu_page & !1) as usize * 0x4000;
                 self.ram[(page + (a as usize - 0xB8000)) & 0x1FFFF] = v;

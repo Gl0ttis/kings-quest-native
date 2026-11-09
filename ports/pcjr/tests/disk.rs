@@ -31,7 +31,8 @@ fn every_room_picture_and_view_decodes() {
             if r == 64 || room.script.len() <= 8 {
                 continue;
             }
-            let p = kq1_apple2::pic::draw(room.picture);
+            let cs = d.code_segment();
+            let p = kq1_pcjr::pic::draw_room(&cs[kq1_pcjr::vocab::DATA_SEGMENT + kq1_pcjr::pic::FRAME..], room.picture);
             assert!(p.warnings.is_empty(), "{path:?} room {r}: {:?}", p.warnings);
             assert_eq!(room.picture[p.end - 1], 0xFF, "{path:?} room {r}: no terminator");
             drawn += 1;
@@ -92,4 +93,26 @@ fn the_original_and_the_crack_hold_the_same_game() {
     }
     // $50D: XOR DX,DX; MOV DS,DX (the engine's entry).
     assert_eq!(&o.code_segment()[0x50D..0x511], &[0x33, 0xD2, 0x8E, 0xDA]);
+}
+
+/// The PCjr painter against the buffers the original engine drew, with its own code, in
+/// refemu-pcjr (`--pictures extracted/enginepics`; local, as they are game content).
+#[test]
+fn every_picture_matches_the_engine() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("extracted/enginepics");
+    let Some((_, d)) = images().into_iter().next() else { return };
+    if !dir.join("001.bin").exists() {
+        eprintln!("skipped: no engine-drawn pictures (refemu-pcjr --pictures extracted/enginepics)");
+        return;
+    }
+    let cs = d.code_segment();
+    let frame = &cs[kq1_pcjr::vocab::DATA_SEGMENT + kq1_pcjr::pic::FRAME..];
+    let mut n = 0;
+    for r in 1..ROOMS {
+        let Ok(want) = std::fs::read(dir.join(format!("{r:03}.bin"))) else { continue };
+        let p = kq1_pcjr::pic::draw_room(frame, d.room(r).unwrap().picture);
+        assert!(p.buf == want, "room {r}");
+        n += 1;
+    }
+    assert_eq!(n, 80);
 }

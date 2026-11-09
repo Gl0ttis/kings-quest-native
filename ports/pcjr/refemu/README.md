@@ -30,9 +30,15 @@ evidence for checking the port.
   emulator records the character in each of the 25 × 40 cells instead, and leaves the
   cell blank on screen. The frames carry those codes.
 - **Sound:** every write to the SN76496 (port C0h) is recorded with its cycle.
-- **Keyboard:** keys from a plan or a key log, returned by `INT 16h`. A game polling the
-  keyboard with no pass and no key for 3 million cycles gets RETURN, as refemu does for
-  the Apple.
+- **Disk swaps:** the Master (the user's image, write-protected) and a Play diskette
+  (`--play`). When the game is held at "Please insert your Play / Master diskette in
+  the drive and press Enter", the emulator puts that disk in and presses Enter, as a
+  player would.
+- **Keyboard:** keys from a plan or a key log, returned by `INT 16h`. A game held at a
+  prompt for 3 million cycles (no pass, and a blocking `INT 16h` read with nothing typed)
+  gets RETURN, as refemu does for the Apple. So do the title screens, which only poll.
+  The game's timer handler polls the keyboard every tick, so polling alone isn't a
+  prompt.
 
 ## The game cycle
 
@@ -55,19 +61,42 @@ cargo run --release -p kq1-pcjr-refemu -- original/<disk>.mfm \
 |---|---|
 | `wN` | wait N passes |
 | `U` `D` `L` `R` | an arrow key (scan code, no character) |
+| `S` | the last arrow key again: the ego stops |
 | `>text` | type the text and RETURN |
 | `kHH` | a character, by its code |
 | `sHHHH` | a key as `INT 16h` returns it (scan code << 8 \| character) |
+| `p…` | the item after the `p` (a key or `>text`), typed once the game waits for a key: for prompts, which hold the game cycle |
+| `@play`, `@master` | put the Play diskette or the Master in the drive |
+| `p@play`, `p@master` | at the next prompt, put that disk in the drive and press Enter (what "Please insert your Play diskette in the drive and press Enter" asks) |
+
+`--plan @FILE` reads the plan from a file: items separated by commas or lines, with
+`#` comments. The PCjr's routes are plan files (`routes/*.plan`): a key log with pass
+numbers can't say "at the next prompt", and the prompts hold the game cycle.
 
 **Other options:**
 - `--keys FILE`: a key log, lines of "PASS KEY-HEX", each pressed at the start of that
   pass.
 - `--passes N`: stop after N passes (default 400).
 - `--ticks N`: stop after N timer ticks.
+- `--play FILE`: the Play diskette, as a 360K sector image. It's read if it exists and
+  written back if the game wrote to it. The Master is write-protected, as the original
+  was, so saving to it fails as it did ("Games may only be saved on your Play
+  diskette").
+- `--wait-states N`: wait states per access to the shared RAM (default 2, IBM's
+  average; Tandy's engineers claimed 6). The real figure, and the time the BIOS's own
+  routines take, are still to be measured against the original on real hardware or an
+  accurate emulator. The cycle counts are an estimate until then: at 2, room 1 runs at
+  about 290,000 cycles a pass, 12.6 passes a second; at 0, 18.6; at 6, 7.7.
+- `--pictures DIR`: once the engine has started, draw every room's picture with the
+  engine's own routines (clear `$615`, frame `$353F`, picture `$3534`) and write the
+  buffers to `DIR/NNN.bin` (168 rows of 160 bytes, priority << 4 | colour). They are
+  the reference for the port's painter (test `every_picture_matches_the_engine`).
 - `--shot FILE.png`: the screen at the end.
 - `--profile`: where the CPU spent its time, and how often the main routines were
   entered.
 - `REFEMU_DUMP=p,…`: print actor 0 and v0–v47 at those passes.
+- `REFEMU_KEYLOG=1`: log each key the game reads, each automatic RETURN, each disk
+  swap, and every tenth pass with its cycle.
 
 **Output:**
 - **`--trace`:** a CSV per pass, in the Apple refemu's columns: pass, cycles, cycles

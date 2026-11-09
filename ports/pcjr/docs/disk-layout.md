@@ -124,8 +124,8 @@ Each room's resource is its **script** followed directly by its **picture**.
   the script as 238 bytes, and the room's first message loses its "S" as on the Apple
   disks. **The picture follows at byte 239, but the engine starts it at byte 238**,
   on a stray `65`. The picture interpreter (`$354D`) stops at once on a first byte
-  below `$F0`. If nothing else handles this, the original draws no picture in room 64.
-  To confirm with the measuring tool.
+  below `$F0`. **Confirmed:** the engine, run in refemu-pcjr, draws only the white
+  picture and its frame there ([picture-format.md](picture-format.md)).
 - **The picture** starts where the script ends. All 79 room pictures that follow a
   well-formed script draw cleanly to their `$FF` end with the Apple port's picture
   decoder (`kqextract-pcjr`, pictures in `extracted/pics/`). The picture commands

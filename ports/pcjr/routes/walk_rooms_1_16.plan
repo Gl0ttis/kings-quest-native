@@ -1,0 +1,7 @@
+# From power-on: left in room 1, up into room 16, right, down back into room 1, left.
+# The PCjr counterpart of the Apple port's walk_rooms_1_16.
+w30, L, w150
+U, w150
+R, w150
+D, w150
+L, w150

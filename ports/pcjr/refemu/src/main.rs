@@ -59,6 +59,86 @@ fn key_for(item: &str) -> Option<Vec<u16>> {
     })
 }
 
+/// Draw each room's picture with the engine's routines and write the buffers.
+fn draw_pictures(m: &mut Machine, cpu0: &Cpu, game: &kq1_pcjr::disk::Disk, dir: &str) {
+    std::fs::create_dir_all(dir).expect("create the pictures folder");
+    let mut drawn = 0;
+    for r in 1..kq1_pcjr::disk::ROOMS {
+        let Some(room) = game.room(r) else { continue };
+        if room.script.len() <= 8 {
+            continue;
+        }
+        let mut cpu = cpu0.clone();
+        m.ram[0xF000..0x10000].fill(0xFF);
+        let n = room.picture.len().min(0x1000);
+        m.ram[0xF000..0xF000 + n].copy_from_slice(&room.picture[..n]);
+        // The engine's own sequence for a room picture ($34FC): clear ($615), draw the
+        // frame at DS:$1981 ($353F; fills stop at it), draw the picture ($3534). Run as a
+        // few bytes placed in the boot code's place (0060:0010, unused once the engine
+        // runs), ending at 0060:001C.
+        let at = 0x600 + 0x10;
+        let call = |from: u16, to: u16| (to.wrapping_sub(from + 3)).to_le_bytes();
+        let mut code = vec![0xE8];
+        code.extend(call(0x10, 0x0615));
+        code.extend([0xBE, 0x81, 0x19]);
+        code.push(0xE8);
+        code.extend(call(0x16, 0x353F));
+        code.push(0xE8);
+        code.extend(call(0x19, 0x3534));
+        m.ram[at..at + code.len()].copy_from_slice(&code);
+        cpu.s[CS] = 0x0060;
+        cpu.ip = 0x0010;
+        let start = cpu.cycles;
+        while (cpu.s[CS], cpu.ip) != (0x0060, 0x001C) && cpu.fault.is_none() && cpu.cycles - start < 200_000_000 {
+            m.step(&mut cpu);
+        }
+        if let Some(f) = &cpu.fault {
+            eprintln!("room {r}: {f}");
+            continue;
+        }
+        if (cpu.s[CS], cpu.ip) != (0x0060, 0x001C) {
+            eprintln!("room {r}: the drawing didn't finish");
+            continue;
+        }
+        let mut buf = Vec::with_capacity(160 * 168);
+        for y in 0..168usize {
+            let row = (y & 3) * 0x2000 + (y >> 2) * 160;
+            for x in 0..160 {
+                let (v, p) = (m.ram[0x18000 + row + x] & 0x0F, m.ram[0x10000 + row + x] & 0x0F);
+                buf.push(p << 4 | v);
+            }
+        }
+        std::fs::write(format!("{dir}/{r:03}.bin"), buf).expect("write a picture");
+        drawn += 1;
+        if r == 1 {
+            println!("room 1 drawn in {:.2} s", (cpu.cycles - start) as f64 / CPU_HZ);
+        }
+    }
+    println!("{drawn} pictures drawn by the engine into {dir}");
+}
+
+/// One plan item: a key or keys, or a disk swap (`@play`, `@master`).
+fn apply(item: &str, m: &mut Machine) {
+    match item {
+        "@master" => m.insert(0),
+        "@play" => m.insert(1),
+        // The last arrow again: the ego stops.
+        "S" => {
+            let k = m.last_arrow;
+            m.keys.push_back(k)
+        }
+        _ => match key_for(item) {
+            Some(ks) => {
+                if let Some(&a) = ks.iter().find(|&&k| matches!(k, 0x4800 | 0x5000 | 0x4B00 | 0x4D00)) {
+                    m.last_arrow = a;
+                }
+                m.keys.extend(ks)
+            }
+            None => eprintln!("plan: unknown item {item}"),
+        },
+    }
+}
+
 fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let mut opt = |name: &str| -> Option<String> {
@@ -67,9 +147,21 @@ fn main() {
         args.drain(p..(p + 2).min(args.len()));
         v
     };
+    let wait_states: u64 = opt("--wait-states").map_or(2, |v| v.parse().expect("--wait-states"));
     let ticks: u64 = opt("--ticks").map_or(u64::MAX / CYCLES_PER_TICK, |v| v.parse().expect("--ticks"));
     let max_passes: u64 = opt("--passes").map_or(400, |v| v.parse().expect("--passes"));
+    // --plan PLAN, or --plan @FILE: a route file, items separated by commas or lines,
+    // with # comments.
     let plan = opt("--plan").unwrap_or_default();
+    let plan = match plan.strip_prefix('@') {
+        Some(f) => std::fs::read_to_string(f)
+            .unwrap_or_else(|e| panic!("{f}: {e}"))
+            .lines()
+            .map(|l| l.split('#').next().unwrap_or(""))
+            .collect::<Vec<_>>()
+            .join(","),
+        None => plan,
+    };
     // Key log: "PASS KEY-HEX" per line (the key as INT 16h returns it, scan << 8 | char,
     // or just a character); pressed at the start of that pass.
     let key_log: BTreeMap<u64, u16> = opt("--keys")
@@ -87,6 +179,15 @@ fn main() {
         })
         .unwrap_or_default();
     let trace_path = opt("--trace");
+    // --play FILE: the Play diskette, a 360K sector image (read if it exists; written
+    // back if the game wrote to it).
+    let play_path = opt("--play");
+    // --pictures DIR: once the engine has started, draw every room's picture with the
+    // engine's own code (clear `$615`, the frame `$353F`, the picture `$3534` from
+    // linear F000) and write each buffer to DIR/NNN.bin: 168 rows of 160 bytes,
+    // priority << 4 | colour.
+    let pictures_dir = opt("--pictures");
+
     // REFEMU_DUMP=p,...: print actor 0 and v0-v47 at the start of those passes.
     let dump: Vec<u64> = std::env::var("REFEMU_DUMP")
         .map(|v| v.split(',').filter_map(|x| x.trim().parse().ok()).collect())
@@ -100,6 +201,7 @@ fn main() {
         std::process::exit(2);
     };
     let raw = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
+    let game = kq1_pcjr::disk::Disk::from_file(raw.clone()).ok();
     let disk = if raw.starts_with(b"HXCMFM\0") {
         Disk::from_tracks(&kq1_pcjr::mfm::decode(&raw).unwrap_or_else(|e| panic!("{path}: {e}")))
     } else {
@@ -112,7 +214,17 @@ fn main() {
         d
     };
 
+    let mut disk = disk;
+    disk.write_protected = true;
     let mut m = Machine::new(disk);
+    m.wait_states = wait_states;
+    let mut play = Disk::default();
+    if let Some(raw) = play_path.as_ref().and_then(|p| std::fs::read(p).ok()) {
+        for (i, s) in raw.chunks(512).enumerate() {
+            play.sectors.insert(((i / 18) as u8, (i / 9 % 2) as u8, (i % 9 + 1) as u8, 2), s.to_vec());
+        }
+    }
+    m.disks.push(play);
     let mut cpu = Cpu::new();
     m.boot(&mut cpu).unwrap_or_else(|e| panic!("{e}"));
     let limit = ticks.saturating_mul(CYCLES_PER_TICK);
@@ -140,6 +252,12 @@ fn main() {
             *hits.entry((cpu.s[CS], cpu.ip & 0xFFF0)).or_default() += 1;
             if cpu.s[CS] == 0x60 && WATCH.contains(&cpu.ip) {
                 *entries.entry(cpu.ip).or_default() += 1;
+            }
+        }
+        if (cpu.s[CS], cpu.ip) == MAIN_LOOP && passes == 0 {
+            if let (Some(dir), Some(game)) = (&pictures_dir, &game) {
+                draw_pictures(&mut m, &cpu, game, dir);
+                return;
             }
         }
         if (cpu.s[CS], cpu.ip) == MAIN_LOOP {
@@ -185,27 +303,71 @@ fn main() {
                 rd(&m, VARS + 19)
             );
             // The plan.
+            if std::env::var_os("REFEMU_KEYLOG").is_some() && passes.is_multiple_of(10) {
+                eprintln!("pass {passes} at cycle {}", cpu.cycles);
+            }
             if passes >= wait_until {
-                while let Some(item) = items.pop_front() {
+                while items.front().is_some_and(|i| !i.starts_with('p')) {
+                    let item = items.pop_front().unwrap();
                     if let Some(n) = item.strip_prefix('w') {
                         wait_until = passes + n.parse::<u64>().unwrap_or(1);
                         break;
                     }
-                    match key_for(&item) {
-                        Some(ks) => m.keys.extend(ks),
-                        None => eprintln!("plan: unknown item {item}"),
-                    }
+                    apply(&item, &mut m);
                 }
             }
         }
-        // A game polling the keyboard with no pass and no key for 3M cycles is waiting
-        // for one ("press a key"): it gets RETURN, as refemu does for the Apple.
+        // A game polling the keyboard with no pass for a while is at a prompt, which holds
+        // the game cycle (a pass is about 300,000 cycles). A `p` item is typed there after
+        // 1.5M cycles; with none, after 3M cycles it gets RETURN, as refemu does for the
+        // Apple ("press a key"). The keyboard is polled every tick by the game's timer
+        // handler, so polling alone doesn't mean a prompt.
         if m.idle_polls > 0 && m.keys.is_empty() {
             let since = *wait_since.get_or_insert(cpu.cycles);
-            if cpu.cycles - since > 3_000_000 {
+            let waited = cpu.cycles - since;
+            // "Please insert your Play / Master diskette in the drive and press Enter":
+            // done as a player would, once the game is held at the prompt.
+            let screen: String = m.text.iter().map(|r| String::from_utf8_lossy(r).to_string()).collect();
+            let swap = if screen.contains("insert your   Play") {
+                Some(1)
+            } else if screen.contains("insert your  Master") {
+                Some(0)
+            } else {
+                None
+            };
+            if let Some(d) = swap.filter(|_| m.blocked_reads > 0) {
+                if std::env::var_os("REFEMU_KEYLOG").is_some() {
+                    eprintln!("disk swap: {} in the drive, Enter", if d == 1 { "Play" } else { "Master" });
+                }
+                m.insert(d);
                 m.keys.push_back(0x1C0D);
                 wait_since = None;
                 m.idle_polls = 0;
+                m.blocked_reads = 0;
+                m.step(&mut cpu);
+                continue;
+            }
+            let typed = items.front().filter(|i| i.starts_with('p')).cloned();
+            if let Some(item) = typed.filter(|_| waited > 1_500_000) {
+                items.pop_front();
+                // At a prompt, inserting a disk means pressing Enter after it.
+                apply(&item[1..], &mut m);
+                if item[1..].starts_with('@') {
+                    m.keys.push_back(0x1C0D);
+                }
+                wait_since = None;
+                m.idle_polls = 0;
+            } else if waited > 3_000_000
+                && (m.blocked_reads > 0 || passes == 0)
+                && !items.front().is_some_and(|i| i.starts_with('p'))
+            {
+                if std::env::var_os("REFEMU_KEYLOG").is_some() {
+                    eprintln!("auto RETURN at pass {passes} cycle {}", cpu.cycles);
+                }
+                m.keys.push_back(0x1C0D);
+                wait_since = None;
+                m.idle_polls = 0;
+                m.blocked_reads = 0;
             }
         }
         m.step(&mut cpu);
@@ -255,7 +417,14 @@ fn main() {
     if !m.unknown_ports.is_empty() {
         println!("unmodelled ports (bit 15 = write): {:?}", m.unknown_ports);
     }
-    println!("video mode {} CRT page {}; {} sound chip writes", m.video_mode, m.crt_page, m.sound.len());
+    println!(
+        "video mode {} CRT page {}; {} sound chip writes; wait states {} a shared-RAM access, {:.0}% of the time",
+        m.video_mode,
+        m.crt_page,
+        m.sound.len(),
+        m.wait_states,
+        100.0 * m.wait_cycles as f64 / cpu.cycles.max(1) as f64
+    );
     let text: Vec<String> =
         m.text.iter().map(|r| String::from_utf8_lossy(r).trim_end().to_string()).filter(|r| !r.is_empty()).collect();
     if !text.is_empty() {
@@ -267,6 +436,19 @@ fn main() {
         v.sort_by_key(|x| std::cmp::Reverse(x.1));
         for ((seg, ip), n) in v.into_iter().take(25) {
             println!("  {seg:04X}:{ip:04X}  {n}");
+        }
+    }
+    if let (Some(p), Some(play)) = (&play_path, m.disks.get(1)) {
+        if play.written {
+            let mut img = vec![0xF6u8; 368_640];
+            for (&(c, h, r, n), data) in &play.sectors {
+                if n == 2 && c < 40 && h < 2 && (1..=9).contains(&r) {
+                    let lin = (c as usize * 2 + h as usize) * 9 + r as usize - 1;
+                    img[lin * 512..lin * 512 + 512].copy_from_slice(data);
+                }
+            }
+            std::fs::write(p, img).expect("write the Play diskette");
+            println!("Play diskette written to {p}");
         }
     }
     if let Some(p) = trace_path {
