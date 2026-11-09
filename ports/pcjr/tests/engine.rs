@@ -29,6 +29,9 @@ fn replay(disk: &Disk, name: &str) -> usize {
         .ok()
         .map(|t| t.lines().map(|l| u64::from_str_radix(l, 16).expect("a frame hash")).collect());
     let mut w = World::new(disk, Box::new(Replay::parse(&events))).expect("engine");
+    // With a front end watching, as the player's: pictures are then shown as they are
+    // drawn (their work charged as it goes), which mustn't change the game.
+    w.on_frame = Some(Box::new(|_: &mut World| {}));
     w.max_passes = reference.len() as u64;
     w.frame_hashes = frames.is_some().then(Vec::new);
     let why = w.run();

@@ -1,5 +1,5 @@
 //! kq-pcjr [DISK] [--speed N] [--fast-loads] [--mute] [--fullscreen] [--no-joystick]
-//!         [--font FILE] [--no-rom-font] [--play FILE] [--scale N]
+//!         [--font FILE] [--no-rom-font] [--play FILE] [--scale N] [--route NAME]
 //!
 //! Plays the IBM PCjr King's Quest in a window, with the native engine, at the
 //! original's speed (engine::cost: each pass lasts as long as it did on a PCjr, and the
@@ -36,13 +36,18 @@
 //! is used if there is one (`bios.rom`, or a .rom or .bin with "pcjr" in its name).
 //! The port ships no ROM, and has its own font otherwise (--no-rom-font keeps it).
 //!
+//! --route NAME plays a recorded route (an event log of the original, refemu-pcjr
+//! `--events`: reference/NAME.events, or a file): the game runs exactly as the original
+//! did, at the player's pace and speed (--speed 4 for four times), the Play diskette
+//! kept in memory. Typed keys are ignored until the log ends; then the game is yours.
+//!
 //! --headless "SECONDS:KEYS;..." --until SECONDS --shot FILE.png runs without a window
 //! or pacing: the keys are typed at those times of the game (`|` is Enter, `<U>` `<D>`
 //! `<L>` `<R>` the arrows), and the screen at --until is written as a PNG, with the
 //! text on it printed.
 
 use kq1_pcjr::disk::{Disk, IMAGE_LEN};
-use kq1_pcjr::engine::clock::{Clock, Event, Joystick, CPU_HZ, CYCLES_PER_TICK};
+use kq1_pcjr::engine::clock::{Clock, Event, Joystick, Replay, CPU_HZ, CYCLES_PER_TICK};
 use kq1_pcjr::engine::screen::{HEIGHT, WIDTH};
 use kq1_pcjr::engine::World;
 use kq1_pcjr::font::Font;
@@ -71,6 +76,8 @@ struct Shared {
     speed: f64,
     /// Fast loads: the loading's time (World::loading_cycles) isn't waited for.
     fast_loads: bool,
+    /// A route is being replayed (--route): the disks are its log's to swap.
+    replaying: bool,
     quit: bool,
     /// Why the game stopped, when it has.
     ended: Option<String>,
@@ -181,6 +188,70 @@ impl Clock for PlayerClock {
             self.skipped += cycles - self.loading;
         }
         self.loading = cycles;
+    }
+}
+
+/// For --route: a refemu-pcjr event log replayed at its checkpoints, paced by the
+/// player's clock; when it runs out, the player's clock takes over.
+struct RouteClock {
+    replay: Replay,
+    play: PlayerClock,
+    handed: bool,
+}
+
+impl RouteClock {
+    /// Whether the log is spent (handing over to the player at `cycles` if so).
+    fn over(&mut self, cycles: u64) -> bool {
+        if !self.handed && self.replay.remaining() == 0 {
+            self.handed = true;
+            self.play.ticks = cycles / CYCLES_PER_TICK;
+            let mut s = self.play.shared.lock().unwrap();
+            s.keys.clear();
+            s.replaying = false;
+            println!("the route is over: the game is yours");
+        }
+        self.handed
+    }
+
+    fn typed_keys_ignored(&mut self) {
+        self.play.shared.lock().unwrap().keys.clear();
+    }
+}
+
+impl Clock for RouteClock {
+    fn at(&mut self, n: u64, cycles: u64) -> Vec<Event> {
+        if self.over(cycles) {
+            return self.play.at(n, cycles);
+        }
+        self.play.wait_for(cycles);
+        self.typed_keys_ignored();
+        self.replay.at(n, cycles)
+    }
+    fn waiting(&mut self, n: u64, cycles: u64) -> Vec<Event> {
+        if self.over(cycles) {
+            return self.play.waiting(n, cycles);
+        }
+        self.replay.waiting(n, cycles)
+    }
+    fn poll(&mut self, cycles: u64) -> Vec<Event> {
+        if self.over(cycles) {
+            return self.play.poll(cycles);
+        }
+        self.play.wait_for(cycles);
+        self.replay.poll(cycles)
+    }
+    fn joystick(&mut self) -> Option<Joystick> {
+        if self.handed {
+            self.play.joystick()
+        } else {
+            None
+        }
+    }
+    fn loading(&mut self, cycles: u64) {
+        self.play.loading(cycles);
+    }
+    fn pace(&mut self, cycles: u64) {
+        self.play.wait_for(cycles);
     }
 }
 
@@ -613,6 +684,7 @@ fn main() {
     let font_file = opt("--font");
     let play_file = opt("--play");
     let scale_n: Option<usize> = opt("--scale").map(|s| s.parse().expect("--scale N"));
+    let route = opt("--route");
     let plan = opt("--headless");
     let until: f64 = opt("--until").map_or(30.0, |s| s.parse().expect("--until SECONDS"));
     let shot = opt("--shot").unwrap_or_else(|| "kq-pcjr.png".into());
@@ -634,7 +706,7 @@ fn main() {
     let use_joystick = !flag("--no-joystick");
     let no_rom_font = flag("--no-rom-font");
     if args.iter().any(|a| a.starts_with("--")) || args.len() > 1 {
-        eprintln!("usage: kq-pcjr [DISK] [--speed N] [--fast-loads] [--mute] [--fullscreen] [--no-joystick] [--font FILE] [--no-rom-font] [--play FILE] [--scale N]");
+        eprintln!("usage: kq-pcjr [DISK] [--speed N] [--fast-loads] [--mute] [--fullscreen] [--no-joystick] [--font FILE] [--no-rom-font] [--play FILE] [--scale N] [--route NAME]");
         std::process::exit(2);
     }
     let disk_path = find_disk(args.first().map(String::as_str)).unwrap_or_else(|e| fatal(&e));
@@ -668,9 +740,18 @@ fn main() {
         keys: VecDeque::new(),
         speed,
         fast_loads,
+        replaying: route.is_some(),
         quit: false,
         ended: None,
     }));
+    let route_log = route.map(|r| {
+        let file = if Path::new(&r).is_file() {
+            PathBuf::from(&r)
+        } else {
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("reference").join(format!("{r}.events"))
+        };
+        std::fs::read_to_string(&file).unwrap_or_else(|e| fatal(&format!("{}: {e}", file.display())))
+    });
     let audio = Arc::new(Mutex::new(Audio { chip: Chip::default(), writes: VecDeque::new(), on: !mute }));
     audio_out::start(audio.clone());
 
@@ -680,11 +761,20 @@ fn main() {
         let shared = shared.clone();
         let audio = audio.clone();
         std::thread::spawn(move || {
-            let clock = PlayerClock::new(shared.clone(), speed, use_joystick);
-            let mut w = World::new(&disk, Box::new(clock)).expect("the engine");
-            if let Ok(img) = std::fs::read(&play_path) {
-                if img.len() == IMAGE_LEN {
-                    w.disks[1].image = img;
+            let play = PlayerClock::new(shared.clone(), speed, use_joystick);
+            let replaying = route_log.is_some();
+            let clock: Box<dyn Clock> = match route_log {
+                Some(log) => Box::new(RouteClock { replay: Replay::parse(&log), play, handed: false }),
+                None => Box::new(play),
+            };
+            let mut w = World::new(&disk, clock).expect("the engine");
+            // A route starts with the Play diskette the original had (a blank one), and
+            // keeps it in memory.
+            if !replaying {
+                if let Ok(img) = std::fs::read(&play_path) {
+                    if img.len() == IMAGE_LEN {
+                        w.disks[1].image = img;
+                    }
                 }
             }
             let mut screen = vec![0u8; 320 * 200];
@@ -694,6 +784,7 @@ fn main() {
             let mut pending_save = false;
             let s2 = shared.clone();
             let mut loading = 0;
+            let mut was_replaying = false;
             w.on_frame = Some(Box::new(move |w: &mut World| {
                 // While a fast load goes by, its frames needn't be drawn.
                 let fast = s2.lock().unwrap().fast_loads;
@@ -714,6 +805,13 @@ fn main() {
                     }
                 }
                 audio.lock().unwrap().writes.extend(w.sound_out.drain(..));
+                if s2.lock().unwrap().replaying {
+                    was_replaying = true;
+                    return;
+                }
+                if std::mem::take(&mut was_replaying) {
+                    println!("at pass {}: room {}, score {}", w.passes, w.vars[1], w.vars[19]);
+                }
                 // A disk asked for goes in the drive (the player presses Enter).
                 let text: String = (21..25).map(|r| w.text.row(r)).collect::<Vec<_>>().join(" ");
                 if text.contains("insert your") && text.contains("Play") {
