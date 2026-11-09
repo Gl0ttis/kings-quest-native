@@ -36,7 +36,7 @@ ports/
   pcjr/                 the IBM PCjr port: crate kq1-pcjr (engine, kq-pcjr, tools)
     refemu/             crate kq1-pcjr-refemu: the reference PCjr (measuring only)
     docs/ routes/ tools/ reference/ original/ extracted/   as for the Apple port
-.github/                CI, PR title check, release-please, Dependabot
+.github/                CI, PR title check, releases (release-plz), Dependabot
 ```
 
 Each port lives in `ports/<platform>/`. To start a new one, read
