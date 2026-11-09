@@ -14,6 +14,7 @@ ports/*/original/
 ports/*/saves/
 ports/*/scratch/
 ports/*/RE/
+re/
 
 # Decoded disks, resources and anything else made from the game are local.
 ports/*/extracted/
