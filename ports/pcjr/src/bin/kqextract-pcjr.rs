@@ -13,7 +13,7 @@
 //! Prints one line per resource and a summary; exits non-zero if anything fails to
 //! decode.
 
-use kq1_apple2::{png, script};
+use kq1_formats::{png, script};
 use kq1_pcjr::color;
 use kq1_pcjr::disk::{Disk, ROOMS, SOUNDS, VIEWS};
 use std::{fs, path::PathBuf};

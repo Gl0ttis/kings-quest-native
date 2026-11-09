@@ -81,9 +81,9 @@ engine draws.
 
 ## Repository notes
 
-- `kq1-pcjr` depends on `kq1-apple2` (without its player) for the view, script and
-  vocabulary decoders and the PNG writer. Moving them to a crate under `crates/` would
-  keep the Apple port's tests green.
+- The view, script and vocabulary decoders and the PNG writer are the shared crate
+  `kq1-formats` (`crates/`), which the Apple port uses too; `kq1-pcjr` doesn't depend
+  on the Apple port.
 - In release-please from 0.0.0 (so its first release is 0.1.0), refemu excluded; the
   Release workflow builds `kq-pcjr` for Windows and Linux and ships it as `kq` in
   `kq-pcjr-<version>-<platform>` archives.

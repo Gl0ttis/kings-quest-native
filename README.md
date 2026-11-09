@@ -23,6 +23,8 @@ release, each behaving as that release did: same rules, same timing, same quirks
 ```
 Cargo.toml              workspace
 docs/porting-guide.md   how a port is built and checked; start here for a new one
+crates/
+  kq1-formats/          the resource formats every port reads (views, scripts, vocabulary)
 ports/
   apple2/               the Apple IIe port: crate kq1-apple2 (engine, kq-apple2, tools)
     refemu/             crate kq1-apple2-refemu: the reference emulator (measuring only)
@@ -37,10 +39,9 @@ ports/
 ```
 
 Each port lives in `ports/<platform>/`. To start a new one, read
-[docs/porting-guide.md](docs/porting-guide.md). The PCjr port uses the Apple port's
-decoders for views, scripts and the vocabulary directly, the formats being the same;
-code shared more widely will move to crates under `crates/`. Each port's player is
-`kq` in its download (`kq-<port>` in the workspace).
+[docs/porting-guide.md](docs/porting-guide.md). Code the ports share lives in crates
+under `crates/`: so far `kq1-formats`, the resource formats, which the releases have in
+common. Each port's player is `kq` in its download (`kq-<port>` in the workspace).
 
 ## Playing
 

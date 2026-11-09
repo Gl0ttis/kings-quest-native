@@ -56,7 +56,7 @@ fn every_script_parses_with_the_pcjr_operands() {
                 continue;
             }
             let room = d.room(r).unwrap();
-            let s = kq1_apple2::script::Script::new(room.script).unwrap();
+            let s = kq1_formats::script::Script::new(room.script).unwrap();
             s.actions_with(&kq1_pcjr::script::OPERANDS).unwrap_or_else(|e| panic!("{path:?} room {r}: {e}"));
         }
     }

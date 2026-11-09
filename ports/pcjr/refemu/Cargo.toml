@@ -32,7 +32,7 @@ path = "src/bin/kqframes.rs"
 
 [dependencies]
 kq1-pcjr = { path = ".." }
-kq1-apple2 = { path = "../../apple2", default-features = false }
+kq1-formats = { path = "../../../crates/kq1-formats" }
 
 [[bin]]
 name = "kqprofile-pcjr"

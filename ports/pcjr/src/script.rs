@@ -10,7 +10,7 @@
 /// - `$25` takes 1 (`$201F` → `$44FE`); the Apple's 0;
 /// - `$31` takes none (`$21BD`); the Apple's 2.
 pub const OPERANDS: [u8; 0x44] = {
-    let mut t = kq1_apple2::script::OPERANDS;
+    let mut t = kq1_formats::script::OPERANDS;
     t[0x05] = 1;
     t[0x25] = 1;
     t[0x31] = 0;
@@ -21,10 +21,10 @@ pub const OPERANDS: [u8; 0x44] = {
 /// named from its vocabulary) and the actions, one per line (as the Apple port's
 /// kqscript writes them).
 pub fn listing(disk: &crate::disk::Disk, room: usize) -> Option<String> {
-    use kq1_apple2::script::{Cond, Mode, RuleKind, Script};
+    use kq1_formats::script::{Cond, Mode, RuleKind, Script};
     use std::fmt::Write as _;
     let words = crate::vocab::read(&disk.code_segment()).ok()?;
-    let names = kq1_apple2::vocab::Names::new(&words);
+    let names = kq1_formats::vocab::Names::new(&words);
     let r = disk.room(room)?;
     let s = Script::new(r.script).ok()?;
     let mut t = String::new();

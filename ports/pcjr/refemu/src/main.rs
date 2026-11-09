@@ -541,6 +541,6 @@ fn main() {
     if let Some(f) = shot {
         let px = m.screen_mode9();
         let rgb: Vec<u8> = px.iter().flat_map(|&c| kq1_pcjr::color::rgb(c)).collect();
-        std::fs::write(&f, kq1_apple2::png::encode_rgb(320, 200, &rgb)).expect("write shot");
+        std::fs::write(&f, kq1_formats::png::encode_rgb(320, 200, &rgb)).expect("write shot");
     }
 }

@@ -1,0 +1,15 @@
+[package]
+name = "kq1-formats"
+version = "0.1.0"
+description = "King's Quest I resource formats shared by the native ports: views, scripts (rules), the vocabulary, and a PNG writer for the tools."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "kq1_formats"
+path = "src/lib.rs"

@@ -4,7 +4,7 @@
 //! word list pointer `[$CD6]` starts with (`$16`); the parser (`$E10`) walks it.
 //! The word ids differ from the Apple version's.
 
-pub use kq1_apple2::vocab::{Entry, Names};
+pub use kq1_formats::vocab::{Entry, Names};
 
 /// The engine's data segment starts `$4E30` bytes into its code segment
 /// (DS = CS + `$4E3`, `$537`).
@@ -16,5 +16,5 @@ pub const VOCAB: usize = 0x16;
 pub fn read(code_segment: &[u8]) -> Result<Vec<Entry>, String> {
     let start = DATA_SEGMENT + VOCAB;
     let raw: Vec<u8> = code_segment.get(start..).ok_or("engine too short")?.iter().map(|b| b.rotate_left(1)).collect();
-    kq1_apple2::vocab::parse(&raw)
+    kq1_formats::vocab::parse(&raw)
 }

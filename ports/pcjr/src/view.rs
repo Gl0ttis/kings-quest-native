@@ -9,7 +9,7 @@
 //!
 //! Each loop and cel starts where the one before it ends.
 
-pub use kq1_apple2::view::{Cel, Loop, View};
+pub use kq1_formats::view::{Cel, Loop, View};
 
 /// Loop slots in the table, used or not.
 pub const LOOP_SLOTS: usize = 8;
@@ -36,7 +36,7 @@ pub fn decode(b: &[u8]) -> Result<View, String> {
         let mut cels = Vec::with_capacity(ncels);
         for k in 0..ncels {
             let csize = u16_at(at + 4 + 2 * k)?;
-            let cel = kq1_apple2::view::decode_cel(b, c).map_err(|e| format!("loop {l} cel {k}: {e}"))?;
+            let cel = kq1_formats::view::decode_cel(b, c).map_err(|e| format!("loop {l} cel {k}: {e}"))?;
             let used = 2 + (cel.nibbles as usize).div_ceil(2);
             if used > csize {
                 return Err(format!("loop {l} cel {k}: {used} bytes of data, listed as {csize}"));

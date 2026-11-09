@@ -424,6 +424,7 @@ name = "kq1-apple2"
 version = "0.2.0"
 dependencies = [
  "cpal",
+ "kq1-formats",
  "minifb",
  "raw-window-handle",
  "x11-dl",
@@ -437,11 +438,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kq1-formats"
+version = "0.1.0"
+
+[[package]]
 name = "kq1-pcjr"
 version = "0.1.0"
 dependencies = [
  "cpal",
- "kq1-apple2",
+ "kq1-formats",
  "minifb",
  "raw-window-handle",
  "x11-dl",
@@ -451,7 +456,7 @@ dependencies = [
 name = "kq1-pcjr-refemu"
 version = "0.1.0"
 dependencies = [
- "kq1-apple2",
+ "kq1-formats",
  "kq1-pcjr",
 ]
 

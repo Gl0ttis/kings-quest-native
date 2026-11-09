@@ -15,10 +15,9 @@ name = "kq1_pcjr"
 path = "src/lib.rs"
 
 [dependencies]
-# For now, the Apple port's decoders for pictures, views and scripts: the PCjr resources
-# use the same formats (docs/disk-layout.md). Shared code moves to crates/ once the
-# PCjr engine needs it (docs/porting-guide.md).
-kq1-apple2 = { path = "../apple2", default-features = false }
+# The resource formats (views, scripts, the vocabulary), shared with the other ports:
+# the PCjr's use the same formats (docs/disk-layout.md).
+kq1-formats = { path = "../../crates/kq1-formats" }
 # Only the windowed player (kq-pcjr) uses it; the engine library has no other
 # dependencies. X11 only on Linux (Wayland desktops run it through XWayland).
 minifb = { version = "0.29.0", optional = true, default-features = false, features = ["x11"] }

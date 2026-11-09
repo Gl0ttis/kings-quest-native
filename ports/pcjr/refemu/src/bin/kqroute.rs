@@ -133,7 +133,7 @@ impl Driver {
         (self.r.ds(p) as i32, self.r.ds(p.wrapping_add(1)) as i32)
     }
     /// The ego's view, decoded.
-    fn ego_view(&self) -> Option<kq1_apple2::view::View> {
+    fn ego_view(&self) -> Option<kq1_formats::view::View> {
         let v = self.r.ds(self.actor(0) + 5) as usize;
         self.g.disk.view(v).and_then(|raw| kq1_pcjr::view::decode(raw).ok())
     }

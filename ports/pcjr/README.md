@@ -71,8 +71,8 @@ content):
 - the engine's code segment;
 - each room's picture as `pics/NNN.png`.
 
-It checks every script, picture and view with the Apple port's decoders, and reports
-each one.
+It checks every script, picture and view with the shared decoders (`kq1-formats`),
+and reports each one.
 
 The measuring tools are in [refemu/](refemu/README.md): the reference PCjr, its route
 autopilot (`kqroute-pcjr`), and the comparisons of state, screen and drawing. The
