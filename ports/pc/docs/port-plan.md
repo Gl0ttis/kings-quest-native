@@ -27,6 +27,7 @@ both have it working.
 | 3. Static formats | **Done** (`kqextract-pc`). With the PCjr port's decoders: all 80 well-formed scripts parse, all 79 pictures draw cleanly, all 88 views decode (byte for byte the PCjr's), all 40 sounds parse, and the 369-word vocabulary. The scripts are a revision of the PCjr's (renumbered variables, some rooms changed); eight pictures and three sound resources differ. |
 | Composite colour | **Done** ([src/composite.rs](../src/composite.rs)). The engine draws only colours 0 and 7, so the signal is two levels a dot, and the colours are the monitor's decoding of the dot patterns. Two modes from one model: each 4-dot group in its own colour, and the signal decoded dot by dot with the fringes between colours. Its hue, saturation and level are measured from the original in 86Box (IBM's BIOS, the CGA's composite output; [tools/86box/](../tools/86box/README.md)): within 6/255 in flat areas. The engine's colour table (DS:`$12BA`) gives each PCjr colour's pattern. |
 | 4. Measuring tool | **Working** ([refemu/](../refemu/README.md)). The PCjr's 8086 core on an IBM PC with the CGA, no IBM ROM. It starts the engine as the loader does (the protection's code calls into IBM's ROM, and then starts the engine at the same place), runs plans of keys and records a trace per pass and the screen in composite colour. The pass is `$293A`, the PCjr's `$14F2`. Timing, fitted to 86Box running the original: walking within 1%, a room's drawing within 5%, a room change within 8%. The game paces itself on the timer: a pass is a whole number of ticks. |
+| Address map | **Done** ([engine.md](engine.md), `tools/addrmap.py`): 174 of the 207 addresses the PCjr port cites found in the PC engine, and all 22 checkpoints. For citing and measuring only; the engine is rewritten from its behaviour. |
 | 5-10 | To do: next, the reference routes, then the engine. |
 
 ## Next steps
@@ -35,10 +36,13 @@ both have it working.
    refemu-pcjr's autopilot (`kqroute`) and the PCjr's routes, edited for this
    revision's scripts and vocabulary, and the event log the port replays (the timer's
    ticks against the checkpoints, the keys). Record the traces and the screens.
-2. **The engine**, forked from the PCjr's (`src/engine`). The routines are the same
-   design at other addresses; map each of the PCjr port's routines to the PC
-   engine's (an address table in engine.md), then compare pass by pass. Expect the
-   variable renumbering in the scripts to come from the engine's own variables.
+2. **The engine**, forked from the PCjr port's (`src/engine`), which reimplements the
+   engine natively from its documented behaviour. The same rule holds here: no
+   instruction-by-instruction translation. The PC's routines are the same design at
+   other addresses ([engine.md](engine.md): the address map and the checkpoints);
+   each difference from the PCjr is found by comparing pass by pass, described, and
+   then implemented. Expect the variable renumbering in the scripts to come from the
+   engine's own variables.
 3. **The screen.** The PC's picture buffer and its copy to the CGA (`$1966`), and the
    text in 640-dot mode, shown through the composite model.
 4. **Sound.** Find how the engine plays the sound-chip streams on the speaker (the

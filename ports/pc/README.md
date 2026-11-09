@@ -52,3 +52,5 @@ game, and the original's protection sector.
 - [docs/port-plan.md](docs/port-plan.md): status, findings, next steps, decisions
 - [docs/disk-layout.md](docs/disk-layout.md): the disk, its files and protection, boot,
   the resource table, the resources, the display
+- [docs/engine.md](docs/engine.md): the engine against the PCjr's, the address map, the
+  checkpoints
