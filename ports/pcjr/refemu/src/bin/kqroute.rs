@@ -18,11 +18,13 @@
 //!   key HHHH          press a raw key (scan << 8 | character, hex)
 //!   wait N            let N passes go by
 //!   waitvar V VAL [MAX]  let passes go by until variable V equals VAL
-//!   require V VAL     a condition set by chance (the line is retried with other timing)
+//!   require V VAL     a condition set by chance (the line is retried with other timing,
+//!                     or after round trips to a neighbouring room, which draw v14 anew)
 //!   keepin X1 Y1 X2 Y2 ...  keep the planner in these rectangles in this room
 //!   final X1 Y1 X2 Y2  walk into the game-ending rectangle
 //!   dies N            wait up to N passes for Graham to die
 //!   if V VAL STEP     the step only when variable V equals VAL
+//!   map [Y]           print the planner's map of the room, or row Y's priorities (stderr)
 //!   expect score N | expect room N
 
 use kq1_pcjr::disk::Disk;
@@ -316,6 +318,27 @@ impl Driver {
         Some(all_zero)
     }
 
+    /// Would the engine let the ego stand at (x, y) where the planner must not: in the
+    /// water of a room that reacts to it, or in a deadly zone?
+    fn perilous(&self, x: i32, y: i32, w: i32) -> bool {
+        let Some(water) = self.engine_ok(&|x, y| self.r.priority(x, y), x, y, w) else {
+            return false;
+        };
+        if water && self.water_room && !self.wade {
+            return true;
+        }
+        let live = |c: &Vec<(usize, bool, u8)>| c.iter().all(|&(v, eq, val)| (self.v(v) == val) == eq);
+        self.g.deadly.get(&self.v(1)).filter(|_| !self.ignore_deadly).is_some_and(|zones| {
+            zones.iter().any(|(z, c)| x >= z[0] && x <= z[2] && y >= z[1] && y <= z[3] && live(c))
+        })
+    }
+
+    /// A step `d` onto (x, y): standable, and (a turn can come a pass late, when a pass
+    /// goes by without a timer tick) not one step short of peril the same way.
+    fn step_ok(&self, x: i32, y: i32, d: usize, w: i32, near: bool) -> bool {
+        self.standable_near(x, y, w, near) && !self.perilous(x + DIRS[d].0, y + DIRS[d].1, w)
+    }
+
     /// As `engine_ok`, and the planner keeps out of the water in rooms that react to it.
     fn standable_in(&self, pri: &dyn Fn(usize, usize) -> u8, x: i32, y: i32, w: i32) -> bool {
         match self.engine_ok(pri, x, y, w) {
@@ -376,7 +399,7 @@ impl Driver {
                     continue;
                 }
                 let near = (nx - sx).abs() <= 2 && (ny - sy).abs() <= 2;
-                if !self.standable_near(nx, ny, wd[d as usize], near) {
+                if !self.step_ok(nx, ny, d as usize, wd[d as usize], near) {
                     continue;
                 }
                 let fd = if (x, y) == (sx, sy) { d } else { first[idx(x, y)] };
@@ -455,7 +478,7 @@ impl Driver {
                 if (0..W).contains(&nx)
                     && (0..H).contains(&ny)
                     && dist[idx(nx, ny)] == u32::MAX
-                    && self.standable_near(nx, ny, wd[d], (nx - sx).abs() <= 2 && (ny - sy).abs() <= 2)
+                    && self.step_ok(nx, ny, d, wd[d], (nx - sx).abs() <= 2 && (ny - sy).abs() <= 2)
                 {
                     dist[idx(nx, ny)] = dist[idx(x, y)] + 1;
                     q.push_back((nx, ny));
@@ -897,6 +920,22 @@ fn run_line(d: &mut Driver, line: &str) -> Result<(), String> {
             d.wade = false;
             res.or_else(|e| if d.dead() { Ok(()) } else { Err(e) })
         }
+        "map" => {
+            // The planner's view of the room (stderr), as KQ_MAP shows it on a failure.
+            // `map Y`: row Y's priorities, every column, instead.
+            if let Some(&y) = nums.first() {
+                let row: String = (0..W as usize).map(|x| format!("{:X}", d.r.priority(x, y as usize))).collect();
+                eprintln!("{y:3} {row}  ego min width {}, widths {:?}", d.ego_min_width(), d.dir_widths());
+                d.narrow.set(d.ego_min_width());
+                let ok: String = (0..W).map(|x| if d.standable(x, y, 6) { '.' } else { '#' }).collect();
+                eprintln!("    {ok}  water room {} wade {}", d.water_room, d.wade);
+                return Ok(());
+            }
+            std::env::set_var("KQ_MAP", "1");
+            d.show_map(&d.distances());
+            std::env::remove_var("KQ_MAP");
+            Ok(())
+        }
         "keepin" => {
             let rects: Vec<[i32; 4]> = nums.chunks(4).filter(|c| c.len() == 4).map(rect).collect();
             d.keep_in = if rects.is_empty() { None } else { Some((d.v(1), rects)) };
@@ -1016,6 +1055,20 @@ fn run_line(d: &mut Driver, line: &str) -> Result<(), String> {
 /// Chance went against the line: a death, the dwarf, a condition set by chance, or a
 /// crossing spoiled (a random visitor on entry, such as the witch in room 46, who
 /// carries Graham off).
+/// Out of the current room to a neighbouring one and back in.
+fn bounce(d: &mut Driver) -> Result<(), String> {
+    let here = d.v(1);
+    let exits = d.g.exits.get(&here).copied().unwrap_or_default();
+    for &n in exits.iter().filter(|&&n| n != 0) {
+        let mut t = d.clone();
+        if t.room(n, None).is_ok() && !t.dead() && t.room(here, None).is_ok() && !t.dead() {
+            *d = t;
+            return Ok(());
+        }
+    }
+    Err(format!("no way out of room {here} and back"))
+}
+
 fn retryable(d: &Driver, e: &str) -> bool {
     d.dead()
         || e.contains("robbed")
@@ -1055,7 +1108,45 @@ fn play(d0: Driver, route: &str) -> (Driver, Option<(usize, String)>) {
             return (d, Some((*n, e)));
         }
         let mut fixed = false;
+        // The random bit v14 comes from the next byte of the engine's code at each room
+        // change, whatever the timing: out to a neighbouring room and back (an even number
+        // of times first: some rooms count their entries), from this line or up to five
+        // before it (a doorway's room can't be left and re-entered by its exits), and
+        // the lines from there played again.
+        'trips: for back in 0..=5usize.min(i) {
+            for k in [2, 4, 6, 1, 3, 5] {
+                let from = i - back;
+                let mut t = snaps[from].clone();
+                let mut redone = Vec::new();
+                let mut r = (0..k).try_for_each(|_| bounce(&mut t));
+                for (j, (m, l)) in lines.iter().enumerate().take(i + 1).skip(from) {
+                    if r.is_err() {
+                        break;
+                    }
+                    if j > from {
+                        redone.push(t.clone());
+                    }
+                    let at = format!("{:4}: {l}   [pass {}, room {}, score {}]", m + 1, t.r.passes, t.v(1), t.v(19));
+                    t.events.push(at);
+                    r = run_line(&mut t, l);
+                }
+                if std::env::var_os("KQ_RETRY").is_some() {
+                    eprintln!("line {}: {k} round trips from line {}: {r:?}", n + 1, lines[from].0 + 1);
+                }
+                if r.is_ok() {
+                    t.events.push(format!("      (after {k} round trips to a neighbouring room from line {})", lines[from].0 + 1));
+                    snaps.truncate(from + 1);
+                    snaps.extend(redone);
+                    d = t;
+                    fixed = true;
+                    break 'trips;
+                }
+            }
+        }
         'search: for back in 0..=1usize {
+            if fixed {
+                break;
+            }
             if back > i {
                 break;
             }

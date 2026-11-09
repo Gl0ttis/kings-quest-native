@@ -111,7 +111,9 @@ expect score 48
 enter 44 16 103 20 128
 
 # The elf (room 18) appears when the random bit v14 is 1 on entry; the autopilot
-# re-times the arrival until it does. Speaking to him gives the magic ring.
+# steps out to a neighbouring room and back until it does (each room change draws
+# v14 from the next byte of the engine's code; timing makes no difference).
+# Speaking to him gives the magic ring.
 room 31
 room 18
 require 101 1
