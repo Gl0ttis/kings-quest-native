@@ -288,6 +288,7 @@ impl World {
             }
             if let Some(dst) = d.image.get_mut(range) {
                 dst.copy_from_slice(&data[..count * 512]);
+                d.writes += 1;
             }
         } else {
             *data = d.image.get(range).map_or_else(|| vec![0; count * 512], <[u8]>::to_vec);
@@ -656,6 +657,7 @@ impl World {
                 let d = &mut self.disks[self.drive];
                 if !d.write_protected {
                     d.image[track * 9 * 512..(track + 1) * 9 * 512].fill(0xF6);
+                    d.writes += 1;
                     break;
                 }
                 self.clear_text_screen(true);

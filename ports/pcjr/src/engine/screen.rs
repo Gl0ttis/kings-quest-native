@@ -103,6 +103,10 @@ impl World {
         }
         self.screen.shown.fill(0xFF);
         self.screen.work.fill(0x11);
+        // The picture covers any characters above the text window.
+        for row in &mut self.text.graphics.visible[..21] {
+            *row = [false; 40];
+        }
         let frame = self.res.ds[pic::FRAME..pic::FRAME + 11].to_vec();
         self.interpret(&frame);
         self.draw_loaded_picture();

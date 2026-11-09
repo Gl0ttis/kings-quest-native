@@ -190,7 +190,7 @@ impl World {
                 }
             }
             self.wait_until("the tune to end", |w| w.vars[15] != 0);
-            self.cycles += 3 * 0x10000 * 17;
+            self.delay(3 * 0x10000 * 17, false);
             self.play_sound(0x15);
             self.title_wait();
         }
@@ -241,14 +241,15 @@ impl World {
     fn title_wait(&mut self) {
         self.checkpoint(0x4A7A);
         self.site_keys();
+        if self.keys.is_empty() && !self.delay(30 * 0xF800 * 17, true) {
+            return;
+        }
         if let Some(k) = self.keys.pop_front() {
             if k as u8 == 0x1B {
                 self.wait_until("a key", |w| !w.keys.is_empty());
                 self.keys.pop_front();
             }
-            return;
         }
-        self.cycles += 30 * 0xF800 * 17;
     }
 
     /// `$0D16`: the main loop: the next (verb, noun) to try (reading a line when

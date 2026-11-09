@@ -209,3 +209,29 @@ pub fn wav(samples: &[i16], rate: u32) -> Vec<u8> {
     }
     w
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_tone_has_its_frequency() {
+        let mut c = Chip::default();
+        // Tone 0, period 254: 3,579,545 / (32 × 254) = 440 Hz; full volume.
+        c.write(0x80 | (254 & 0x0F) as u8);
+        c.write((254 >> 4) as u8);
+        c.write(0x90);
+        let s: Vec<f32> = (0..44_100).map(|_| c.sample(44_100.0)).collect();
+        let f = s.windows(2).filter(|w| (w[0] > 0.0) != (w[1] > 0.0)).count() as f64 / 2.0;
+        assert!((f - 440.0).abs() < 3.0, "{f} Hz");
+    }
+
+    #[test]
+    fn the_games_silence_is_silent() {
+        let mut c = Chip::default();
+        for b in [0x04, 0x9F, 0xBF, 0xDF, 0xFF] {
+            c.write(b);
+        }
+        assert!((0..1000).all(|_| c.sample(44_100.0) == 0.0));
+    }
+}

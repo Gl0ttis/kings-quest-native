@@ -299,6 +299,8 @@ pub struct Globals {
 pub struct Floppy {
     pub image: Vec<u8>,
     pub write_protected: bool,
+    /// Writes made to it (a front end saves the image when this changes).
+    pub writes: u64,
 }
 
 /// Asked to stop: the run is over (a pass limit, the end of a replay), or diverged.
@@ -374,6 +376,11 @@ pub struct World {
     /// every finished pass's.
     pub cost: cost::Cost,
     pub cost_trace: Option<Vec<cost::Cost>>,
+    /// A front end's look at the game, about 60 times a second of the game's time (at
+    /// checkpoints and in busy waits): to show the screen, play the sound bytes, put
+    /// the disk asked for in the drive, keep the Play diskette.
+    pub on_frame: Option<Box<dyn FnMut(&mut World)>>,
+    next_frame: u64,
     /// The cycles of the pass's work already added to `cycles`, and the fraction of a
     /// cycle left over.
     charged: f64,
@@ -470,8 +477,8 @@ impl World {
             spare: [res.ds[0x1259], res.ds[0x1274], res.ds[0x127A]],
         };
         let disks = [
-            Floppy { image: res.disk_image.clone(), write_protected: true },
-            Floppy { image: vec![0; crate::disk::IMAGE_LEN], write_protected: false },
+            Floppy { image: res.disk_image.clone(), write_protected: true, writes: 0 },
+            Floppy { image: vec![0; crate::disk::IMAGE_LEN], write_protected: false, writes: 0 },
         ];
         Ok(World {
             res,
@@ -511,6 +518,8 @@ impl World {
             cost_trace: None,
             charged: 0.0,
             carry: 0.0,
+            on_frame: None,
+            next_frame: 0,
             frame_at: None,
             frame: None,
             cps: std::env::var("KQ_CPS").ok().and_then(|v| {
@@ -529,6 +538,7 @@ impl World {
             self.event(e);
         }
         self.charge();
+        self.frame_due();
         self.checkpoint += 1;
         self.cost.checkpoint(at);
         if self.cps.is_some_and(|(a, b)| (a..=b).contains(&self.checkpoint)) {
@@ -596,7 +606,39 @@ impl World {
                     self.cycles = (self.cycles / clock::CYCLES_PER_TICK + 1) * clock::CYCLES_PER_TICK;
                 }
                 self.event(e);
+                self.frame_due();
             }
+        }
+    }
+
+    /// A timed delay of `n` cycles (the title's): with a clock for play, the time passes
+    /// a frame at a time and the keys and ticks due come in; a delay that polls the
+    /// keyboard (`keys_end_it`) ends early on a key (true). With a replay, the time is
+    /// added at once.
+    pub fn delay(&mut self, n: u64, keys_end_it: bool) -> bool {
+        let end = self.cycles + n;
+        while self.cycles < end {
+            self.cycles += (end - self.cycles).min(clock::CYCLES_PER_FRAME);
+            for e in self.clock.poll(self.cycles) {
+                self.event(e);
+            }
+            self.frame_due();
+            if keys_end_it && !self.keys.is_empty() {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// The front end's look, when 1/60 s of the game's time has gone by.
+    fn frame_due(&mut self) {
+        if self.on_frame.is_none() || self.cycles < self.next_frame {
+            return;
+        }
+        self.next_frame = self.cycles + clock::CYCLES_PER_FRAME;
+        if let Some(mut f) = self.on_frame.take() {
+            f(self);
+            self.on_frame = Some(f);
         }
     }
 

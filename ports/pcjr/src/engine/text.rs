@@ -12,11 +12,15 @@
 pub struct Grid {
     pub cells: [[u8; 40]; 25],
     pub attrs: [[u8; 40]; 25],
+    /// The character is on the screen: written, and not drawn over since (a room
+    /// picture covers the graphics screen's rows 0-20). For a front end; the cells keep
+    /// what the BIOS last wrote, as refemu records them.
+    pub visible: [[bool; 40]; 25],
 }
 
 impl Default for Grid {
     fn default() -> Self {
-        Grid { cells: [[b' '; 40]; 25], attrs: [[7; 40]; 25] }
+        Grid { cells: [[b' '; 40]; 25], attrs: [[7; 40]; 25], visible: [[false; 40]; 25] }
     }
 }
 
@@ -57,6 +61,7 @@ impl Text {
             let g = self.grid_mut();
             g.cells[r as usize][col as usize] = c;
             g.attrs[r as usize][col as usize] = attr;
+            g.visible[r as usize][col as usize] = true;
         }
     }
     pub fn put(&mut self, c: u8) {
@@ -82,9 +87,11 @@ impl Text {
             if src <= bottom {
                 g.cells[r as usize] = g.cells[src as usize];
                 g.attrs[r as usize] = g.attrs[src as usize];
+                g.visible[r as usize] = g.visible[src as usize];
             } else {
                 g.cells[r as usize] = [b' '; 40];
                 g.attrs[r as usize] = [fill; 40];
+                g.visible[r as usize] = [false; 40];
             }
         }
     }

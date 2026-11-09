@@ -117,6 +117,12 @@ pub trait Clock {
     /// In a busy wait whose interval's events are spent: more, or none if the clock
     /// has nothing more to give (a replay that has diverged).
     fn waiting(&mut self, n: u64, cycles: u64) -> Vec<Event>;
+    /// In a timed delay that polls the keyboard (the title's), `cycles` reached: what
+    /// is due now. A replay gives nothing: its events come at the next checkpoint, as
+    /// refemu-pcjr logged them. A clock for play gives the keys typed and the ticks.
+    fn poll(&mut self, _cycles: u64) -> Vec<Event> {
+        Vec::new()
+    }
 }
 
 /// Events logged by refemu-pcjr (`--events`), replayed at the same checkpoints.
@@ -174,6 +180,9 @@ impl Clock for Replay {
 
 /// CPU cycles between timer ticks: 4,772,727 Hz / 18.2065 Hz (65,536 × 4).
 pub const CYCLES_PER_TICK: u64 = 262_144;
+/// The 8088's clock (Hz), and its cycles in 1/60 s (a front end's frame).
+pub const CPU_HZ: f64 = 4_772_727.0;
+pub const CYCLES_PER_FRAME: u64 = 79_545;
 
 /// Ticks from the port's own estimate of the original's speed, with keys and disk
 /// swaps given by the front end.
@@ -200,5 +209,9 @@ impl Clock for Paced {
         let mut out: Vec<Event> = self.pending.drain(..).collect();
         out.push(Event::Tick(0xFFFF));
         out
+    }
+
+    fn poll(&mut self, cycles: u64) -> Vec<Event> {
+        self.at(0, cycles)
     }
 }

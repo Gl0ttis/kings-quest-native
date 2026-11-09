@@ -5,11 +5,31 @@ published, from your own disk image, with no 8088 emulation. It follows
 [docs/porting-guide.md](../../docs/porting-guide.md), with the Apple IIe port in
 [ports/apple2/](../apple2/README.md) as the worked example.
 
-**Status:** the disk, its copy protection and its layout are worked out. Every
-resource extracts and decodes: pictures, scripts, views, sounds and the vocabulary.
-[refemu/](refemu/README.md), the reference PCjr, boots the original and records it
-pass by pass. No engine or player yet.
+**Status:** the engine plays the whole game. On nine routes recorded from the original
+(about 89,000 passes: the walk, save and restore, three deaths, the gold key, the
+maximum score, the magic ring and the giant with the sling), it matches the original
+on every pass, in its state and on screen. A speed model gives the original's timing,
+within 0.2% over whole routes. The player, `kq-pcjr`, is new and not yet released.
 See [docs/port-plan.md](docs/port-plan.md).
+
+## Playing
+
+```
+cargo run --release -p kq1-pcjr --bin kq-pcjr
+```
+
+`kq-pcjr` finds the game's disk next to itself, in the current folder or in
+`original/` (or give its path). It plays in a window at the PCjr's speed, with its
+sound. The keys are the PCjr's: the arrows and Home, PgUp, End and PgDn walk (the same
+key again stops), typing enters commands, Enter submits, Tab shows the inventory, Esc
+pauses, 0 jumps. F11 and F12 make the game slower and faster, F8 turns the sound off
+and on, and Alt+Enter is full screen. Saves go on the Play diskette, which the game
+makes itself ("copy disk"); it is kept as `KQ1 Play.img` next to the game's disk.
+When the game asks for the Play or the Master diskette, it is put in for you: press
+Enter as asked.
+
+The text is in the port's own font: the PCjr's is in its ROM, which isn't shipped.
+`--font FILE` uses a dump of yours.
 
 ## What you need
 
