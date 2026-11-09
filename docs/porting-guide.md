@@ -98,7 +98,7 @@ crate is `kq1-pcjr`.
 
 Follow [CONTRIBUTING.md](../CONTRIBUTING.md) for commits, pull requests and branch
 protection. Changes go through pull requests with conventional titles. `main` requires
-five checks. Release pull requests get their checks dispatched by the Release workflow.
+five checks. Release pull requests run them too, and merge themselves once they pass.
 
 ## The order of work
 

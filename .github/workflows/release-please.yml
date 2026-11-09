@@ -1,13 +1,13 @@
 # Every push to main: release-please keeps a release pull request open with the next
 # versions and changelogs (from the conventional commits), and each port's player is
 # built for Windows and Linux (downloadable from the run): kq-<port>-<version>-<platform>
-# archives, the player in each as kq. Merging the release pull request tags
-# the release; the builds are then attached to the GitHub release too.
+# archives, the player in each as kq. The release pull request merges itself once its
+# checks pass (auto-merge); that push tags the release here, and the builds are then
+# attached to the GitHub release too.
 #
-# GitHub starts no workflows for a pull request this workflow's token opens or
-# updates, except through workflow_dispatch. So when the release pull request changes,
-# CI and the title check are dispatched on its branch, which gives its commit the
-# required checks.
+# release-please uses its own token, RELEASE_PLEASE_TOKEN (CONTRIBUTING.md), not this
+# workflow's: GitHub starts no workflows for what GITHUB_TOKEN does, so the release pull
+# request would get no checks, and a merge made with it wouldn't start this workflow.
 name: Release
 
 on:
@@ -17,7 +17,6 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  actions: write
 
 jobs:
   release-please:
@@ -31,17 +30,18 @@ jobs:
       - uses: googleapis/release-please-action@v5
         id: rp
         with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-      - name: Run the checks on the release pull request
+      # Merge the release pull request as soon as its checks pass. With the same token,
+      # so that the merge, made as its owner, starts this workflow, which tags the
+      # release.
+      - name: Auto-merge the release pull request
         if: steps.rp.outputs.prs_created == 'true' && steps.rp.outputs.pr != ''
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           PR: ${{ steps.rp.outputs.pr }}
-        run: |
-          BRANCH=$(jq -r .headBranchName <<<"$PR")
-          gh workflow run ci.yml -R "$GITHUB_REPOSITORY" --ref "$BRANCH"
-          gh workflow run pr-title.yml -R "$GITHUB_REPOSITORY" --ref "$BRANCH"
+        run: gh pr merge "$(jq -r .number <<<"$PR")" -R "$GITHUB_REPOSITORY" --auto --squash
 
   build:
     name: kq-apple2 (${{ matrix.name }})

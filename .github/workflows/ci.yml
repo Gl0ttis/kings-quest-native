@@ -6,8 +6,6 @@ on:
   pull_request:
   push:
     branches: [main]
-  # The release pull request's checks (release-please.yml).
-  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
