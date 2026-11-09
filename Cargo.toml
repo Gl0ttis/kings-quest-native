@@ -3,6 +3,7 @@
 resolver = "2"
 members = [
     "crates/kq1-formats",
+    "crates/kq1-frontend",
     "ports/apple2",
     "ports/apple2/refemu",
     "ports/pcjr",

@@ -83,7 +83,7 @@ plugin isn't used: it would bump them, as crates that depend on a released port.
 port's entry in the root `Cargo.lock` is updated by an `extra-files` rule in
 `release-please-config.json` instead.
 
-The shared crates under `crates/` (`kq1-formats`) aren't released either: release-please
+The shared crates under `crates/` (`kq1-formats`, `kq1-frontend`) aren't released either: release-please
 can't attach them to the ports' releases, so a change there that players should get
 goes out with the port's next `feat` or `fix` (say so in that commit's body).
 

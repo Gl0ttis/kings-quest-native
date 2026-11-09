@@ -53,6 +53,7 @@
 //! `<L>` `<R>` the arrows), and the screen at --until is written as a PNG, with the
 //! text on it printed.
 
+use kq1_frontend::{fullscreen::Fullscreen, hook};
 use kq1_pcjr::disk::{Disk, IMAGE_LEN};
 use kq1_pcjr::engine::clock::{Clock, Event, Joystick, Replay, CPU_HZ, CYCLES_PER_TICK};
 use kq1_pcjr::engine::screen::{HEIGHT, WIDTH};
@@ -70,8 +71,6 @@ const TITLE: &str = "King's Quest (IBM PCjr, native engine)";
 const OUT_W: usize = 320;
 const OUT_H: usize = 200;
 const AUDIO_RATE: u32 = 44_100;
-
-type Link = Arc<Mutex<Shared>>;
 
 /// Between the window, the engine and the sound.
 struct Shared {
@@ -898,8 +897,13 @@ fn main() {
         },
     )
     .unwrap_or_else(|e| fatal(&format!("no window: {e}")));
-    hook::size_window(&window, scale as u32);
-    hook::install(&window, shared.clone());
+    hook::size_window(&window, 320 * scale as u32, 240 * scale as u32);
+    let l = shared.clone();
+    hook::install(
+        &window,
+        hook::Picture { width: OUT_W, height: OUT_H, aspect: (4, 3) },
+        Box::new(move |buf| buf.copy_from_slice(&l.lock().unwrap().rgb)),
+    );
     window.set_input_callback(Box::new(Chars(shared.clone())));
     let mut full = Fullscreen::default();
     let mut want_full = start_fullscreen;
@@ -973,486 +977,25 @@ fn main() {
     shared.lock().unwrap().quit = true;
 }
 
-/// Borderless full screen on the window's monitor (Alt+Enter), and back.
-#[derive(Default)]
-struct Fullscreen {
-    #[cfg(windows)]
-    saved: Option<(isize, win32::Rect)>,
-    #[cfg(target_os = "linux")]
-    on: bool,
-}
-
-#[cfg(windows)]
-mod win32 {
-    use std::ffi::c_void;
-    #[repr(C)]
-    #[derive(Default, Clone, Copy)]
-    pub struct Rect {
-        pub left: i32,
-        pub top: i32,
-        pub right: i32,
-        pub bottom: i32,
-    }
-    #[repr(C)]
-    pub struct MonitorInfo {
-        pub size: u32,
-        pub monitor: Rect,
-        pub work: Rect,
-        pub flags: u32,
-    }
-    #[link(name = "user32")]
-    extern "system" {
-        pub fn GetWindowLongPtrW(h: *mut c_void, index: i32) -> isize;
-        pub fn SetWindowLongPtrW(h: *mut c_void, index: i32, value: isize) -> isize;
-        pub fn GetWindowRect(h: *mut c_void, r: *mut Rect) -> i32;
-        pub fn MonitorFromWindow(h: *mut c_void, flags: u32) -> *mut c_void;
-        pub fn GetMonitorInfoW(m: *mut c_void, info: *mut MonitorInfo) -> i32;
-        pub fn SetWindowPos(h: *mut c_void, after: *mut c_void, x: i32, y: i32, cx: i32, cy: i32, flags: u32) -> i32;
-    }
-    pub const GWL_STYLE: i32 = -16;
-    pub const WS_OVERLAPPEDWINDOW: isize = 0x00CF_0000;
-    pub const WS_POPUP: isize = 0x8000_0000;
-    pub const MONITOR_DEFAULTTONEAREST: u32 = 2;
-    pub const SWP_NOZORDER: u32 = 0x0004;
-    pub const SWP_FRAMECHANGED: u32 = 0x0020;
-    pub const SWP_NOOWNERZORDER: u32 = 0x0200;
-}
-
-impl Fullscreen {
-    #[cfg(windows)]
-    fn toggle(&mut self, win: &mut Window) {
-        use win32::*;
-        let h = win.get_window_handle();
-        unsafe {
-            match self.saved.take() {
-                None => {
-                    let style = GetWindowLongPtrW(h, GWL_STYLE);
-                    let mut r = Rect::default();
-                    GetWindowRect(h, &mut r);
-                    let mut mi = MonitorInfo {
-                        size: std::mem::size_of::<MonitorInfo>() as u32,
-                        monitor: Rect::default(),
-                        work: Rect::default(),
-                        flags: 0,
-                    };
-                    if GetMonitorInfoW(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST), &mut mi) == 0 {
-                        return;
-                    }
-                    SetWindowLongPtrW(h, GWL_STYLE, (style & !WS_OVERLAPPEDWINDOW) | WS_POPUP);
-                    let m = mi.monitor;
-                    SetWindowPos(
-                        h,
-                        std::ptr::null_mut(),
-                        m.left,
-                        m.top,
-                        m.right - m.left,
-                        m.bottom - m.top,
-                        SWP_NOOWNERZORDER | SWP_FRAMECHANGED,
-                    );
-                    self.saved = Some((style, r));
-                    win.set_cursor_visibility(false);
-                }
-                Some((style, r)) => {
-                    SetWindowLongPtrW(h, GWL_STYLE, style);
-                    SetWindowPos(
-                        h,
-                        std::ptr::null_mut(),
-                        r.left,
-                        r.top,
-                        r.right - r.left,
-                        r.bottom - r.top,
-                        SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED,
-                    );
-                    win.set_cursor_visibility(true);
-                }
-            }
-        }
-    }
-    /// X11: ask the window manager to toggle `_NET_WM_STATE_FULLSCREEN`; minifb then
-    /// stretches the picture to the new size, keeping its shape.
-    #[cfg(target_os = "linux")]
-    fn toggle(&mut self, win: &mut Window) {
-        use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
-        use x11_dl::xlib;
-        let (Ok(dh), Ok(wh)) = (win.display_handle(), win.window_handle()) else { return };
-        let (RawDisplayHandle::Xlib(d), RawWindowHandle::Xlib(w)) = (dh.as_raw(), wh.as_raw()) else {
-            println!("full screen needs X11");
-            return;
-        };
-        let Some(display) = d.display else { return };
-        let Ok(x) = xlib::Xlib::open() else { return };
-        let display = display.as_ptr() as *mut xlib::Display;
-        // SAFETY: the display and window are minifb's own, alive while `win` is.
-        unsafe {
-            let state = (x.XInternAtom)(display, c"_NET_WM_STATE".as_ptr(), xlib::False);
-            let full = (x.XInternAtom)(display, c"_NET_WM_STATE_FULLSCREEN".as_ptr(), xlib::False);
-            let mut ev: xlib::XEvent = std::mem::zeroed();
-            ev.client_message.type_ = xlib::ClientMessage;
-            ev.client_message.window = w.window;
-            ev.client_message.message_type = state;
-            ev.client_message.format = 32;
-            ev.client_message.data.set_long(0, 2); // _NET_WM_STATE_TOGGLE
-            ev.client_message.data.set_long(1, full as i64);
-            ev.client_message.data.set_long(3, 1);
-            let root = (x.XDefaultRootWindow)(display);
-            (x.XSendEvent)(
-                display,
-                root,
-                xlib::False,
-                xlib::SubstructureRedirectMask | xlib::SubstructureNotifyMask,
-                &mut ev,
-            );
-            (x.XFlush)(display);
-        }
-        self.on = !self.on;
-        win.set_cursor_visibility(!self.on);
-    }
-    #[cfg(not(any(windows, target_os = "linux")))]
-    fn toggle(&mut self, _win: &mut Window) {
-        println!("full screen is only implemented on Windows and Linux (X11)");
-    }
-}
-
-/// Double each line so the 560x192 frame keeps roughly the original shape.
+/// Report an error that stops kq before its window opens, and exit (in a message box
+/// too on Windows).
 fn fatal(msg: &str) -> ! {
-    eprintln!("{msg}");
-    #[cfg(windows)]
-    {
-        #[link(name = "user32")]
-        unsafe extern "system" {
-            fn MessageBoxW(hwnd: isize, text: *const u16, caption: *const u16, kind: u32) -> i32;
-        }
-        let wide = |s: &str| s.encode_utf16().chain([0]).collect::<Vec<u16>>();
-        let (text, caption) = (wide(msg), wide("King's Quest (PCjr)"));
-        // SAFETY: both strings are NUL-terminated and outlive the call. 0x10: MB_ICONERROR.
-        unsafe { MessageBoxW(0, text.as_ptr(), caption.as_ptr(), 0x10) };
-    }
-    std::process::exit(1)
+    kq1_frontend::fatal("King's Quest (PCjr)", msg)
 }
 
-/// The joystick through Windows (winmm: any game controller), as positions 0.0-1.0
-/// across each axis; the hat (d-pad) pushes to the edges. None if there's none.
-#[cfg(windows)]
+/// The joystick (kq1_frontend::joystick: winmm on Windows, /dev/input/js0 on Linux) as
+/// positions 0.0-1.0 across each axis; the hat (d-pad) pushes to the edges.
 mod joystick {
     use kq1_pcjr::engine::clock::Joystick;
 
-    #[repr(C)]
-    #[derive(Default)]
-    struct JoyInfoEx {
-        size: u32,
-        flags: u32,
-        x: u32,
-        y: u32,
-        z: u32,
-        r: u32,
-        u: u32,
-        v: u32,
-        buttons: u32,
-        button_number: u32,
-        pov: u32,
-        reserved1: u32,
-        reserved2: u32,
-    }
-    #[link(name = "winmm")]
-    extern "system" {
-        fn joyGetPosEx(id: u32, info: *mut JoyInfoEx) -> u32;
-    }
-
     pub fn read() -> Option<Joystick> {
-        let mut j = JoyInfoEx { size: std::mem::size_of::<JoyInfoEx>() as u32, flags: 0xFF, ..Default::default() };
-        if unsafe { joyGetPosEx(0, &mut j) } != 0 {
-            return None;
-        }
-        let (mut x, mut y) = (j.x.min(65535) as f64 / 65535.0, j.y.min(65535) as f64 / 65535.0);
-        if j.pov != 0xFFFF {
-            let a = (j.pov as f64 / 100.0).to_radians();
+        let s = kq1_frontend::joystick::read()?;
+        let (mut x, mut y) = (s.axes.0 as f64 / 65535.0, s.axes.1 as f64 / 65535.0);
+        if let Some(degrees) = s.hat {
+            let a = degrees.to_radians();
             (x, y) = (0.5 + 0.5 * a.sin(), 0.5 - 0.5 * a.cos());
         }
-        Some(Joystick::from_position(x, y, [j.buttons & 1 != 0, j.buttons & 2 != 0]))
-    }
-}
-
-/// The joystick through Linux's joystick device (`/dev/input/js0`, any game
-/// controller): its first two axes (or the hat, axes 6 and 7, when pushed) and buttons
-/// 1 and 2. The device is opened at the first read and reopened if it goes away.
-#[cfg(target_os = "linux")]
-mod joystick {
-    use kq1_pcjr::engine::clock::Joystick;
-    use std::{fs::File, io::Read, os::unix::fs::OpenOptionsExt, sync::Mutex};
-
-    struct State {
-        dev: Option<File>,
-        axes: [i16; 8],
-        buttons: [bool; 2],
-    }
-    static STATE: Mutex<State> = Mutex::new(State { dev: None, axes: [0; 8], buttons: [false; 2] });
-    /// O_NONBLOCK.
-    const NONBLOCK: i32 = 0o4000;
-
-    pub fn read() -> Option<Joystick> {
-        let mut st = STATE.lock().unwrap();
-        if st.dev.is_none() {
-            st.dev = std::fs::OpenOptions::new().read(true).custom_flags(NONBLOCK).open("/dev/input/js0").ok();
-        }
-        let dev = st.dev.as_mut()?;
-        // struct js_event { u32 time; i16 value; u8 type; u8 number }, 8 bytes each.
-        let mut buf = [0u8; 8 * 64];
-        let mut events = Vec::new();
-        loop {
-            match dev.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => events
-                    .extend(buf[..n - n % 8].chunks(8).map(|e| (i16::from_le_bytes([e[4], e[5]]), e[6] & 0x7F, e[7]))),
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                Err(_) => {
-                    st.dev = None;
-                    return None;
-                }
-            }
-        }
-        for (value, kind, number) in events {
-            match kind {
-                1 if (number as usize) < 2 => st.buttons[number as usize] = value != 0,
-                2 if (number as usize) < 8 => st.axes[number as usize] = value,
-                _ => {}
-            }
-        }
-        let pos = |v: i16| (v as f64 + 32768.0) / 65535.0;
-        let (hx, hy) = (st.axes[6], st.axes[7]);
-        let (x, y) = if hx != 0 || hy != 0 { (pos(hx), pos(hy)) } else { (pos(st.axes[0]), pos(st.axes[1])) };
-        Some(Joystick::from_position(x, y, st.buttons))
-    }
-}
-
-#[cfg(not(any(windows, target_os = "linux")))]
-mod joystick {
-    pub fn read() -> Option<kq1_pcjr::engine::clock::Joystick> {
-        None
-    }
-}
-
-/// A hook in front of minifb's window procedure (Windows): Alt+Enter, and all painting,
-/// including while the window is dragged or resized, when Windows runs its own loop and
-/// the main loop (and minifb) wait.
-#[cfg(windows)]
-mod hook {
-    use super::{screen_rect, Link, OUT_H, OUT_W};
-    use std::{cell::RefCell, ffi::c_void};
-    type Hwnd = *mut c_void;
-    type WndProc = unsafe extern "system" fn(Hwnd, u32, usize, isize) -> isize;
-
-    #[repr(C)]
-    #[derive(Default)]
-    struct Rect {
-        left: i32,
-        top: i32,
-        right: i32,
-        bottom: i32,
-    }
-    #[repr(C)]
-    struct BitmapInfoHeader {
-        size: u32,
-        width: i32,
-        height: i32,
-        planes: u16,
-        bit_count: u16,
-        compression: u32,
-        size_image: u32,
-        x_ppm: i32,
-        y_ppm: i32,
-        clr_used: u32,
-        clr_important: u32,
-    }
-    #[link(name = "user32")]
-    extern "system" {
-        fn SetWindowLongPtrW(h: Hwnd, index: i32, value: isize) -> isize;
-        fn CallWindowProcW(prev: isize, h: Hwnd, msg: u32, w: usize, l: isize) -> isize;
-        fn SetTimer(h: Hwnd, id: usize, ms: u32, f: *const c_void) -> usize;
-        fn KillTimer(h: Hwnd, id: usize) -> i32;
-        fn GetClientRect(h: Hwnd, r: *mut Rect) -> i32;
-        fn GetDC(h: Hwnd) -> *mut c_void;
-        fn ReleaseDC(h: Hwnd, dc: *mut c_void) -> i32;
-        fn FillRect(dc: *mut c_void, r: *const Rect, brush: *mut c_void) -> i32;
-        fn ValidateRect(h: Hwnd, r: *const Rect) -> i32;
-        fn SetProcessDpiAwarenessContext(ctx: isize) -> i32;
-        fn GetDpiForWindow(h: Hwnd) -> u32;
-        fn GetWindowRect(h: Hwnd, r: *mut Rect) -> i32;
-        fn SetWindowPos(h: Hwnd, after: Hwnd, x: i32, y: i32, cx: i32, cy: i32, flags: u32) -> i32;
-    }
-    #[link(name = "gdi32")]
-    extern "system" {
-        fn SetStretchBltMode(dc: *mut c_void, mode: i32) -> i32;
-        fn StretchDIBits(
-            dc: *mut c_void,
-            x: i32,
-            y: i32,
-            w: i32,
-            h: i32,
-            sx: i32,
-            sy: i32,
-            sw: i32,
-            sh: i32,
-            bits: *const c_void,
-            info: *const BitmapInfoHeader,
-            usage: u32,
-            rop: u32,
-        ) -> i32;
-        fn GetStockObject(i: i32) -> *mut c_void;
-    }
-    const GWLP_WNDPROC: i32 = -4;
-    const WM_PAINT: u32 = 0x000F;
-    const WM_ERASEBKGND: u32 = 0x0014;
-    const WM_SYSKEYDOWN: u32 = 0x0104;
-    const WM_SYSCHAR: u32 = 0x0106;
-    const WM_TIMER: u32 = 0x0113;
-    const WM_ENTERSIZEMOVE: u32 = 0x0231;
-    const WM_EXITSIZEMOVE: u32 = 0x0232;
-    const VK_RETURN: usize = 0x0D;
-    const TIMER: usize = 0x4B51;
-
-    struct Hook {
-        prev: isize,
-        link: Link,
-        alt_enter: bool,
-        frame: Vec<u32>,
-    }
-    thread_local! {
-        static HOOK: RefCell<Option<Hook>> = const { RefCell::new(None) };
-    }
-
-    /// Per-monitor DPI awareness (before any window exists).
-    pub fn dpi_aware() {
-        unsafe { SetProcessDpiAwarenessContext(-4) };
-    }
-
-    /// Make the client area `scale` times the frame at the window's display scale.
-    pub fn size_window(win: &minifb::Window, scale: u32) {
-        let h = win.get_window_handle();
-        unsafe {
-            let dpi = GetDpiForWindow(h).max(96) as i32;
-            let (mut wr, mut cr) = (Rect::default(), Rect::default());
-            GetWindowRect(h, &mut wr);
-            GetClientRect(h, &mut cr);
-            let cw = 320 * scale as i32 * dpi / 96;
-            let ch = 240 * scale as i32 * dpi / 96;
-            let bw = (wr.right - wr.left) - cr.right;
-            let bh = (wr.bottom - wr.top) - cr.bottom;
-            SetWindowPos(h, std::ptr::null_mut(), 0, 0, cw + bw, ch + bh, 0x0002 | 0x0004);
-            // NOMOVE | NOZORDER
-        }
-    }
-
-    pub fn install(win: &minifb::Window, link: Link) {
-        let h = win.get_window_handle();
-        let prev = unsafe { SetWindowLongPtrW(h, GWLP_WNDPROC, proc as WndProc as usize as isize) };
-        HOOK.with(|k| *k.borrow_mut() = Some(Hook { prev, link, alt_enter: false, frame: vec![0; OUT_W * OUT_H] }));
-    }
-
-    /// Alt+Enter was pressed since the last call.
-    pub fn take_alt_enter() -> bool {
-        HOOK.with(|k| k.borrow_mut().as_mut().is_some_and(|h| std::mem::take(&mut h.alt_enter)))
-    }
-
-    unsafe extern "system" fn proc(h: Hwnd, msg: u32, wp: usize, lp: isize) -> isize {
-        // SAFETY: Win32 calls on this thread's own window handle.
-        unsafe {
-            // The borrow ends before minifb's procedure runs: it can re-enter this one.
-            let prev = HOOK.with(|k| k.borrow().as_ref().map_or(0, |k| k.prev));
-            match msg {
-                WM_SYSKEYDOWN if wp == VK_RETURN => {
-                    if lp & (1 << 30) == 0 {
-                        HOOK.with(|k| k.borrow_mut().as_mut().map(|k| k.alt_enter = true));
-                    }
-                    return 0;
-                }
-                // The paint covers the whole window, so no erase (it would flicker).
-                WM_ERASEBKGND => return 1,
-                // Alt+key characters: none go to the game (Alt+Enter is the front end's).
-                WM_SYSCHAR => return 0,
-                // Windows runs its own loop while the window is dragged or resized; a timer
-                // keeps the picture coming meanwhile.
-                WM_ENTERSIZEMOVE => {
-                    SetTimer(h, TIMER, 15, std::ptr::null());
-                }
-                WM_EXITSIZEMOVE => {
-                    KillTimer(h, TIMER);
-                }
-                WM_TIMER if wp == TIMER => {
-                    paint(h);
-                    return 0;
-                }
-                // All painting is done here (minifb's own stretch misplaces the picture
-                // in a full-screen window).
-                WM_PAINT => {
-                    paint(h);
-                    ValidateRect(h, std::ptr::null());
-                    return 0;
-                }
-                _ => {}
-            }
-            CallWindowProcW(prev, h, msg, wp, lp)
-        }
-    }
-
-    /// Draw the engine's latest frame, keeping its shape, with black bars.
-    fn paint(h: Hwnd) {
-        // SAFETY: GDI calls on this thread's own window and device context; the frame
-        // buffer outlives the call.
-        HOOK.with(|k| unsafe {
-            let mut k = k.borrow_mut();
-            let Some(k) = k.as_mut() else { return };
-            {
-                let s = k.link.lock().unwrap();
-                k.frame.copy_from_slice(&s.rgb);
-            }
-            let mut r = Rect::default();
-            GetClientRect(h, &mut r);
-            let (cw, ch) = (r.right, r.bottom);
-            if cw <= 0 || ch <= 0 {
-                return;
-            }
-            let (bw, bh) = (OUT_W as i32, OUT_H as i32);
-            // The 320 × 200 screen stretched to its 4:3 rectangle in one step.
-            let (x, y, w, hh) = screen_rect(cw as usize, ch as usize);
-            let (x, y, w, hh) = (x as i32, y as i32, w as i32, hh as i32);
-            let dc = GetDC(h);
-            SetStretchBltMode(dc, 3); // COLORONCOLOR: whole pixels, never blended
-            let black = GetStockObject(4);
-            for b in [
-                Rect { left: 0, top: 0, right: cw, bottom: y },
-                Rect { left: 0, top: y + hh, right: cw, bottom: ch },
-                Rect { left: 0, top: 0, right: x, bottom: ch },
-                Rect { left: x + w, top: 0, right: cw, bottom: ch },
-            ] {
-                if b.right > b.left && b.bottom > b.top {
-                    FillRect(dc, &b, black);
-                }
-            }
-            let info = BitmapInfoHeader {
-                size: 40,
-                width: bw,
-                height: -bh,
-                planes: 1,
-                bit_count: 32,
-                compression: 0,
-                size_image: 0,
-                x_ppm: 0,
-                y_ppm: 0,
-                clr_used: 0,
-                clr_important: 0,
-            };
-            StretchDIBits(dc, x, y, w, hh, 0, 0, bw, bh, k.frame.as_ptr() as *const c_void, &info, 0, 0x00CC_0020);
-            ReleaseDC(h, dc);
-        });
-    }
-}
-#[cfg(not(windows))]
-mod hook {
-    pub fn dpi_aware() {}
-    pub fn size_window(_win: &minifb::Window, _scale: u32) {}
-    pub fn install(_win: &minifb::Window, _link: super::Link) {}
-    pub fn take_alt_enter() -> bool {
-        false
+        Some(Joystick::from_position(x, y, s.buttons))
     }
 }
 

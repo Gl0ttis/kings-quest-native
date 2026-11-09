@@ -25,15 +25,16 @@ kq1-formats = { path = "../../crates/kq1-formats" }
 # X11 only on Linux (Wayland desktops run it through XWayland): X11 allows full screen.
 minifb = { version = "0.29.0", optional = true, default-features = false, features = ["x11"] }
 
-# Linux: sound (cpal) and full screen (Xlib through the window's handles).
+# The platform side the players share (crates/kq1-frontend), with the player.
+kq1-frontend = { path = "../../crates/kq1-frontend", optional = true }
+
+# Linux: sound (cpal).
 [target.'cfg(target_os = "linux")'.dependencies]
 cpal = { version = "0.15", optional = true }
-x11-dl = { version = "2.21", optional = true }
-raw-window-handle = { version = "0.6", optional = true }
 
 [features]
 default = ["player"]
-player = ["dep:minifb", "dep:cpal", "dep:x11-dl", "dep:raw-window-handle"]
+player = ["dep:minifb", "dep:cpal", "dep:kq1-frontend"]
 
 [[bin]]
 name = "kqextract"
