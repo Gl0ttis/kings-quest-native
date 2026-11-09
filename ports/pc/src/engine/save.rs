@@ -27,6 +27,9 @@ const GLOBALS_AT: usize = ACTORS_AT + 30 * RECORDS;
 pub const SAVE_LEN: usize = GLOBALS_AT + 0x24;
 /// Where the port's earlier saves said a view was: 2000h + 100h × its number.
 const VIEW_BASE: u16 = 0x2000;
+/// The stack pointer the start-up saves at DS:0000 (`$53`): ([1168h] − DS) × 16, with
+/// [1168h] = 1300h and DS = 0571h.
+const START_SP: u16 = 0xD8F0;
 /// The background save offset of each slot (DS:1320).
 pub const SAVE_OFFSETS: usize = 0x1320;
 /// "Games may only be saved on your Play diskette.", "Disk Write Error!...".
@@ -47,12 +50,11 @@ pub struct RestartNow;
 
 impl World {
     /// The 3 sectors of slot `slot` (FF: the initial state).
+    /// On the PC (`$07DA`): 3Fh + 3 × slot, the initial state (FF, taken as 1Ah) at
+    /// 8Dh, the data area's first sector.
     fn slot_sector(slot: u8) -> usize {
-        if slot == 0xFF {
-            0x27F
-        } else {
-            0x282 + 3 * slot as usize
-        }
+        let n = if slot == 0xFF { 0x1A } else { slot as usize };
+        0x3F + 3 * n
     }
 
     // ---- The save block.
@@ -308,17 +310,19 @@ impl World {
     }
 
     /// `$078E`: save to slot `slot`. Before a real slot, the disk's boot sector is
-    /// written with the start of the engine's data segment (it fails on the Master,
-    /// which is write-protected). Writing on the Master fails with "Games may only be
+    /// written with the start of the engine's data segment, DS:0000-01FF, whose first
+    /// word is the stack pointer the start-up keeps there (`$53`: D8F0h) (it fails on
+    /// the Master, which is write-protected). Writing on the Master fails with "Games may only be
     /// saved on your Play diskette."; another error asks for a key and tries again.
     fn save_slot(&mut self, slot: u8) {
         self.checkpoint(0x078E);
         if slot != 0xFF {
-            let mut boot: Vec<u8> = (0..512u16).map(|i| self.res.code_byte(0x4E30 + i)).collect();
+            let mut boot: Vec<u8> = self.res.ds[..512].to_vec();
+            boot[..2].copy_from_slice(&START_SP.to_le_bytes());
             self.disk(true, 0, 1, &mut boot);
         }
-        // $07A0: the BIOS's horizontal screen position goes in the save (DS:1881).
-        self.g.hpos = self.g.bios_hpos;
+        // $07A0: the screen position goes in the save (DS:1881): on the PC the game's own
+        // (`$19D3` reads DS:1881 back), where the PCjr takes the BIOS's.
         let mut b = self.encode(slot);
         b.resize(3 * 512, 0);
         self.g.keys_on = false;
@@ -532,11 +536,11 @@ impl World {
 
     // ---- The Play diskette.
 
-    /// `$0488`: op 42: make a Play diskette. On "y": a blank diskette is formatted and
-    /// the Master's data (sectors 63-641) copied to it in three passes, through memory
-    /// (the second part of each pass through the video pages), the disks swapped by the
-    /// player as asked; then the game is saved to slot 0, and the game restarts and
-    /// restores it.
+    /// `$0488`: op 42: make a Play diskette. On "y" (read from the BIOS, `$04B3`): a blank
+    /// diskette is formatted and the Master's data area (sectors 141-719) copied to it in
+    /// three passes, through memory (the second part of each pass at segment 1000h,
+    /// over the picture buffer), the disks swapped by the player as asked; then the
+    /// game is saved to slot 0, and the game restarts and restores it.
     pub fn make_play_diskette(&mut self) {
         self.g.text_attr = 0x0F;
         self.enter_text_mode();
@@ -564,23 +568,23 @@ impl World {
         std::panic::panic_any(RestartNow);
     }
 
-    /// `$0552`: the copy: three passes of 69 + 124 sectors from sector 63, the first
-    /// pass formatting the Play diskette.
+    /// `$0552`: the copy: three passes of 65 + 128 sectors from sector 141 (`$04DE`),
+    /// the first pass formatting the Play diskette (`$062C`).
     fn copy_master(&mut self) {
-        let mut next = 0x3Fusize;
+        let mut next = 0x8Dusize;
         let mut passes = 4u8;
         loop {
-            let (at1, at2) = (next, next + 0x45);
+            let (at1, at2) = (next, next + 0x41);
             self.prompt_enter(INSERT_MASTER);
             self.verify_master();
-            self.read_sectors_counted(0x45);
+            self.read_sectors_counted(0x41);
             let mut chunk1 = Vec::new();
-            self.disk(false, at1, 0x45, &mut chunk1);
-            self.read_sectors_counted(0x7C);
+            self.disk(false, at1, 0x41, &mut chunk1);
+            self.read_sectors_counted(0x80);
             let mut chunk2 = Vec::new();
-            self.disk(false, at2, 0x7C, &mut chunk2);
-            // The second part is read into segment 1000h: the work page, then the
-            // displayed page.
+            self.disk(false, at2, 0x80, &mut chunk2);
+            // The second part is read into segment 1000h (`$05C7`), 64 KB, over the
+            // picture buffer at 1400h.
             self.screen.load_pages(&chunk2);
             self.prompt_enter(INSERT_PLAY);
             if passes == 4 {
@@ -588,9 +592,9 @@ impl World {
                 passes -= 1;
                 self.format_play();
             }
-            self.write_retrying(at1, 0x45, &mut chunk1);
-            self.write_retrying(at2, 0x7C, &mut chunk2);
-            next = at2 + 0x7C;
+            self.write_retrying(at1, 0x41, &mut chunk1);
+            self.write_retrying(at2, 0x80, &mut chunk2);
+            next = at2 + 0x80;
             passes -= 1;
             if passes == 0 {
                 break;
@@ -608,20 +612,22 @@ impl World {
         }
     }
 
-    /// `PCjr $3D0F`: a prompt, then Enter.
+    /// A prompt, then Enter: on the PC through the Enter wait (`$0785`, a checkpoint at
+    /// each key), where the PCjr reads the keys from the BIOS directly.
     fn prompt_enter(&mut self, at: usize) {
         self.print_ds(at);
-        while self.blocking_key() as u8 != 0x0D {}
+        self.wait_enter();
     }
 
-    /// `$05E8`: is the disk in the drive the Master? Its boot sector's second half is
-    /// the resource table; until it is, "insert the Master".
+    /// `$05E8`: is the disk in the drive the Master? Its sectors 10-11 are the resource
+    /// table the engine holds at CS:0088 (all 1,024 bytes compared); until they are,
+    /// "insert the Master".
     fn verify_master(&mut self) {
         loop {
-            self.read_sectors_counted(1);
+            self.read_sectors_counted(2);
             let mut s = Vec::new();
-            self.disk(false, 0, 1, &mut s);
-            if s[0x100..0x200] == self.res.code[0x100..0x200] {
+            self.disk(false, 10, 2, &mut s);
+            if s[..0x400] == self.res.code[0x88..0x488] {
                 return;
             }
             self.clear_text_screen(true);

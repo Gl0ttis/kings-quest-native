@@ -1,7 +1,7 @@
 //! The engine against the original, pass by pass: each reference route's event log
-//! (refemu-pcjr `--events`: the timer ticks and keys, against the checkpoints) is
+//! (refemu-pc `--events`: the timer ticks and keys, against the checkpoints) is
 //! replayed in the port, and every pass's state must equal the original's trace
-//! (refemu-pcjr `--trace`), and its screen the original's (kqframes-pcjr `--hashes`).
+//! (refemu-pc `--trace`), and its screen the original's (kqframes-pc `--hashes`).
 //! Skipped without the original's disk in original/.
 
 use kq1_pc::disk::Disk;
@@ -29,9 +29,11 @@ fn replay_with(disk: &Disk, name: &str, play: Option<Vec<u8>>) -> (usize, World)
     let events = std::fs::read_to_string(dir.join(format!("{name}.events"))).expect("the event log");
     let trace = std::fs::read_to_string(dir.join(format!("{name}.csv"))).expect("the trace");
     let reference: Vec<Vec<&str>> = trace.lines().skip(1).map(|l| l.split(',').collect()).collect();
-    // The screen at each pass (refemu's kqframes-pcjr --hashes), where recorded.
+    // The screen at each pass (refemu's kqframes-pc --hashes), where recorded.
+    // KQ_STATE_ONLY: leave the screens out (while the port's screen isn't the PC's yet).
     let frames: Option<Vec<u64>> = std::fs::read_to_string(dir.join(format!("{name}.frames")))
         .ok()
+        .filter(|_| std::env::var_os("KQ_STATE_ONLY").is_none())
         .map(|t| t.lines().map(|l| u64::from_str_radix(l, 16).expect("a frame hash")).collect());
     let mut w = World::new(disk, Box::new(Replay::parse(&events))).expect("engine");
     if let Some(img) = play {
@@ -58,7 +60,7 @@ fn replay_with(disk: &Disk, name: &str, play: Option<Vec<u8>>) -> (usize, World)
     if let (Some(orig), Some(port)) = (&frames, &w.frame_hashes) {
         assert_eq!(orig.len(), reference.len(), "{name}: a frame hash per pass");
         for (k, (a, b)) in orig.iter().zip(port).enumerate() {
-            assert_eq!(a, b, "{name}: the screen at pass {} differs (kqframes-pcjr shows how)", k + 1);
+            assert_eq!(a, b, "{name}: the screen at pass {} differs (kqframes-pc shows how)", k + 1);
         }
     }
     (reference.len(), w)
@@ -67,13 +69,13 @@ fn replay_with(disk: &Disk, name: &str, play: Option<Vec<u8>>) -> (usize, World)
 #[test]
 fn the_walk_route_matches_the_original() {
     let Some(disk) = original() else { return };
-    assert_eq!(replay(&disk, "walk_rooms_1_16"), 900);
+    assert_eq!(replay(&disk, "walk_rooms_1_16"), 781);
 }
 
 #[test]
 fn the_save_restore_route_matches_the_original() {
     let Some(disk) = original() else { return };
-    assert_eq!(replay(&disk, "save_restore"), 1000);
+    assert_eq!(replay(&disk, "save_restore"), 319);
 }
 
 /// The Play diskette is the original's: the save the port writes in the save/restore
@@ -81,61 +83,65 @@ fn the_save_restore_route_matches_the_original() {
 /// the hash is kept), view and cel pointers included, which the original's restore takes
 /// as they are. And on a fresh start the game restores it as the original did
 /// (routes/restore_play.plan, recorded with the original's own diskette from that run;
-/// in refemu-pcjr the original restores the port's diskette the same, every pass and
-/// screen).
+/// the PC's slot A is 3 sectors from 3Fh, compared whole).
+/// The hash of the original's slot A block in this route (refemu-pc's Play diskette).
+const BLOCK: u64 = 0x668e_f7c2_6f70_9057;
+
 #[test]
 fn the_play_diskette_is_the_originals() {
     use kq1_pc::engine::frame_hash;
     let Some(disk) = original() else { return };
     let (_, w) = replay_with(&disk, "save_restore", None);
     let play = w.disks[1].image.clone();
-    // Slot A: 3 sectors from 282h, of which the block (1,306 bytes) is read back.
-    let block = &play[0x282 * 512..0x282 * 512 + 1306];
-    assert_eq!(frame_hash(block), 0x3d28_e0df_c999_0095, "the save block differs from the original's");
-    assert_eq!(replay_with(&disk, "restore_play", Some(play)).0, 300);
+    // Slot A: 3 sectors from 3Fh (the PC's load_slot, `$0867`), of which the block
+    // (1,306 bytes) is read back; the rest of the sectors is whatever was in memory after
+    // it, which the game never reads.
+    let block = &play[0x3F * 512..0x3F * 512 + 1306];
+    assert_eq!(frame_hash(block), BLOCK, "the save block differs from the original's");
+    assert_eq!(replay_with(&disk, "restore_play", Some(play)).0, 155);
 }
 
-/// The death routes (routes/death_*.route, played by kqroute-pcjr): the river, the rock
+/// The death routes (routes/death_*.route, played by kqroute-pc): the river, the rock
 /// and the stream, each with 100 passes after the death.
 #[test]
 fn the_death_routes_match_the_original() {
     let Some(disk) = original() else { return };
-    for (name, passes) in [("death_river", 463), ("death_rock", 454), ("death_stream", 569)] {
+    for (name, passes) in [("death_river", 428), ("death_rock", 438), ("death_stream", 569)] {
         assert_eq!(replay(&disk, name), passes, "{name}");
     }
 }
 
-/// The gold key route (routes/gold_key.route, played by kqroute-pcjr): from the start to
-/// the fall from the clouds, through most of the game's scenes and 21744 passes.
+/// The gold key route (routes/gold_key.route, played by kqroute-pc): from the start to
+/// the fall from the clouds, through most of the game's scenes and 17151 passes.
 #[test]
 fn the_gold_key_route_matches_the_original() {
     let Some(disk) = original() else { return };
-    assert_eq!(replay(&disk, "gold_key"), 21744);
+    assert_eq!(replay(&disk, "gold_key"), 17151);
 }
 
-/// The maximum-score route (routes/max_score.route, played by kqroute-pcjr): the whole
-/// game, crowned with 158 points, 21368 passes.
+/// The maximum-score route (routes/max_score.route, played by kqroute-pc): the whole
+/// game, crowned with 158 points, 20501 passes.
 #[test]
 fn the_max_score_route_matches_the_original() {
     let Some(disk) = original() else { return };
-    assert_eq!(replay(&disk, "max_score"), 21368);
+    assert_eq!(replay(&disk, "max_score"), 20501);
 }
 
 /// The magic-ring route (routes/magic_ring.route): the max-score route with the ring
-/// put on and rubbed (invisible until the spell runs out, -3), ending at 155; 22460
+/// put on and rubbed (invisible until the spell runs out, -3), ending at 155; 21568
 /// passes.
 #[test]
 fn the_magic_ring_route_matches_the_original() {
     let Some(disk) = original() else { return };
-    assert_eq!(replay(&disk, "magic_ring"), 22460);
+    assert_eq!(replay(&disk, "magic_ring"), 21568);
 }
 
 /// The giant-with-the-sling route (routes/giant_sling.route): the giant killed with the
-/// sling instead of left to sleep, ending at 153; 20463 passes.
+/// sling instead of left to sleep, ending at 153; 19550 passes.
 #[test]
 fn the_giant_sling_route_matches_the_original() {
     let Some(disk) = original() else { return };
-    assert_eq!(replay(&disk, "giant_sling"), 20463);
+    assert_eq!(replay(&disk, "giant_sling"), 19550);
 }
 
 /// A clock for play without pacing: the timer's ticks by the game's time, keys at given
@@ -199,7 +205,7 @@ fn ego_walk(disk: &Disk, stick: bool, arrow: bool) -> (u8, u8) {
     (at22.get().expect("22 s reached"), w.actors[0].x)
 }
 
-/// The joystick (none in refemu-pcjr's PCjr): at rest it leaves Graham standing, and
+/// The joystick (none in refemu-pc's PCjr): at rest it leaves Graham standing, and
 /// pushed right it walks him right as far as the keypad's right arrow does (to the
 /// moat's bank under the tree).
 #[test]

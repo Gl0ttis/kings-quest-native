@@ -703,6 +703,13 @@ impl World {
     }
 
     fn event(&mut self, e: Event) {
+        // KQ_EVENTS=N: print each event fired at checkpoint N, with the keys and the ring.
+        if std::env::var("KQ_EVENTS").ok().and_then(|v| v.parse::<u64>().ok()) == Some(self.checkpoint) {
+            eprintln!(
+                "event {e:?} at checkpoint {}: keys {:?} ring {:?} keys_on {}",
+                self.checkpoint, self.keys, self.g.ring, self.g.keys_on
+            );
+        }
         match e {
             Event::Tick(_) => {
                 if self.timer_on {

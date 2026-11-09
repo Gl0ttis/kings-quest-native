@@ -76,7 +76,7 @@ pub struct Resources {
     pub ds: Rc<Vec<u8>>,
     /// The engine's code segment as loaded.
     pub code: Vec<u8>,
-    /// The vocabulary (DS:0016), decoded as the engine decodes it at start (`$1334`).
+    /// The vocabulary (DS:0004), as the parser reads it.
     pub vocab: Vec<u8>,
     scripts: RefCell<Vec<Option<Rc<Script>>>>,
     views: RefCell<Vec<Option<Rc<View>>>>,
@@ -214,30 +214,19 @@ impl Resources {
         Some(x)
     }
 
-    /// The engine's own byte at code-segment offset `a`, as it is while the game runs:
-    /// the random numbers come from the code, and past 4E30h from the start of the data
-    /// segment (the stack pointer saved at PCjr DS:000C, the decoded vocabulary).
+    /// A byte of the engine's code segment, as the random numbers read it (they walk the
+    /// code from 0B00h up to 4000h or 5000h, `$0F0A`, `$4150`; the data segment, from
+    /// 5110h, is beyond either).
     pub fn code_byte(&self, a: u16) -> u8 {
-        let a = a as usize;
-        if a < DATA {
-            return self.code.get(a).copied().unwrap_or(0);
-        }
-        let d = a - DATA;
-        match d {
-            0x0C => 0xD0,
-            0x0D => 0x9B,
-            0x14 => 0,
-            _ if (0x16..0x16 + self.vocab.len()).contains(&d) => self.vocab[d - 0x16],
-            _ => self.ds[d],
-        }
+        self.code.get(a as usize).copied().unwrap_or(0)
     }
 }
 
-/// `$1334`: the vocabulary at DS:0016 is stored rotated right by one bit; every byte up
-/// to and including the first BD followed by 00 (`{`, the end, once rotated back) is
-/// rotated left.
+/// The vocabulary, as the parser reads it: on the PC stored plainly at DS:0004, up to its
+/// end marker `{` (the PCjr's, the same 3,259 bytes, is rotated a bit and decoded at
+/// start).
 fn decode_vocab(ds: &[u8]) -> Vec<u8> {
-    let start = 0x16;
-    let end = (start..ds.len() - 1).find(|&i| ds[i] == 0xBD && ds[i + 1] == 0).unwrap_or(start);
-    ds[start..=end].iter().map(|b| b.rotate_left(1)).collect()
+    let start = crate::vocab::VOCAB;
+    let end = (start..ds.len() - 1).find(|&i| ds[i] == b'{' && ds[i + 1] == 0).unwrap_or(start);
+    ds[start..=end].to_vec()
 }

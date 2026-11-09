@@ -54,14 +54,19 @@ impl World {
     /// pass to take when the keypad gives none.
     fn joystick(&mut self) {
         self.g.joy_skip = true;
-        self.g.joy_timeout = 0;
         let stick = self.clock.joystick().filter(|j| j.x < 41 && j.y < 41);
         let Some(j) = stick else {
+            // The PC's read (`$1383`): v16 is cleared unless v31 is 1 (`$138F`), then the
+            // axes' loops (`$141B`) run out and nothing else is touched: no time-out
+            // flag (DS:187D stays as it is), no direction. (The PC's reading of a real
+            // stick, with its centre taken at the first read, is still the PCjr's here.)
             self.cost.joystick += 1;
-            self.g.joy_timeout = 1;
-            self.g.joy_dir = 0;
+            if self.vars[31] != 1 {
+                self.vars[16] = 0;
+            }
             return;
         };
+        self.g.joy_timeout = 0;
         self.cost.joystick_turns += j.x.max(j.y) as u32 + 1;
         if !(self.vars[31] == 1 && !j.buttons[0]) {
             self.vars[16] = j.buttons[0] as u8;

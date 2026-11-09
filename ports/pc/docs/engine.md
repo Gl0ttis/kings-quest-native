@@ -112,3 +112,21 @@ original's (tests/engine.rs), then implemented in the port.
   green, 10, is 11).
 - **The step's direction table** is at CS:`$430A`, before the step routine (`$431C`);
   read at the PCjr's address it is code, and direction 0 steps.
+- **The vocabulary** is stored plainly at DS:`$0004`, up to its end marker `{`: the
+  PCjr's, decoded (that one is rotated a bit and decoded at start), 3,259 bytes.
+- **Making a Play diskette** (`$0488`): the y/n is read from the BIOS (`$04B3`); each
+  "insert your ... diskette" waits through the Enter wait (`$0785`, a checkpoint), where
+  the PCjr reads the BIOS. The copy is the data area, sectors 141-719, in three passes
+  of 65 + 128 sectors (`$04DE`, `$0552`), the second part read into segment 1000h, over
+  the picture buffer. The check that the Master is in the drive (`$05E8`) compares its
+  sectors 10-11 with the resource table at CS:0088, all 1,024 bytes.
+- **The save slots** are at sector 3Fh + 3n, the initial state (slot FF, taken as 1Ah)
+  at 8Dh, the data area's first sector (`$07DA`). Before a real slot, sector 0 is
+  written with DS:0000-01FF, whose first word is the stack pointer the start-up keeps
+  there (D8F0h). The block is the PCjr's layout at the PC's addresses (1,306 bytes from
+  DS:10D2, 1609, 1967 and 17E7), and the 3 sectors' rest is whatever followed it in
+  memory, never read back. The screen position saved (DS:1881) is the game's own
+  (`$19D3`), not the BIOS's.
+- **The joystick** (`$1383`, every other tick, `$141B` the read): with none, v16 is
+  cleared unless v31 is 1, and nothing else changes (the PCjr sets a time-out flag,
+  here DS:187D, which stays 0).
