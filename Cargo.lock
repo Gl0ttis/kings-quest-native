@@ -457,6 +457,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "kq1-pc-refemu"
+version = "0.1.0"
+dependencies = [
+ "kq1-formats",
+ "kq1-pc",
+]
+
+[[package]]
 name = "kq1-pcjr"
 version = "0.1.1"
 dependencies = [

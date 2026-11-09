@@ -26,28 +26,15 @@ both have it working.
 | 2. Disk layout | **Done** ([disk-layout.md](disk-layout.md)): a DOS disk with three files; the engine `MAIN.EXE`, run at 0060:0000, its data segment at CS + `$511`; the resource table on sectors 10-11, read over the code at CS:`$88`, in the PCjr's entry format; the read routine. |
 | 3. Static formats | **Done** (`kqextract-pc`). With the PCjr port's decoders: all 80 well-formed scripts parse, all 79 pictures draw cleanly, all 88 views decode (byte for byte the PCjr's), all 40 sounds parse, and the 369-word vocabulary. The scripts are a revision of the PCjr's (renumbered variables, some rooms changed); eight pictures and three sound resources differ. |
 | Composite colour | **Done** ([src/composite.rs](../src/composite.rs)). The engine draws only colours 0 and 7, so the signal is two levels a dot, and the colours are the monitor's decoding of the dot patterns. Two modes from one model: each 4-dot group in its own colour, and the signal decoded dot by dot with the fringes between colours. Its hue, saturation and level are measured from the original in 86Box (IBM's BIOS, the CGA's composite output; [tools/86box/](../tools/86box/README.md)): within 6/255 in flat areas. The engine's colour table (DS:`$12BA`) gives each PCjr colour's pattern. |
-| 4. Measuring tool | **Next.** |
-| 5-10 | To do. |
+| 4. Measuring tool | **Working** ([refemu/](../refemu/README.md)). The PCjr's 8086 core on an IBM PC with the CGA, no IBM ROM. It starts the engine as the loader does (the protection's code calls into IBM's ROM, and then starts the engine at the same place), runs plans of keys and records a trace per pass and the screen in composite colour. The pass is `$293A`, the PCjr's `$14F2`. Timing, fitted to 86Box running the original: walking within 1%, a room's drawing within 5%, a room change within 8%. The game paces itself on the timer: a pass is a whole number of ticks. |
+| 5-10 | To do: next, the reference routes, then the engine. |
 
 ## Next steps
 
-1. **The measuring tool**, `refemu-pc` (crate `kq1-pc-refemu`, in `refemu/`), forked
-   from the PCjr's: the same 8086 core, on an IBM PC with the CGA instead of the
-   PCjr's hardware, and no IBM ROM. What differs:
-   - the machine: 8253 timer and 8259 interrupt controller as on the PCjr; the speaker
-     through the timer's channel 2 and port `61h` (the engine writes both); the CGA's
-     registers and its memory at `B800h`; the keyboard through the PC's BIOS calls;
-   - the boot: the original runs `LOAD` and then `MAIN.EXE`'s protection code, which
-     reads the unreadable sector. Either emulate the controller's answer for that
-     sector from the `.mfm` (as the PCjr's refemu reads its 1 KB sectors), or start
-     the engine as the crack does, at CS:IP 0, and record the protection's code as
-     not measured;
-   - timing: the 4.77 MHz 8088 with the PC's DMA refresh, and the CGA's wait states,
-     which cost more than the PCjr's video memory; calibrate against 86Box's IBM PC
-     with CGA, as the PCjr's was against its PCjr.
-
-   Then find the main loop's entry, record the reference routes (the PCjr's plans and
-   routes, edited for this revision's scripts), and write trace CSVs.
+1. **The reference routes**: refemu-pc's own runs of whole playthroughs. Fork
+   refemu-pcjr's autopilot (`kqroute`) and the PCjr's routes, edited for this
+   revision's scripts and vocabulary, and the event log the port replays (the timer's
+   ticks against the checkpoints, the keys). Record the traces and the screens.
 2. **The engine**, forked from the PCjr's (`src/engine`). The routines are the same
    design at other addresses; map each of the PCjr port's routines to the PC
    engine's (an address table in engine.md), then compare pass by pass. Expect the
@@ -62,8 +49,6 @@ both have it working.
 
 ## Decisions to make
 
-- **The protection's code in refemu.** As above: emulate the unreadable sector, or
-  start as the crack does.
 - **What to share with the PCjr port.** The painter, views, sounds' format, the
   engine's structure: move into `crates/` once both ports have them working, not
   before.
@@ -75,6 +60,11 @@ both have it working.
   the option. The CGA's revision isn't a setting: with only colours 0 and 7 on
   screen, the old and new cards differ only in the signal's overall level, which the
   monitor's knobs set. The model's numbers are 86Box's old CGA.
+
+- **refemu-pc starts the engine where the protection hands over** (refemu's README,
+  "Start-up"): the protection's code calls IBM's ROM, which refemu doesn't have, and
+  goes to the engine's start whether it finds the disk or not. The boot, the loader and
+  the protection aren't measured.
 
 ## Findings so far
 

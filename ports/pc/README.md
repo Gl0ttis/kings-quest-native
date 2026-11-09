@@ -37,6 +37,10 @@ content):
 It checks every script, picture, view and sound, and the vocabulary, and reports each
 one.
 
+The measuring tool is in [refemu/](refemu/README.md): the reference PC with the CGA.
+[tools/86box/](tools/86box/README.md) measures the original in 86Box, with IBM's BIOS:
+its colours and its timing.
+
 ## Tests
 
 `cargo test -p kq1-pc`. The tests that need the disk image skip themselves without it.

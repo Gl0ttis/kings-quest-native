@@ -33,6 +33,17 @@ The original boots with its protection, as on a PC: the Sierra logo after about 
   finds the picture in the shot, takes 86Box's colour of each picture colour from the
   middle of its areas, and fits the composite model's three numbers to them.
 
+## Timing
+
+- **`measure.ps1 -Dir <folder with app\> -Vm <VM folder> -Out <frames>`** runs 86Box,
+  presses Enter through the title screens, Up once at 75 s, and captures its window
+  about 10 times a second from 70 s, each frame named by its time in milliseconds.
+- **`walkspeed.py <frames> 75400 79300`** fits Graham's walking speed from the frames.
+
+The results, against refemu-pc's, are in [../../refemu/README.md](../../refemu/README.md)
+("Timing"): with the original, walking up in room 1 at 18.1 picture rows a second (one
+pass a timer tick), room 16 cleared 6.51 s after Up and its picture drawn in 2.52 s.
+
 ## Results (86Box 6.0, the "[cp] [!]" dump, the old CGA)
 
 - **Room 1:** eight of the 16 patterns appear in areas big enough to measure. The model

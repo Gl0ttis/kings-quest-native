@@ -1,0 +1,23 @@
+[package]
+name = "kq1-pc-refemu"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Reference IBM PC with the CGA (8088) used only to measure the original PC King's Quest. Not part of the port."
+
+[lints]
+workspace = true
+
+[lib]
+name = "kq1_pc_refemu"
+path = "src/lib.rs"
+
+[[bin]]
+name = "refemu-pc"
+path = "src/main.rs"
+
+[dependencies]
+kq1-pc = { path = ".." }
+kq1-formats = { path = "../../../crates/kq1-formats" }
