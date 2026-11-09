@@ -153,6 +153,7 @@ impl World {
         if self.passes > self.max_passes {
             self.stop(format!("{} passes", self.max_passes));
         }
+        self.site(super::clock::Site::CycleStart);
         self.g.saved_dir = self.actors[0].dir;
         let mut d = if self.g.key_dir != 0 { self.g.key_dir } else { self.g.joy_dir };
         if self.vars[30] != 0 {

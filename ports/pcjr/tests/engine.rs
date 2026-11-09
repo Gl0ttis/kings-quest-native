@@ -62,3 +62,11 @@ fn the_death_routes_match_the_original() {
         assert_eq!(replay(&disk, name), passes, "{name}");
     }
 }
+
+/// The gold key route (routes/gold_key.route, played by kqroute-pcjr): from the start to
+/// the fall from the clouds, through most of the game's scenes and 21744 passes.
+#[test]
+fn the_gold_key_route_matches_the_original() {
+    let Some(disk) = original() else { return };
+    assert_eq!(replay(&disk, "gold_key"), 21744);
+}

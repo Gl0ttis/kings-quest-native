@@ -21,6 +21,9 @@
 //!   require V VAL     a condition set by chance (the line is retried with other timing,
 //!                     or after round trips to a neighbouring room, which draw v14 anew)
 //!   keepin X1 Y1 X2 Y2 ...  keep the planner in these rectangles in this room
+//!   avoid X1 Y1 X2 Y2 ...   keep the planner out of these rectangles in this room
+//!   robbable          a score lost in this room (a robbery that can't be helped) is
+//!                     not retried
 //!   final X1 Y1 X2 Y2  walk into the game-ending rectangle
 //!   dies N            wait up to N passes for Graham to die
 //!   if V VAL STEP     the step only when variable V equals VAL
@@ -66,6 +69,11 @@ struct Driver {
     travelling: bool,
     events: Vec<String>,
     keep_in: Option<(u8, Vec<[i32; 4]>)>,
+    /// Rectangles the planner keeps out of, in a room (`avoid`).
+    avoid: Option<(u8, Vec<[i32; 4]>)>,
+    /// A room where a robbery can't be helped (`robbable`): a score lost there is not
+    /// retried.
+    robbable: Option<u8>,
     ignore_deadly: bool,
     /// Keys to type at the next prompt.
     prompt: VecDeque<u16>,
@@ -195,7 +203,7 @@ impl Driver {
             let (x, y) = self.ego();
             return Err(format!("Graham died at pass {} in room {} at ({x}, {y})", self.r.passes, self.v(1)));
         }
-        if self.travelling && self.v(19) < score {
+        if self.travelling && self.v(19) < score && self.robbable != Some(self.v(1)) {
             return Err(format!(
                 "robbed at pass {} in room {}: score {} -> {}",
                 self.r.passes,
@@ -244,20 +252,25 @@ impl Driver {
     /// (`$2F2D`) for the ego on dry land, plus the planner's own rules: no water in rooms
     /// that react to it, no deadly zones, no other actor's row.
     fn standable(&self, x: i32, y: i32, w: i32) -> bool {
-        self.standable_near(x, y, w, false)
+        self.standable_near(x, y, w, None)
     }
 
     /// As `standable`; `near` (within two steps of where a search starts) lets the ego
     /// back out of the edge margin.
-    fn standable_near(&self, x: i32, y: i32, w: i32, near: bool) -> bool {
+    fn standable_near(&self, x: i32, y: i32, w: i32, near: Option<(i32, i32)>) -> bool {
         if !self.standable_in(&|x, y| self.r.priority(x, y), x, y, w) {
             return false;
         }
         // A pass of walking is committed before a key takes effect: on a side with an
         // exit, the two outermost cells are a step or two from leaving the room (a key can take
         // two passes to act, when a pass goes by without a timer tick), so keep off them.
-        if !near && self.in_margin(x, y, w) {
+        if self.in_margin(x, y, w) && !near.is_some_and(|(sx, sy)| self.backing_out(x, y, w, sx, sy)) {
             return false;
+        }
+        if let Some((room, rects)) = &self.avoid {
+            if *room == self.v(1) && rects.iter().any(|r| x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3]) {
+                return false;
+            }
         }
         if let Some((room, rects)) = &self.keep_in {
             if *room == self.v(1) && !rects.iter().any(|r| x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3]) {
@@ -339,9 +352,22 @@ impl Driver {
         })
     }
 
+    /// Starting in the margin at (sx, sy): (x, y) is within two steps of the start and no
+    /// deeper into the margin on any side than the start (so the ego can only back out).
+    fn backing_out(&self, x: i32, y: i32, w: i32, sx: i32, sy: i32) -> bool {
+        let Some(ex) = self.g.exits.get(&self.v(1)) else { return true };
+        let sw = self.ego_width();
+        (x - sx).abs() <= 2
+            && (y - sy).abs() <= 2
+            && !(ex[1] != 0 && x <= 3 && x < sx)
+            && !(ex[2] != 0 && x + w >= 157 && x + w > sx + sw)
+            && !(ex[3] != 0 && y <= 0x29 && y < sy)
+            && !(ex[4] != 0 && y >= 0xA4 && y > sy)
+    }
+
     /// A step `d` onto (x, y): standable, and (a turn can come a pass late, when a pass
     /// goes by without a timer tick) not one step short of peril the same way.
-    fn step_ok(&self, x: i32, y: i32, d: usize, w: i32, near: bool) -> bool {
+    fn step_ok(&self, x: i32, y: i32, d: usize, w: i32, near: Option<(i32, i32)>) -> bool {
         self.standable_near(x, y, w, near) && !self.perilous(x + DIRS[d].0, y + DIRS[d].1, w)
     }
 
@@ -405,7 +431,7 @@ impl Driver {
                 if !(0..W).contains(&nx) || !(0..H).contains(&ny) || first[idx(nx, ny)] != 255 {
                     continue;
                 }
-                let near = in_margin && (nx - sx).abs() <= 2 && (ny - sy).abs() <= 2;
+                let near = in_margin.then_some((sx, sy));
                 if !self.step_ok(nx, ny, d as usize, wd[d as usize], near) {
                     continue;
                 }
@@ -421,6 +447,14 @@ impl Driver {
     }
 
     fn walk(&mut self, goal: &dyn Fn(i32, i32) -> bool, what: &str) -> Result<(), String> {
+        // A score lost on the way is a robbery (the dwarves): retried, as in travel.
+        let was = std::mem::replace(&mut self.travelling, true);
+        let r = self.walk_inner(goal, what);
+        self.travelling = was;
+        r
+    }
+
+    fn walk_inner(&mut self, goal: &dyn Fn(i32, i32) -> bool, what: &str) -> Result<(), String> {
         let room = self.v(1);
         for _ in 0..3000 {
             if self.v(1) != room {
@@ -486,7 +520,7 @@ impl Driver {
                 if (0..W).contains(&nx)
                     && (0..H).contains(&ny)
                     && dist[idx(nx, ny)] == u32::MAX
-                    && self.step_ok(nx, ny, d, wd[d], in_margin && (nx - sx).abs() <= 2 && (ny - sy).abs() <= 2)
+                    && self.step_ok(nx, ny, d, wd[d], in_margin.then_some((sx, sy)))
                 {
                     dist[idx(nx, ny)] = dist[idx(x, y)] + 1;
                     q.push_back((nx, ny));
@@ -509,6 +543,21 @@ impl Driver {
             _ => y >= 0xA3,
         };
         let dist = self.distances();
+        // Walking off is blind and a turn can come a pass late: from the crossing to the
+        // edge, a row (or column) either side included, nothing perilous.
+        let (dx, dy): (i32, i32) = [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)][e as usize];
+        let exit_ok: Vec<bool> = (0..W * H)
+            .map(|i| {
+                let (x, y) = (i % W, i / W);
+                !at_edge(x, y)
+                    || (0..=4).all(|k| {
+                        (-1..=1).all(|side| {
+                            let (px, py) = (x + k * dx + side * dy.abs(), y + k * dy + side * dx.abs());
+                            !(0..W).contains(&px) || !(0..H).contains(&py) || !self.perilous(px, py, w)
+                        })
+                    })
+            })
+            .collect();
         let dest = self.g.exits.get(&self.v(1)).map_or(0, |x| x[e as usize]);
         let here_water = self.water_room;
         self.water_room = self.g.water_rooms.contains(&dest);
@@ -586,7 +635,7 @@ impl Driver {
                 for y in 0..H {
                     for x in 0..W {
                         let d = dist[(y * W + x) as usize];
-                        if d == u32::MAX || !at_edge(x, y) {
+                        if d == u32::MAX || !at_edge(x, y) || !exit_ok[(y * W + x) as usize] {
                             continue;
                         }
                         let (lx, ly) = landing(x, y);
@@ -951,6 +1000,15 @@ fn run_line(d: &mut Driver, line: &str) -> Result<(), String> {
             d.keep_in = if rects.is_empty() { None } else { Some((d.v(1), rects)) };
             Ok(())
         }
+        "robbable" => {
+            d.robbable = Some(d.v(1));
+            Ok(())
+        }
+        "avoid" => {
+            let rects: Vec<[i32; 4]> = nums.chunks(4).filter(|c| c.len() == 4).map(rect).collect();
+            d.avoid = if rects.is_empty() { None } else { Some((d.v(1), rects)) };
+            Ok(())
+        }
         "require" => {
             let (v, val) = (nums[0] as usize, nums[1] as u8);
             if d.v(v) == val {
@@ -1253,6 +1311,8 @@ fn main() {
         travelling: false,
         events: Vec::new(),
         keep_in: None,
+        avoid: None,
+        robbable: None,
         ignore_deadly: false,
         prompt: VecDeque::new(),
         keys: Vec::new(),

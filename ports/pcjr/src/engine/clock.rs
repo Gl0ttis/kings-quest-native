@@ -12,6 +12,8 @@
 //!
 //! **Where in an interval.** Between two checkpoints, the port fires a tick:
 //! - at a disk read, if the tick interrupted the read ([`Site::Disk`]);
+//! - at the start of the game cycle, before it reads the keypad's direction
+//!   ([`Site::CycleStart`]);
 //! - before an action that writes a variable, if the tick interrupted its dispatch or
 //!   its handler, which writes last ([`Site::Op`]): `set 25` when a room starts lets
 //!   the timer read the keys, so a tick during it must not;
@@ -71,6 +73,9 @@ pub enum Event {
 pub enum Site {
     /// A disk read (`$4D93`-`$4E2F`).
     Disk,
+    /// The game cycle's start (`$14F2`-`$14FD`), before it reads the keypad's direction
+    /// (DS:1279) at `$14FE`: a key the timer takes there steers this pass.
+    CycleStart,
     /// Action `n`'s dispatch (`$1ABB`-`$1AD3`, `$2479`-`$248B`) and its handler, up to
     /// the jump back to `$1ABB`, for the actions that write a variable (08-12, 35, 36:
     /// set, reset, increment, decrement, assign, and the room tests).
@@ -81,6 +86,7 @@ impl Site {
     pub fn contains(self, ip: u16) -> bool {
         match self {
             Site::Disk => (0x4D93..0x4E30).contains(&ip),
+            Site::CycleStart => (0x14F2..0x14FE).contains(&ip),
             Site::Op(op) => {
                 let handler = match op {
                     0x08 => 0x1B7C..0x1B8D,

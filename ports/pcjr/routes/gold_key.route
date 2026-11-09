@@ -327,6 +327,11 @@ area 112 44 126 50
 key 4900
 waitvar 1 68 100
 wait 4
+# On the PCjr a dwarf waits on these stairs: Graham coming up from room 67 with his x in
+# 124-134 at y 115-133 (rule 003C) brings him, and he steals the first treasure on his
+# list Graham carries (v64's, -8; the shield, v65, comes after it). The stairs pass
+# only through that box (barriers either side), so the theft can't be helped.
+robbable
 area 42 44 56 50
 key 4700
 waitvar 1 69 100
