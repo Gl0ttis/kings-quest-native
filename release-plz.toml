@@ -1,0 +1,74 @@
+# Releases (.github/workflows/release.yml): release-plz keeps a release pull request open
+# with the next versions and changelogs, from the conventional commits since each
+# package's last tag. A package is released when a `feat`, `fix` or `perf` commit (or a
+# breaking change) touches it; a port is released, too, when a shared crate it uses is.
+
+[workspace]
+# Nothing is published to crates.io: the versions come from the git tags,
+# <package>-v<version>.
+git_only = true
+semver_check = false
+changelog_update = true
+# Below 1.0, a feat bumps the minor and a fix the patch.
+features_always_increment_minor = true
+release_commits = '^(feat|fix|perf)(\(.*\))?!?:'
+# A fixed title, so that the pull request title check (pr-title.yml) passes. Its squash
+# merge is the release commit.
+pr_name = "chore(release): release"
+
+[changelog]
+header = "# Changelog\n\n"
+# The style release-please wrote the first entries in.
+body = """
+## [{{ version }}]{% if release_link %}({{ release_link }}){% endif %} ({{ timestamp | date(format="%Y-%m-%d") }})
+{% for group, commits in commits | group_by(attribute="group") %}
+
+### {{ group | striptags | trim }}
+
+{% for commit in commits -%}
+* {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{% if commit.breaking %}**breaking:** {% endif %}{{ commit.message }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/Gl0ttis/kings-quest-native/commit/{{ commit.id }}))
+{% endfor -%}
+{% endfor %}
+"""
+trim = true
+protect_breaking_commits = true
+commit_preprocessors = [
+  { pattern = '\(#(\d+)\)', replace = "([#${1}](https://github.com/Gl0ttis/kings-quest-native/pull/${1}))" },
+]
+# The groups are ordered by the comment in front of each.
+commit_parsers = [
+  { message = "^feat", group = "<!-- 0 -->Features" },
+  { message = "^fix", group = "<!-- 1 -->Bug fixes" },
+  { message = "^perf", group = "<!-- 2 -->Performance" },
+  { message = "^refactor", group = "<!-- 3 -->Refactoring" },
+  { message = "^updated the following local packages", group = "<!-- 4 -->Dependencies" },
+  { message = ".*", skip = true },
+]
+
+# The shared crates get versions and changelogs, but no GitHub release: there is nothing
+# to download.
+[[package]]
+name = "kq1-formats"
+git_release_enable = false
+
+[[package]]
+name = "kq1-frontend"
+git_release_enable = false
+
+# The ports: their changelogs list the shared crates' changes as well.
+[[package]]
+name = "kq1-apple2"
+changelog_include = ["kq1-formats", "kq1-frontend"]
+
+[[package]]
+name = "kq1-pcjr"
+changelog_include = ["kq1-formats", "kq1-frontend"]
+
+# The reference emulators are tools for measuring the ports, never released.
+[[package]]
+name = "kq1-apple2-refemu"
+release = false
+
+[[package]]
+name = "kq1-pcjr-refemu"
+release = false

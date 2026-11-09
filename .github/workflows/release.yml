@@ -1,11 +1,12 @@
-# Every push to main: release-please keeps a release pull request open with the next
-# versions and changelogs (from the conventional commits), and each port's player is
-# built for Windows and Linux (downloadable from the run): kq-<port>-<version>-<platform>
-# archives, the player in each as kq. The release pull request merges itself once its
-# checks pass (auto-merge); that push tags the release here, and the builds are then
-# attached to the GitHub release too.
+# Every push to main: release-plz (release-plz.toml) keeps a release pull request open
+# with the next versions and changelogs, from the conventional commits, and each port's
+# player is built for Windows and Linux (downloadable from the run):
+# kq-<port>-<version>-<platform> archives, the player in each as kq. The release pull
+# request merges itself once its checks pass (auto-merge). On that push, release-plz
+# tags each package whose version it raised and makes the ports' GitHub releases, and
+# the builds are attached to them.
 #
-# release-please uses its own token, RELEASE_PLEASE_TOKEN (CONTRIBUTING.md), not this
+# release-plz uses its own token, RELEASE_PLEASE_TOKEN (CONTRIBUTING.md), not this
 # workflow's: GitHub starts no workflows for what GITHUB_TOKEN does, so the release pull
 # request would get no checks, and a merge made with it wouldn't start this workflow.
 name: Release
@@ -18,34 +19,63 @@ permissions:
   contents: write
   pull-requests: write
 
+# One run at a time, so that two pushes don't both release.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  release-please:
+  release:
     runs-on: ubuntu-latest
     outputs:
-      apple2-released: ${{ steps.rp.outputs['ports/apple2--release_created'] }}
-      apple2-tag: ${{ steps.rp.outputs['ports/apple2--tag_name'] }}
-      pcjr-released: ${{ steps.rp.outputs['ports/pcjr--release_created'] }}
-      pcjr-tag: ${{ steps.rp.outputs['ports/pcjr--tag_name'] }}
+      apple2-tag: ${{ steps.tags.outputs.apple2 }}
+      pcjr-tag: ${{ steps.tags.outputs.pcjr }}
     steps:
-      - uses: googleapis/release-please-action@v5
-        id: rp
+      # The whole history and its tags: release-plz finds each package's last release
+      # by its tag.
+      - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
+      - uses: dtolnay/rust-toolchain@stable
+      # Tag and release what the release pull request raised, when it was this push.
+      - uses: release-plz/action@v0.5
+        id: release
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+      - uses: release-plz/action@v0.5
+        id: release-pr
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
       # Merge the release pull request as soon as its checks pass. With the same token,
-      # so that the merge, made as its owner, starts this workflow, which tags the
-      # release.
+      # so that the merge, made as its owner, starts this workflow, which releases.
       - name: Auto-merge the release pull request
-        if: steps.rp.outputs.prs_created == 'true' && steps.rp.outputs.pr != ''
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
-          PR: ${{ steps.rp.outputs.pr }}
-        run: gh pr merge "$(jq -r .number <<<"$PR")" -R "$GITHUB_REPOSITORY" --auto --squash
+          PR: ${{ steps.release-pr.outputs.pr }}
+        run: |
+          number=$(jq -r '.number? // empty' <<<"${PR:-null}")
+          if [ -n "$number" ]; then gh pr merge "$number" -R "$GITHUB_REPOSITORY" --auto --squash; fi
+      # The tag of each port released by this push, if it was.
+      - name: Released ports
+        id: tags
+        env:
+          RELEASES: ${{ steps.release.outputs.releases }}
+        run: |
+          for port in apple2 pcjr; do
+            tag=$(jq -r --arg p "kq1-$port" '.[]? | select(.package_name == $p) | .tag' <<<"${RELEASES:-[]}")
+            echo "$port=$tag" >> "$GITHUB_OUTPUT"
+            [ -n "$tag" ] && echo "released $tag"
+          done
+          true
 
   build:
     name: kq-apple2 (${{ matrix.name }})
-    needs: release-please
+    needs: release
     strategy:
       fail-fast: false
       matrix:
@@ -85,15 +115,15 @@ jobs:
           name: ${{ steps.package.outputs.dir }}
           path: ${{ steps.package.outputs.dir }}.*
       - name: Attach to the release
-        if: needs.release-please.outputs.apple2-released == 'true'
+        if: needs.release.outputs.apple2-tag != ''
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ needs.release-please.outputs.apple2-tag }}" ${{ steps.package.outputs.dir }}.* --clobber
+        run: gh release upload "${{ needs.release.outputs.apple2-tag }}" ${{ steps.package.outputs.dir }}.* --clobber
 
   build-pcjr:
     name: kq-pcjr (${{ matrix.name }})
-    needs: release-please
+    needs: release
     strategy:
       fail-fast: false
       matrix:
@@ -133,8 +163,8 @@ jobs:
           name: ${{ steps.package.outputs.dir }}
           path: ${{ steps.package.outputs.dir }}.*
       - name: Attach to the release
-        if: needs.release-please.outputs.pcjr-released == 'true'
+        if: needs.release.outputs.pcjr-tag != ''
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ needs.release-please.outputs.pcjr-tag }}" ${{ steps.package.outputs.dir }}.* --clobber
+        run: gh release upload "${{ needs.release.outputs.pcjr-tag }}" ${{ steps.package.outputs.dir }}.* --clobber

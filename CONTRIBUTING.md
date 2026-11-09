@@ -69,32 +69,31 @@ check enforces its format. Commit messages within a pull request are checked too
 
 Each crate has its own [semantic version](https://semver.org/), in its `Cargo.toml`,
 and its own tags (`kq1-apple2-v0.2.0`). Nothing is bumped by hand:
-[release-please](https://github.com/googleapis/release-please) reads the
-conventional commits on `main` and keeps a release pull request open with the next
-versions and changelogs (`ports/<port>/CHANGELOG.md`). It merges itself once its checks
-pass (auto-merge), which tags the release, and the release workflow attaches the
-builds of `kq`. So every merge to `main` with a `feat` or `fix` for a port releases it,
-within minutes and without anyone's hand.
+[release-plz](https://release-plz.dev/) (`release-plz.toml`) reads the conventional
+commits on `main` since each crate's last tag and keeps a release pull request open with
+the next versions and changelogs (`CHANGELOG.md` in each crate). It merges itself once
+its checks pass (auto-merge); release-plz then tags the new versions, makes the ports'
+GitHub releases, and the release workflow attaches the builds of `kq`. So every merge to
+`main` with a `feat`, `fix` or `perf` for a port releases it, within minutes and without
+anyone's hand. Below 1.0, a `feat` raises the minor version, anything else the patch.
+Other types (`refactor`, `docs`, `test`, `ci`, ...) release nothing by themselves, but a
+`refactor` is listed in the next release's changelog.
 
-release-please works with its own token, the repository secret `RELEASE_PLEASE_TOKEN`:
-a fine-grained personal access token for this repository only, with *Contents*,
-*Pull requests* and *Issues* (its labels) read and write. GitHub starts no workflows
-for what a workflow's own `GITHUB_TOKEN` does, so with that the release pull request
-would get no checks and its merge wouldn't release. Renew the token before it expires
-(GitHub emails a reminder): make a new one and replace the secret.
-The measuring emulators (`kq1-apple2-refemu`, `kq1-pcjr-refemu`) are not released:
-they are tools for checking the ports, never published, so release-please leaves them
-out and their version stays as it is. That is why release-please's `cargo-workspace`
-plugin isn't used: it would bump them, as crates that depend on a released port. Each
-port's entry in the root `Cargo.lock` is updated by an `extra-files` rule in
-`release-please-config.json` instead.
+What a commit releases depends on the files it touches:
 
-The shared crates under `crates/` (`kq1-formats`, `kq1-frontend`) aren't released either: release-please
-can't attach them to the ports' releases, so a change there that players should get
-goes out with the port's next `feat` or `fix` (say so in that commit's body).
+- under `ports/<port>/`: that port, except under `ports/<port>/refemu/`, which releases
+  nothing. The measuring emulators (`kq1-apple2-refemu`, `kq1-pcjr-refemu`) are tools
+  for checking the ports, never released (`release = false`).
+- under `crates/<crate>/`: the shared crate (a version, a tag and a changelog, but no
+  GitHub release: there is nothing to download), and with it every port that depends on
+  it. The port's changelog lists the crate's change.
 
-A change under `ports/apple2/` releases `kq1-apple2`, except under
-`ports/apple2/refemu/`, which releases nothing.
+release-plz works with its own token, the repository secret `RELEASE_PLEASE_TOKEN` (the
+name is from release-please, used before): a fine-grained personal access token for
+this repository only, with *Contents* and *Pull requests* read and write. GitHub starts
+no workflows for what a workflow's own `GITHUB_TOKEN` does, so with that the release
+pull request would get no checks and its merge wouldn't release. Renew the token before
+it expires (GitHub emails a reminder): make a new one and replace the secret.
 
 ## Adding a port
 
@@ -103,6 +102,6 @@ repository:
 
 1. Create `ports/<platform>/` with its crate (`kq1-<platform>`) and add it to the
    workspace `members` in the root `Cargo.toml`.
-2. Add it to `release-please-config.json` and `.release-please-manifest.json`, and
-   its scope to `.commitlintrc.json` and `.github/workflows/pr-title.yml`.
+2. Add it, and its refemu with `release = false`, to `release-plz.toml`, and its scope
+   to `.commitlintrc.json` and `.github/workflows/pr-title.yml`.
 3. Add it to the ports table in the root README.

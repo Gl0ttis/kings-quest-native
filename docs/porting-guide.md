@@ -67,28 +67,26 @@ crate is `kq1-pcjr`.
      the crate's version.
    - Name the measuring emulator after the port's own crate, e.g. `kq1-pcjr-refemu`, in
      `ports/<port>/refemu/`.
-2. **Releases.** Add the crates to `release-please-config.json` and
-   `.release-please-manifest.json`.
-   - Exclude the refemu folder from the port's package (`exclude-paths`).
-   - Give the package the `extra-files` rule that updates its crate's version in the
-     root `Cargo.lock` (copy the Apple port's, with the crate's name). The
-     `cargo-workspace` plugin, which would do it, isn't used: it bumps refemu too.
-   - Leave refemu out of release-please altogether. It's a tool that is never
-     published, so it needs no versions or releases. Don't use `skip-github-release`
-     to hide it: release-please then can't find the package's last release, and keeps
-     proposing everything again.
+2. **Releases.** Add the crates to `release-plz.toml`, as the Apple port's are:
+   - the port with `changelog_include` naming the shared crates it uses, so that its
+     changelog lists their changes;
+   - refemu with `release = false`. It's a tool that is never published, so it needs no
+     versions or releases.
+
+   release-plz finds a package's last release by its tag (`<crate>-v<version>`). A new
+   port has none, so its first release is the version in its `Cargo.toml`: start it at
+   0.1.0, and it is released by the first push to `main` that has it.
 3. **Commit scopes.** Add the port's scope (`pcjr`) to `.commitlintrc.json` and
    `.github/workflows/pr-title.yml`.
 4. **CI.** `.github/workflows/ci.yml` builds and tests the whole workspace, so a new
    crate is covered automatically. Its last step tests the Apple engine library without
    default features; add the same step for the new crate.
-5. **Release workflow.** `.github/workflows/release-please.yml` is Apple-specific in
-   three ways:
-   - it reads the `ports/apple2--release_created` and `ports/apple2--tag_name` outputs;
-   - it builds `-p kq1-apple2`;
-   - it packages `ports/apple2/PLAYING.md`.
+5. **Release workflow.** `.github/workflows/release.yml` has a build job for each port:
+   - the `Released ports` step gives each port's tag when it was released (add the
+     port to its loop);
+   - the job builds `-p kq1-<port>` and packages `ports/<port>/PLAYING.md`.
 
-   Generalise its build job with a port dimension in the matrix, or add a second job.
+   Copy the PCjr's job, or generalise them with a port dimension in the matrix.
    The Release run on `main` must stay green either way. A mistake there blocks
    releases for every port.
 6. **Docs.** Add the port to the "Ports" table in the root README. Write

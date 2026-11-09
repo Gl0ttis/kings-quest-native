@@ -29,7 +29,7 @@ engine draws.
 | 6. Pass-by-pass comparison | **Done.** The ten routes match the original on every pass, every checkpoint in the same order (about 90,000 passes; `tests/engine.rs`). |
 | 8. The screen | **Done.** `kqframes-pcjr` compares the screen at every pass in the hardware's terms (the displayed page's picture bytes and the character cells): every screen of nine routes is the same (all but the fresh-start restore, which needs a Play diskette kqframes doesn't take). The original's frame hashes are in `reference/*.frames`, checked by the tests. The title's credits are XORed onto the picture, as IBM's BIOS does with attribute bit 7. |
 | 9. Timing | **Done** ([engine.md](engine.md), "Speed"). A fitted cost model of each pass's work, charged at every checkpoint: whole routes within 0.2% of the original's time, passes within 1.6% (median). The room pictures' drawing, timed byte by byte against the original's, within 0.7% a picture (median). |
-| 10. The player | **Done** (`src/bin/kq-pcjr.rs`, `kq` as shipped; tried on Windows, on Linux under WSLg, and with a PS5 controller). A window at the PCjr's 4:3 shape (resizable, Alt+Enter full screen, painted during drags on Windows), scaled to it in one step; the keyboard; the SN76496's sound (winmm on Windows, cpal on Linux); the speed model pacing the clock in real time (F11/F12), room pictures drawn as they are drawn; the Play diskette kept as an image, the disk swaps answered. The PCjr's own font from the player's BIOS image, else the port's own in its bold style. A joystick or game controller as the PCjr's joystick (the original's read, `$0563`). Fast loads (F9). `--rate N` and `--room N` as in the Apple player; `--route` plays a recorded route. In release-please, its first release 0.1.0. |
+| 10. The player | **Done** (`src/bin/kq-pcjr.rs`, `kq` as shipped; tried on Windows, on Linux under WSLg, and with a PS5 controller). A window at the PCjr's 4:3 shape (resizable, Alt+Enter full screen, painted during drags on Windows), scaled to it in one step; the keyboard; the SN76496's sound (winmm on Windows, cpal on Linux); the speed model pacing the clock in real time (F11/F12), room pictures drawn as they are drawn; the Play diskette kept as an image, the disk swaps answered. The PCjr's own font from the player's BIOS image, else the port's own in its bold style. A joystick or game controller as the PCjr's joystick (the original's read, `$0563`). Fast loads (F9). `--rate N` and `--room N` as in the Apple player; `--route` plays a recorded route. Its first release 0.1.0. |
 
 ## Findings so far
 
@@ -84,6 +84,6 @@ engine draws.
 - The view, script and vocabulary decoders and the PNG writer are the shared crate
   `kq1-formats` (`crates/`), which the Apple port uses too; `kq1-pcjr` doesn't depend
   on the Apple port.
-- In release-please from 0.0.0 (so its first release is 0.1.0), refemu excluded; the
+- Released by release-plz (`release-plz.toml`), refemu never; the
   Release workflow builds `kq-pcjr` for Windows and Linux and ships it as `kq` in
   `kq-pcjr-<version>-<platform>` archives.
