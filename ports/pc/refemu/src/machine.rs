@@ -116,6 +116,15 @@ pub struct Machine {
     /// Wait states per access to the CGA's memory (4, fitted to 86Box).
     pub cga_wait: u64,
     cga_accesses: u64,
+    /// Bytes written to the CGA's memory, all told.
+    cga_writes: u64,
+    /// With `REFEMU_PLOTLOG`, each room picture's drawing (from `$48EA`, past the check
+    /// that skips it while restoring, to the merge, `$14DC`), for timing the port's
+    /// drawing: "S cycle" at its start, then "W cycle n" after each instruction that
+    /// wrote to the CGA, n the bytes written so far (the clear's first), and "E cycle"
+    /// at the merge.
+    pub plot_log: Option<String>,
+    plot_writes: Option<u64>,
     pub sectors_read: u64,
     /// Checkpoints passed so far (the port's clock's), counted by the runner.
     pub checkpoint: u64,
@@ -153,6 +162,9 @@ impl Machine {
             fetch_rest: 0,
             cga_wait: 4,
             cga_accesses: 0,
+            cga_writes: 0,
+            plot_log: std::env::var_os("REFEMU_PLOTLOG").map(|_| String::new()),
+            plot_writes: None,
             sectors_read: 0,
             checkpoint: 0,
             events: None,
@@ -252,13 +264,33 @@ impl Machine {
             cpu.halted = false;
         } else {
             self.cga_accesses = 0;
-            let fetched = cpu.fetched;
+            if let (Some(log), 0x60) = (self.plot_log.as_mut(), cpu.s[CS]) {
+                use std::fmt::Write;
+                match (cpu.ip, self.plot_writes) {
+                    (0x48EA, None) => {
+                        self.plot_writes = Some(self.cga_writes);
+                        let _ = writeln!(log, "S {}", cpu.cycles);
+                    }
+                    (0x14DC, Some(_)) => {
+                        self.plot_writes = None;
+                        let _ = writeln!(log, "E {}", cpu.cycles);
+                    }
+                    _ => {}
+                }
+            }
+            let (fetched, written) = (cpu.fetched, self.cga_writes);
             cpu.step(self);
             // A charge for each instruction byte fetched, which Intel's counts leave out,
             // and the CGA's wait states (README.md, "Timing").
             let q = (cpu.fetched - fetched) * self.fetch_quarters + self.fetch_rest;
             self.fetch_rest = q % 4;
             cpu.cycles += q / 4 + self.cga_accesses * self.cga_wait;
+            if let (Some(from), Some(log)) = (self.plot_writes, self.plot_log.as_mut()) {
+                if self.cga_writes != written {
+                    use std::fmt::Write;
+                    let _ = writeln!(log, "W {} {}", cpu.cycles, self.cga_writes - from);
+                }
+            }
         }
         if cpu.cycles >= self.next_tick {
             if cpu.flags & IF != 0 && self.pic_mask & 1 == 0 {
@@ -670,6 +702,7 @@ impl Bus for Machine {
             0..=0x3FFFF => self.ram[a as usize] = v,
             0xB8000..=0xBFFFF => {
                 self.cga_accesses += 1;
+                self.cga_writes += 1;
                 self.ram[CGA + (a as usize & 0x3FFF)] = v;
             }
             _ => {}

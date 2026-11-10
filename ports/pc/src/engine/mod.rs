@@ -401,6 +401,8 @@ pub struct World {
     /// every finished pass's.
     pub cost: cost::Cost,
     pub cost_trace: Option<Vec<cost::Cost>>,
+    /// The floppy drive's timing (the speed model's).
+    pub drive_time: cost::Drive,
     /// Each room picture's drawing, as shown (with a front end watching): at each
     /// mark, the bytes written to the displayed page so far and the work done (for
     /// timing it against the original's, examples/drawcmp.rs).
@@ -585,6 +587,7 @@ impl World {
             frame_hashes: None,
             cost: cost::Cost::default(),
             cost_trace: None,
+            drive_time: cost::Drive::default(),
             drawing_trace: None,
             drawing_room: false,
             fixed_pass_cycles: None,
@@ -689,6 +692,8 @@ impl World {
             }
             if let Some(e) = self.pending.pop_front() {
                 if matches!(e, Event::Tick(_)) {
+                    // The work up to the wait first; the wait then runs to the tick.
+                    self.charge();
                     self.cost.wait_ticks += 1;
                     self.cycles = (self.cycles / clock::CYCLES_PER_TICK + 1) * clock::CYCLES_PER_TICK;
                 }

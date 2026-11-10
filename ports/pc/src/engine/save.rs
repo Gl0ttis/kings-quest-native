@@ -286,12 +286,15 @@ impl World {
             if d.write_protected {
                 return 3;
             }
+            self.drive(lba, count);
+            let d = &mut self.disks[self.drive];
             if let Some(dst) = d.image.get_mut(range) {
                 dst.copy_from_slice(&data[..count * 512]);
                 d.writes += 1;
             }
         } else {
             *data = d.image.get(range).map_or_else(|| vec![0; count * 512], <[u8]>::to_vec);
+            self.drive(lba, count);
         }
         0
     }

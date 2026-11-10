@@ -18,6 +18,8 @@
 //! - before an action that writes a variable, if the tick interrupted its dispatch or
 //!   its handler, which writes last ([`Site::Op`]): `set 25` when a room starts lets
 //!   the timer read the keys, so a tick during it must not;
+//! - in the draw pass, before it sets the flag the next pass waits on, if the tick
+//!   interrupted it ([`Site::DrawPass`]);
 //! - in a busy wait (a loop on a flag the timer changes), one by one until the wait
 //!   is over;
 //! - otherwise at the next checkpoint, after the code between.
@@ -64,6 +66,12 @@ pub enum Site {
     /// queue as it was, which the timer's print countdown runs on only when it isn't
     /// empty.
     QueueAdd,
+    /// The draw pass (`$3FB7`, from its checkpoint) and the routines it calls, up to
+    /// where it sets the flag the next pass's wait waits on to clear (`$3FFD`): every
+    /// address but the caller's code after it returns (`$2A59`-`$2A83`) and the next
+    /// checkpoint's (`$1150`). A tick there comes before the flag is set, so the next
+    /// pass waits.
+    DrawPass,
     /// wait_key's timer countdown (v2, v9-v12) and its tests up to v23's (`$288D`-
     /// `$28E8`): a tick there that prints the last queued message (v23 = 0) lets this
     /// loop return to the line editor.
@@ -77,6 +85,7 @@ impl Site {
             Site::CycleStart => (0x293A..=0x2946).contains(&ip),
             Site::WaitKeyTimers => (0x288D..=0x28E8).contains(&ip),
             Site::QueueAdd => (0x1C72..=0x1C88).contains(&ip),
+            Site::DrawPass => !(0x2A59..=0x2A83).contains(&ip) && ip != 0x1150,
             Site::Op(op) => {
                 let handler = match op {
                     0x0A => 0x2FEC..0x2FF6,
@@ -103,14 +112,15 @@ pub trait Clock {
     /// In a busy wait whose interval's events are spent: more, or none if the clock
     /// has nothing more to give (a replay that has diverged).
     fn waiting(&mut self, n: u64, cycles: u64) -> Vec<Event>;
-    /// In a timed delay that polls the keyboard (the title's), `cycles` reached: what
-    /// is due now. A replay gives nothing: its events come at the next checkpoint, as
-    /// refemu-pcjr logged them. A clock for play gives the keys typed and the ticks.
+    /// `cycles` reached, between checkpoints: what is due now. Asked in a timed delay
+    /// that polls the keyboard (the title's), and before the draw pass sets its flag. A
+    /// replay gives nothing: its events come at the checkpoints (and sites), as
+    /// refemu-pc logged them. A clock for play gives the keys typed and the ticks.
     fn poll(&mut self, _cycles: u64) -> Vec<Event> {
         Vec::new()
     }
     /// The joystick, when the timer reads it: None when none is connected (the read
-    /// times out), as with the original in refemu-pcjr, which has none.
+    /// times out), as with the original in refemu-pc, which has none.
     fn joystick(&mut self) -> Option<Joystick> {
         None
     }
@@ -147,7 +157,7 @@ impl Joystick {
     }
 }
 
-/// Events logged by refemu-pcjr (`--events`), replayed at the same checkpoints.
+/// Events logged by refemu-pc (`--events`), replayed at the same checkpoints.
 pub struct Replay {
     events: VecDeque<(u64, Event)>,
 }

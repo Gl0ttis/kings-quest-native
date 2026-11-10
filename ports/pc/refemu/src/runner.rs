@@ -50,10 +50,22 @@ pub struct Runner {
     replay: Option<std::collections::VecDeque<(u64, Replayed)>>,
     /// Print the checkpoints numbered FROM-TO as they pass (KQ_CPS=FROM-TO).
     cps: Option<(u64, u64)>,
+    /// The cycles each pass spent waiting (CSV `pass,waited`, rows as the trace's): in
+    /// the busy waits on a flag the timer changes ([`BUSY_WAITS`]) and in key reads
+    /// with no key typed. The rest of a pass's cycles are its work, which the port's
+    /// speed model estimates.
+    pub waits: String,
+    waited: u64,
     /// When Some, the cycles spent at each 16-byte block of the engine's code
     /// (CS 0060h; the last bucket for any other code), added up until taken.
     pub profile: Option<Vec<u64>>,
 }
+
+/// The engine's busy waits on a flag its timer handler changes: the messages printed
+/// (v23, `$0F91`), the pause (`$2832`), a tick since the actors moved (`$3FE7`), the
+/// title's tune (v15, `$5010`).
+pub const BUSY_WAITS: [std::ops::RangeInclusive<u16>; 4] =
+    [0x0F91..=0x0F96, 0x2832..=0x2837, 0x3FE7..=0x3FED, 0x5010..=0x5015];
 
 /// A key press or a disk swap from an event log.
 #[derive(Clone, Copy, Debug)]
@@ -89,6 +101,8 @@ impl Runner {
             passes: 0,
             trace: String::from("pass,cycles,delta,room,ego_x,ego_y,ego_dir,score,vars_hash\n"),
             last_pass_cycle: None,
+            waits: String::from("pass,waited\n"),
+            waited: 0,
             wait_since: None,
             resume: false,
             replay: None,
@@ -229,6 +243,7 @@ impl Runner {
                 let vars: u64 = (0..0xDFu16)
                     .map(|v| self.ds(VARS + v) as u64)
                     .fold(1469598103934665603u64, |h, b| (h ^ b).wrapping_mul(1099511628211));
+                self.waits += &format!("{n},{}\n", std::mem::take(&mut self.waited));
                 self.trace += &format!(
                     "{n},{},{delta},{},{},{},{},{},{vars:016x}\n",
                     self.cpu.cycles,
@@ -284,13 +299,15 @@ impl Runner {
                     return Ok(Stopped::Prompt);
                 }
             }
+            let (cs, ip, before, blocked) = (self.cpu.s[CS], self.cpu.ip, self.cpu.cycles, self.m.blocked_reads);
+            self.m.step(&mut self.cpu);
+            let spent = self.cpu.cycles - before;
+            if (cs == 0x60 && BUSY_WAITS.iter().any(|r| r.contains(&ip))) || self.m.blocked_reads > blocked {
+                self.waited += spent;
+            }
             if let Some(p) = self.profile.as_mut() {
-                let (cs, ip, before) = (self.cpu.s[CS], self.cpu.ip, self.cpu.cycles);
-                self.m.step(&mut self.cpu);
                 let b = if cs == 0x60 { ip as usize >> 4 } else { 0x1000 };
-                p[b] += self.cpu.cycles - before;
-            } else {
-                self.m.step(&mut self.cpu);
+                p[b] += spent;
             }
         }
     }

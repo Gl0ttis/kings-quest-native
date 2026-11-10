@@ -110,7 +110,7 @@ impl World {
     /// the engine reads its resource table (2 sectors from sector 10, `$5A`) and stops
     /// the music, which silences the speaker (`$6E`).
     pub fn start(&mut self) {
-        self.read_sectors(2);
+        self.read_sectors(10, 2);
         self.stop_music();
         loop {
             // The Play diskette jumps to the restart from deep in a pass (`jmp

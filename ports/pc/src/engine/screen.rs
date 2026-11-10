@@ -60,6 +60,12 @@ struct DrawLog {
     /// Marks about a quarter of a frame's time apart: the writes done by then, and the
     /// work and plots so far.
     marks: Vec<(usize, Work, u32)>,
+    /// The writes counted as the PC's CGA takes them: a byte holds two of the
+    /// picture's pixels, and both written one after the other are one write. At each
+    /// mark (for timing the drawing against the original's, `drawing_trace`).
+    bytes: usize,
+    last_byte: Option<usize>,
+    mark_bytes: Vec<usize>,
 }
 
 impl Mem for Pages<'_> {
@@ -73,6 +79,11 @@ impl Mem for Pages<'_> {
                 self.s.shown[i] = v;
                 if let Some(l) = self.log.as_mut() {
                     l.writes.push((i, v));
+                    let byte = i / 2;
+                    if l.last_byte != Some(byte) {
+                        l.bytes += 1;
+                    }
+                    l.last_byte = Some(byte);
                 }
             } else {
                 self.s.work[i] = v;
@@ -87,6 +98,7 @@ impl Mem for Pages<'_> {
         let last = l.marks.last().map_or(0.0, |m| Cost::drawing_cycles(&m.1));
         if Cost::drawing_cycles(work) - last >= clock::CYCLES_PER_FRAME as f64 / 4.0 {
             l.marks.push((l.writes.len(), *work, plots));
+            l.mark_bytes.push(l.bytes);
         }
     }
 }
@@ -115,11 +127,12 @@ impl World {
         let r = pic::draw(&mut p, &mut self.g.pic);
         if let (Some(mut log), Some(before)) = (log, before) {
             log.marks.push((log.writes.len(), r.work, r.plots));
+            log.mark_bytes.push(log.bytes);
             if let (true, Some(t)) = (self.drawing_room, self.drawing_trace.as_mut()) {
                 if let Some(pic) = t.last_mut() {
                     // The frame and the picture: one drawing, their work added up.
                     let (n0, w0) = pic.last().copied().unwrap_or_default();
-                    pic.extend(log.marks.iter().map(|&(n, w, _)| (n0 + n, w0.plus(&w))));
+                    pic.extend(log.marks.iter().zip(&log.mark_bytes).map(|(&(_, w, _), &n)| (n0 + n, w0.plus(&w))));
                 }
             }
             self.screen.shown = before;

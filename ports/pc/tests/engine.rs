@@ -167,6 +167,30 @@ fn the_giant_sling_route_matches_the_original() {
     assert_eq!(replay(&disk, "giant_sling"), 19550);
 }
 
+/// The speed model: the walk route replayed, its whole time by the model (each pass's
+/// work by the counts, and its waits to their ticks) within 1% of the original's in
+/// refemu-pc (examples/speedcmp.rs for the details).
+#[test]
+fn the_walk_takes_the_originals_time() {
+    let Some(disk) = original() else { return };
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("reference");
+    let events = std::fs::read_to_string(dir.join("walk_rooms_1_16.events")).expect("the event log");
+    let trace = std::fs::read_to_string(dir.join("walk_rooms_1_16.csv")).expect("the trace");
+    let orig: Vec<u64> = trace.lines().skip(1).map(|l| l.split(',').nth(1).unwrap().parse().unwrap()).collect();
+    let mut w = World::new(&disk, Box::new(Replay::parse(&events))).expect("engine");
+    w.max_passes = orig.len() as u64;
+    w.run();
+    let last = w.trace.len().min(orig.len()) - 1;
+    let (mine, theirs) = (w.trace[last].cycles - w.trace[1].cycles, orig[last] - orig[1]);
+    let off = mine as f64 / theirs as f64 - 1.0;
+    assert!(
+        off.abs() < 0.01,
+        "{:.1} s by the model, {:.1} s in the original",
+        mine as f64 / CPU_HZ,
+        theirs as f64 / CPU_HZ
+    );
+}
+
 /// A clock for play without pacing: the timer's ticks by the game's time, keys at given
 /// times, and a joystick: at rest, then pushed right from a given time.
 struct StickClock {

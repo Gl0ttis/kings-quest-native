@@ -166,8 +166,9 @@ impl Resources {
     /// The sectors read by each `$1FB6` call loading room-table entry `n`'s script
     /// (`$1F29`): two, then the rest if the script with its header and its offset in
     /// the first sector passes 400h.
-    pub fn script_reads(&self, n: u8) -> Vec<u16> {
-        let Some(e) = self.disk.table_entry(n as usize) else { return vec![2] };
+    pub fn script_reads(&self, n: u8) -> Vec<(u16, u16)> {
+        let Some(e) = self.disk.table_entry(n as usize) else { return vec![(0, 2)] };
+        let at = e.sector as u16;
         let raw = self.disk.resource(e);
         let len = |i: usize| match u16::from_le_bytes([
             raw.get(2 * i).copied().unwrap_or(0),
@@ -178,27 +179,28 @@ impl Resources {
         };
         let size = (0..4).fold(8u16.wrapping_add(e.offset as u16), |a, i| a.wrapping_add(len(i)));
         if size > 0x400 {
-            vec![2, (size >> 9).wrapping_sub(1)]
+            vec![(at, 2), (at + 2, (size >> 9).wrapping_sub(1))]
         } else {
-            vec![2]
+            vec![(at, 2)]
         }
     }
 
     /// The same for room `n`'s picture (`$1D55`): two sectors, then from the one the
     /// picture starts in.
-    pub fn picture_reads(&self, n: u8) -> Vec<u16> {
-        let Some(e) = self.disk.table_entry(n as usize) else { return vec![2, 0] };
+    pub fn picture_reads(&self, n: u8) -> Vec<(u16, u16)> {
+        let Some(e) = self.disk.table_entry(n as usize) else { return vec![(0, 2), (0, 0)] };
         let raw = self.disk.resource(e);
         let w = |i: usize| {
             u16::from_le_bytes([raw.get(2 * i).copied().unwrap_or(0), raw.get(2 * i + 1).copied().unwrap_or(0)])
         };
         let at = (0..4).fold((e.offset as u16).wrapping_add(8), |a, i| a.wrapping_add(w(i)));
-        vec![2, (e.sectors as u16).wrapping_sub(at >> 9)]
+        let first = e.sector as u16;
+        vec![(first, 2), (first + (at >> 9), (e.sectors as u16).wrapping_sub(at >> 9))]
     }
 
     /// The same for view `v` (`$1DDE`): all its sectors at once.
-    pub fn view_reads(&self, v: u8) -> Vec<u16> {
-        vec![self.disk.view_entry(v as usize).map_or(0, |e| e.sectors as u16)]
+    pub fn view_reads(&self, v: u8) -> Vec<(u16, u16)> {
+        vec![self.disk.view_entry(v as usize).map_or((0, 0), |e| (e.sector as u16, e.sectors as u16))]
     }
 
     /// View `v` (`$1DDE`).

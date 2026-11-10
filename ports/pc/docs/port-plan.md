@@ -33,24 +33,16 @@ both have it working.
 | 6. Pass-by-pass comparison | **Done.** All ten routes match the original on every pass, in state and on screen (about 82,000 passes; `tests/engine.rs`; `kqframes-pc` shows where screens differ), and the Play diskette's save block is the original's byte for byte. |
 | 8. The screen | **Done**: the CGA's whole screen, each pixel its dot pattern, and the text drawn as the BIOS draws it, from the user's own BIOS font (`original/bios.rom`, not shipped); the PC's unclipped copy of an actor's rectangle. |
 | Sound | **Engine done**: the PC plays one voice of the PCjr's sound-chip records on the speaker (engine.md, "Sound: the speaker"); every route's speaker events match the original's, in order (`reference/*.speaker`). The player has yet to make the sound. |
-| 9-10 | To do: timing (the speed model), the player (window, composite display, the speaker's sound, keys, joystick). |
+| 9. Timing | **Done** ([engine.md](engine.md), "Speed"): the draw pass's wait for a tick, as the original's; the work's speed model fitted to refemu-pc (its waits left out), the drive's time modelled as refemu-pc's, and the room pictures' drawing fitted byte by byte. The whole runs within 0.2-0.4% of the original's time. |
+| 10 | To do: the player (window, composite display, the speaker's sound, keys, joystick). |
 
 ## Next steps
 
-1. **The engine**, forked from the PCjr port's (`src/engine`), which reimplements the
-   engine natively from its documented behaviour. The same rule holds here: no
-   instruction-by-instruction translation. The PC's routines are the same design at
-   other addresses ([engine.md](engine.md): the address map and the checkpoints);
-   each difference from the PCjr is found by comparing pass by pass, described, and
-   then implemented. Expect the variable renumbering in the scripts to come from the
-   engine's own variables.
-2. **The screen.** The PC's picture buffer and its copy to the CGA (`$1966`), and the
-   text in 640-dot mode, shown through the composite model.
-3. **Sound.** Find how the engine plays the sound-chip streams on the speaker (the
-   timer's channel 2 at `$158B`-`$15C8`, port `61h`), and play them as it does.
-4. **Timing**, as on the PCjr: a cost model fitted to refemu-pc.
-5. **The player**: the PCjr's, with the speaker, and the composite display in either
-   mode (the group colours by default, the signal with its fringes as an option).
+1. **The player** (`kq-pc`): the PCjr's, with the composite display in either mode (the
+   group colours by default, the signal with its fringes as an option), the speaker's
+   sound from the engine's speaker events, the keys (Ctrl+Left and Ctrl+Right move the
+   screen), the joystick, the text in the user's own BIOS font (`original/bios.rom`),
+   and the paced clock; then the release (PLAYING.md, the release job).
 
 ## Decisions to make
 

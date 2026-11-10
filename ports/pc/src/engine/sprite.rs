@@ -92,6 +92,13 @@ impl World {
             self.save_all();
             self.draw_all();
         }
+        // The ticks that came meanwhile, before the flag is set: a replay's that
+        // interrupted this code, and with a clock for play, those due by now.
+        self.site(super::clock::Site::DrawPass);
+        self.charge();
+        for e in self.clock.poll(self.cycles) {
+            self.event(e);
+        }
         self.g.moved = true;
     }
 

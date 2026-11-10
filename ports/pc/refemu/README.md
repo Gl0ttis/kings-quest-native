@@ -71,10 +71,14 @@ A disk read takes what a 5.25-inch drive takes, worked out from the cycle count:
 
 The BIOS services, answered natively, are given estimated times.
 
-**The game paces itself on the timer:** each pass waits once (`$3FE7`) until the timer
-interrupt clears a flag (`SS:$1E65`). So a pass lasts a whole number of ticks, one when
-its work fits in a tick (about 262,000 cycles), two when it doesn't. This makes the
-walking speed a sharp test of the timing.
+**The game paces itself on the timer:** when an actor is due to move, the pass waits
+(`$3FE7`) until the timer interrupt clears a flag (`SS:$1E65`) the last move set. So
+while Graham walks, a pass lasts a whole number of ticks, one when its work fits in a
+tick (about 262,000 cycles), two when it doesn't. This makes the walking speed a sharp
+test of the timing. `kqframes-pc --waits` writes each pass's cycles spent waiting (in
+the busy waits on a flag the timer changes and in key reads with nothing typed), and
+`kqplotlog-pc` the room pictures' drawing byte by byte, for fitting the port's speed
+model (docs/engine.md, "Speed").
 
 **Against 86Box** ([../tools/86box/](../tools/86box/README.md)), with the original, Up
 pressed in room 1:

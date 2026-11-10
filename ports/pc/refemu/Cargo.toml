@@ -33,3 +33,7 @@ path = "src/bin/kqplan.rs"
 [[bin]]
 name = "kqframes-pc"
 path = "src/bin/kqframes.rs"
+
+[[bin]]
+name = "kqplotlog-pc"
+path = "src/bin/kqplotlog.rs"

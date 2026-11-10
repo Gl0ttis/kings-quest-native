@@ -1,4 +1,4 @@
-//! kqframes-pc DISK EVENTS --hashes OUT [--trace OUT] [--speaker OUT]: the screen's hash at every pass of a
+//! kqframes-pc DISK EVENTS --hashes OUT [--trace OUT] [--speaker OUT] [--waits OUT]: the screen's hash at every pass of a
 //! run kqroute-pc recorded (its `--events` log), for the reference (reference/*.frames).
 //! kqframes-pc DISK EVENTS [--from N]: the original's screen against the port's.
 //!
@@ -6,7 +6,8 @@
 //! stood when they were typed), and at the start of every pass the screen (runner
 //! `frame`) is hashed (FNV-1a), one a line in hex, as kqplan-pc's `--frames`. The run
 //! must stay on the log (it is checked): `--trace` writes the followed run's trace,
-//! which is the recorded one's.
+//! which is the recorded one's; `--waits` each pass's cycles spent waiting (runner
+//! `waits`), for fitting the speed model.
 //!
 //! Without `--hashes`, the log is replayed in the port too (its `World::frame`), and at
 //! the first pass whose screens differ (from pass N) both are shown: the CGA lines and
@@ -82,7 +83,7 @@ fn main() {
         a.drain(p..(p + 2).min(a.len()));
         v
     };
-    let (hashes, trace, speaker) = (opt("--hashes"), opt("--trace"), opt("--speaker"));
+    let (hashes, trace, speaker, waits) = (opt("--hashes"), opt("--trace"), opt("--speaker"), opt("--waits"));
     let from: u64 = opt("--from").map_or(1, |v| v.parse().expect("--from N"));
     let [disk, events] = a.as_slice() else {
         eprintln!("usage: kqframes-pc DISK EVENTS [--hashes OUT] [--trace OUT] [--from N]");
@@ -134,6 +135,9 @@ fn main() {
     std::fs::write(hashes.unwrap(), out).expect("write the hashes");
     if let Some(p) = trace {
         std::fs::write(p, &r.trace).expect("write the trace");
+    }
+    if let Some(p) = waits {
+        std::fs::write(p, &r.waits).expect("write the waits");
     }
     if let Some(p) = speaker {
         std::fs::write(p, kq1_pc_refemu::speaker_log(&r.m.sound)).expect("write the speaker's events");

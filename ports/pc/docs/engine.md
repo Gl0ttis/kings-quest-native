@@ -56,10 +56,12 @@ PC's:
 | `$4A7A` | `$5018` | title_wait |
 | `$4D93` | `$1FB6` | read_sectors |
 
-The PC engine also has a wait of its own the PCjr's hasn't: each pass waits once
-(`$3FE7`) for the timer to clear a flag (`SS:$1E65`), so a pass is a whole number of
-ticks (refemu/README.md, "Timing"). Like the PCjr's busy waits it is not a checkpoint:
-its turns depend on the timing.
+The PC engine also has a wait of its own the PCjr's hasn't: before the actors move,
+the draw pass (`$3FB7`) waits (`$3FE7`) until a tick has come since they last did (the
+timer clears `SS:$1E65`, the draw pass sets it at `$3FFD`), so the actors take at most
+one step a tick ("Speed"). Like the PCjr's busy waits it is not a checkpoint: its turns
+depend on the timing. A tick that interrupted the draw pass fires before the flag is
+set (`Site::DrawPass`).
 
 ## Data addresses
 
@@ -172,3 +174,45 @@ original's (tests/engine.rs), then implemented in the port.
   the position is the graphics screen's (DS:112F). Its clear writes to 1F80:0000, where
   the PCjr's page 7 is: on the PC that is ordinary memory. The screen position is the
   game's own throughout (DS:1881); the PCjr's comes from its BIOS (0040:0089).
+
+## Speed
+
+See [src/engine/cost.rs](../src/engine/cost.rs). The PC's one speed control is the draw
+pass's wait (`$3FE7`): when an actor's delay runs out, the actors move only once a tick
+has come since they last did. In most passes the work fits in a tick and the pass waits
+for the next; with nothing due, or a tick already come, it doesn't wait. The port waits
+there as the original does, and its paced clock fires the ticks by the port's estimate
+of the original's work: the counts of what the work goes on, turned into cycles with
+fitted constants, as the PCjr port's are.
+
+**What is counted** is the PCjr port's list (the rules tested, the actors updated and
+drawn, the characters, the ticks, the joystick's read, which times out after 256 turns
+of its loop on the PC, the notes sent to the speaker, the sectors, the picture's lines
+and fills), plus **the drive's time**: the motor's start after 2 s unused, the head's
+steps and settling, the wait for the sector to come round and the sectors passing, as
+refemu-pc models the drive, with each read split by track side as the game splits it
+(`$1FC6`). The rotation makes a read's time depend on just when it starts, so a loading
+pass's time can't be matched exactly; over a route it evens out.
+
+**The fit** (`tools/costfit.py`) is of each pass's work: refemu-pc's cycles for the pass
+(the trace) less those it spent waiting (`kqframes-pc --waits`: the cycles in the busy
+waits on a flag the timer changes, `$0F91`, `$2832`, `$3FE7`, `$5010`, and in key reads
+with nothing typed), against the port's counts (`examples/costdump.rs`), over the
+max-score and magic-ring routes. Every constant is kept `>= 0`. The drawing of a room
+picture is fitted on its own (`tools/drawfit.py`, on `examples/drawcmp.rs`, from every
+byte the original writes to the CGA as it draws, `kqplotlog-pc`), since the PC draws a
+room's picture onto the screen and the player shows it as it goes. The sectors' cost and
+the picture's end were refitted in the engine's timeline until they settled, as the
+drive's time depends on it.
+
+| | Median error | 90% within | Total |
+|---|---|---|---|
+| Ordinary passes' work (routes the fit didn't see) | 1.5% | 3.8% | −0.25% |
+| A room picture's drawing (172 pictures) | 1.3% | 2.7% | |
+| The drawing part way (points of the whole) | 0.5 | 1.5 | |
+| The whole run, waits included (`examples/speedcmp.rs`) | | | +0.2% to +0.4% |
+
+The whole runs: the walk 56.2 s by the model against 56.1 s, the gold key 1,843 s against
+1,836 s, the giant 2,149 s against 2,141 s, the maximum score 2,251 s against 2,242 s,
+the magic ring 2,310 s against 2,301 s (`tests/engine.rs` checks the walk's within 1%).
+

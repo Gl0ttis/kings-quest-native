@@ -18,13 +18,21 @@ pub const PROMPT: usize = 0x1136;
 impl World {
     // ---- Loading.
 
-    /// `$1FB6`: a disk read of `n` sectors; the timer stops reading keys meanwhile.
-    pub(super) fn read_sectors(&mut self, n: u16) {
+    /// `$1FB6`: a disk read of `n` sectors from logical sector `lba`; the timer stops
+    /// reading keys meanwhile.
+    pub(super) fn read_sectors(&mut self, lba: u16, n: u16) {
         self.g.keys_on = false;
         self.checkpoint(0x1FB6);
         self.site(super::clock::Site::Disk);
         self.cost.sectors += n as u32;
+        self.drive(lba as usize, n as usize);
         self.g.keys_on = true;
+    }
+
+    /// The drive's time for `n` sectors from `lba`, from now (the work so far counted).
+    pub(super) fn drive(&mut self, lba: usize, n: usize) {
+        self.charge();
+        self.cost.drive += self.drive_time.time(self.cycles, lba, n);
     }
 
     /// `$1D34`: room-table entry `n`'s script (v1 = n; v3, v6, v21, v22 = 0). It goes
@@ -35,8 +43,8 @@ impl World {
         self.vars[21] = 0;
         self.vars[22] = 0;
         self.vars[1] = n;
-        for r in self.res.script_reads(n) {
-            self.read_sectors(r);
+        for (lba, r) in self.res.script_reads(n) {
+            self.read_sectors(lba, r);
         }
         let s = self.res.script(n);
         let base = self.g.heap;
@@ -48,8 +56,8 @@ impl World {
 
     /// `$1D55`: room `n`'s picture, for op 06 or 25 to draw.
     pub fn load_picture(&mut self, n: u8) {
-        for r in self.res.picture_reads(n) {
-            self.read_sectors(r);
+        for (lba, r) in self.res.picture_reads(n) {
+            self.read_sectors(lba, r);
         }
         self.g.picture = Some(self.res.picture(n));
     }
@@ -58,8 +66,8 @@ impl World {
     /// of the resource memory, which moves past it; and where it went. An actor whose
     /// record (from a restored save) points there has it from now on.
     pub fn load_view(&mut self, v: u8) -> (Option<Rc<View>>, u16) {
-        for r in self.res.view_reads(v) {
-            self.read_sectors(r);
+        for (lba, r) in self.res.view_reads(v) {
+            self.read_sectors(lba, r);
         }
         let x = self.res.view(v);
         let addr = self.g.heap;
