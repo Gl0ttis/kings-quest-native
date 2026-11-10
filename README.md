@@ -39,7 +39,7 @@ ports/
     reference/          traces measured from the original (numbers only), for the tests
     original/           your disk images (not in git)
     extracted/          decoded game data (not in git)
-  pc/                   the IBM PC port (CGA): crate kq1-pc (engine, kq-pc, tools)
+  pc/                   the IBM PC port (CGA, both editions): crate kq1-pc (engine, kq-pc, tools)
     refemu/             crate kq1-pc-refemu: the reference PC with the CGA (measuring only)
   pcjr/                 the IBM PCjr port: crate kq1-pcjr (engine, kq-pcjr, tools)
     refemu/             crate kq1-pcjr-refemu: the reference PCjr (measuring only)
@@ -64,7 +64,8 @@ a folder of its own, put your own game disk images next to `kq` in it and start 
 
 - Apple IIe: `kq-apple2-<version>-<system>`, with the three game disks.
   [ports/apple2/PLAYING.md](ports/apple2/PLAYING.md) has the details, keys and options.
-- IBM PC: `kq-pc-<version>-<system>`, with the game disk.
+- IBM PC: `kq-pc-<version>-<system>`, with the game disk (either edition: the first
+  release, or the second with RGB colour).
   [ports/pc/PLAYING.md](ports/pc/PLAYING.md) has the details, keys and options.
 - IBM PCjr: `kq-pcjr-<version>-<system>`, with the game disk.
   [ports/pcjr/PLAYING.md](ports/pcjr/PLAYING.md) has the details, keys and options.

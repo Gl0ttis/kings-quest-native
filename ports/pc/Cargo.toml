@@ -1,7 +1,7 @@
 [package]
 name = "kq1-pc"
 version = "0.2.0"
-description = "Native port of the 1984 IBM PC King's Quest (CGA, composite colour): engine, player and tools. Runs on the user's own disk image."
+description = "Native port of the 1984 IBM PC King's Quest, both editions (CGA in composite colour, and CGA+RGB): engine, player and tools. Runs on the user's own disk image."
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

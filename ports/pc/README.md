@@ -1,16 +1,19 @@
-# King's Quest: IBM PC port (1984, CGA)
+# King's Quest: IBM PC port (1984, CGA and CGA+RGB)
 
 A native Rust port of Sierra's 1984 *King's Quest* for the IBM PC with the
-Color/Graphics Adapter, in composite colour, from your own disk image, with no 8088
-emulation. It follows [docs/porting-guide.md](../../docs/porting-guide.md), with the
+Color/Graphics Adapter, from your own disk image, with no 8088 emulation. It plays both
+releases: the first, in composite colour, and the second (August 1984), which added RGB
+colour, a new copy protection and three script fixes. It follows [docs/porting-guide.md](../../docs/porting-guide.md), with the
 IBM PCjr port in [ports/pcjr/](../pcjr/README.md), this release's sibling, as the
 model.
 
-**Status:** playable. The native engine matches the original on every pass of ten
-reference runs (three whole games among them), in state, on screen and in the speaker's
-notes, and runs at the original's speed (the whole runs within 0.4%); its Play diskette
-is the original's. The player, `kq-pc`, shows the screen as a composite monitor did, in
-two modes, and plays the speaker. See [docs/port-plan.md](docs/port-plan.md).
+**Status:** playable, both editions. The native engine matches each original on every
+pass of its reference runs (three whole games among them for each edition, and two RGB
+runs for the second), in state, on screen and in the speaker's notes, and runs at the
+original's speed (within 1%); its Play diskettes are the originals'. The player,
+`kq-pc`, shows the screen as a composite monitor did, in two modes, or in the second
+edition's RGB colours as an RGB monitor did, and plays the speaker. See
+[docs/port-plan.md](docs/port-plan.md).
 
 ## Playing
 
@@ -60,14 +63,16 @@ its colours and its timing.
 
 ## Tests
 
-The reference the port is compared with is in `reference/`: ten runs of the original in
-refemu-pc, from `routes/` (numbers only: the event logs, the traces, the screens'
-hashes).
+The reference the port is compared with is in `reference/`: ten runs of the first
+edition's original in refemu-pc, from `routes/`, and in `reference/cga_rgb/` the same
+ten from the second edition's in composite, and two in RGB (`rgb_*`). Numbers only: the
+event logs, the traces, the screens' hashes, the speaker's events.
 
 `cargo test -p kq1-pc`. The tests that need the disk image skip themselves without it.
-They check that every resource decodes (the colour table included), that the original
-and the crack hold the same game, the original's protection sector, and that every route
-matches the original on every pass, in state and on screen.
+They check that every resource decodes (the colour table included), that each edition's
+original and crack hold the same game, that the editions differ only in their three
+script fixes, each original's protection sector, and that every route matches its
+original on every pass, in state, on screen and in the speaker's notes.
 
 The screens were recorded with the IBM PC BIOS's font, the characters drawn as the BIOS
 draws them. The font is in IBM's ROM, which isn't shipped: put your own BIOS image in

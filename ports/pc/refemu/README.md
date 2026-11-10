@@ -3,8 +3,13 @@
 This crate is a minimal IBM PC with the Color/Graphics Adapter, used to **measure the
 original game**: what state each pass of the game cycle produces, how long it takes, and
 what is on screen. The port in the parent crate does not use it. It is forked from
-refemu-pcjr ([../../pcjr/refemu/](../../pcjr/refemu/README.md)), whose 8086 core it
-copies.
+refemu-pcjr ([../../pcjr/refemu/](../../pcjr/refemu/README.md)); its 8086 core is
+shared with it (crates/kq1-x86).
+
+It runs both editions. Its addresses are the first edition's, mapped to the disk's
+(`Edition::code`, `Edition::ds` in kq1-pc). At the second edition's first screen it
+presses the space bar (composite), or Esc and then the space bar when `KQ_RGB=1` is set
+(`kqplan-pc`, `kqroute-pc`, `kqframes-pc`).
 
 ## What it emulates
 
