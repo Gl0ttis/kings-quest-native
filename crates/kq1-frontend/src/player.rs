@@ -217,7 +217,8 @@ pub struct ScriptClock {
 
 impl ScriptClock {
     /// "SECONDS:KEYS;..." (KEYS typed as text; `|` is Enter, `<U>` `<D>` `<L>` `<R>`
-    /// the arrows, `<S>` the same arrow again).
+    /// the arrows, `<S>` the same arrow again, `<CL>` `<CR>` Ctrl+Left and Right, `<ESC>`
+    /// Esc).
     pub fn parse(plan: &str) -> ScriptClock {
         let mut script = VecDeque::new();
         for item in plan.split(';').filter(|i| !i.trim().is_empty()) {
@@ -233,6 +234,7 @@ impl ScriptClock {
                     ("<R>", 0x4D00),
                     ("<CL>", 0x7300),
                     ("<CR>", 0x7400),
+                    ("<ESC>", 0x011B),
                 ];
                 if let Some((n, k)) = named.iter().find(|(n, _)| rest.starts_with(n)) {
                     codes.push(*k);

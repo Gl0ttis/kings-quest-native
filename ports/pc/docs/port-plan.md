@@ -38,8 +38,18 @@ both have it working.
 
 ## Next steps
 
-1. **Release**, when the user says it is ready.
-2. **The CGA+RGB edition** (`ports/pc2`), after this one.
+1. **Release** both editions' support, when the user says it is ready.
+
+## The second edition (CGA+RGB)
+
+Played by the same port (the user's choice: one crate, two editions): its disk read
+(`Edition`), its engine mapped onto the first's (`Edition::code`, `Edition::ds`), its
+title with the colour screen, its Play diskette's layout, and its RGB colours. Its ten
+composite runs and two RGB runs (`reference/cga_rgb/`, recorded from its original)
+match on every pass, in state, on screen and in the speaker's notes, and its save is its
+original's byte for byte. The player plays both editions; in RGB it shows the CGA's
+320-dot mode on an RGB monitor. See docs/disk-layout.md and docs/engine.md, "The second
+edition".
 
 ## Decisions to make
 

@@ -18,14 +18,15 @@ Nothing else needs installing.
 
 ## 2. Add your game disk
 
-`kq` doesn't include the game. You need an image of the 1984 IBM PC version's disk
-(the self-booting one for the Color Graphics Adapter on a composite monitor or TV):
+`kq` doesn't include the game. You need an image of the 1984 IBM PC version's disk,
+either edition:
 
-- an HxC `.mfm` dump of the original diskette, copy protection and all; or
-- a 360K sector image (`.img`, 368,640 bytes) of it.
+- the first release, for the Color Graphics Adapter on a composite monitor or TV; or
+- the second (August 1984, "BOOT v1.2"), which offers composite or RGB colour, with
+  three script bugs fixed.
 
-The later edition that offers a choice of composite or RGB monitor ("BOOT v1.2") is a
-different release, which this `kq` doesn't play.
+Either as an HxC `.mfm` dump of the original diskette, copy protection and all, or a
+360K sector image (`.img`, 368,640 bytes) of it.
 
 Put the disk image in the same folder as `kq`:
 
@@ -92,6 +93,12 @@ patterns of dots into colours. `kq` shows them two ways:
 The text is always shown as the monitor showed it, plain light letters: the monitor's
 colour was too soft to colour such thin strokes. The inventory screen is text in the
 PC's colours.
+
+The second edition asks at its start which colours you want: press Esc to switch
+between composite and RGB, and the space bar to play. RGB is the CGA on an RGB monitor:
+green, red and brown on blue, the colours mixed by dithering. The game itself plays a
+little differently in RGB, as the original did: it looks at the colour under Graham's
+feet, and in RGB those colours are different.
 
 ## Saved games
 
