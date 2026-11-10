@@ -1,4 +1,4 @@
-//! costdump DISK EVENTS OUT.csv: the work of every pass of a route (`engine::cost`), as
+//! costdump-pc DISK EVENTS OUT.csv: the work of every pass of a route (`engine::cost`), as
 //! the port counts it, for fitting the speed model against the original's cycles
 //! (tools/costfit.py). Row k is pass k's work, from its start to pass k+1's: what
 //! refemu-pc's trace gives as the cycles of row k+1, less kqframes-pc's `--waits`.
@@ -11,7 +11,7 @@ use kq1_pc::engine::World;
 fn main() {
     let a: Vec<String> = std::env::args().skip(1).collect();
     if a.len() != 3 {
-        eprintln!("usage: costdump DISK EVENTS OUT.csv");
+        eprintln!("usage: costdump-pc DISK EVENTS OUT.csv");
         std::process::exit(2);
     }
     let disk = Disk::from_file(std::fs::read(&a[0]).expect("disk")).expect("disk");

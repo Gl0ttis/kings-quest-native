@@ -1,4 +1,4 @@
-//! drawcmp DISK EVENTS PLOTLOG OUT.csv: the room pictures' drawing in the port against the
+//! drawcmp-pc DISK EVENTS PLOTLOG OUT.csv: the room pictures' drawing in the port against the
 //! original's (kqplotlog-pc's PLOTLOG for the same event log). For each picture, a row
 //! per mark of the port's drawing: the picture, the bytes written to the displayed page
 //! so far, the port's work so far (pic::Work's counts), and the original's cycles from

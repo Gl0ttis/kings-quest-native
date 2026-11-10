@@ -1,0 +1,15 @@
+[package]
+name = "kq1-ibm"
+version = "0.1.0"
+description = "What the IBM PC and PCjr King's Quest ports' engines share: the picture painter."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "kq1_ibm"
+path = "src/lib.rs"

@@ -1,4 +1,4 @@
-//! speedcmp DISK EVENTS TRACE.csv: the speed model against the original. The event log
+//! speedcmp-pc DISK EVENTS TRACE.csv: the speed model against the original. The event log
 //! is replayed in the port, and each pass's length by the model (the cycles from its
 //! start to the next pass's) is compared with the original's (refemu-pc's trace).
 //! Passes are taken apart: ordinary, loading (a disk read or a picture), and those that
@@ -11,7 +11,7 @@ use kq1_pc::engine::World;
 fn main() {
     let a: Vec<String> = std::env::args().skip(1).collect();
     if a.len() != 3 {
-        eprintln!("usage: speedcmp DISK EVENTS TRACE.csv");
+        eprintln!("usage: speedcmp-pc DISK EVENTS TRACE.csv");
         std::process::exit(2);
     }
     let disk = Disk::from_file(std::fs::read(&a[0]).expect("disk")).expect("disk");

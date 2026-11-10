@@ -450,12 +450,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "kq1-ibm"
+version = "0.1.0"
+
+[[package]]
 name = "kq1-pc"
 version = "0.1.0"
 dependencies = [
  "cpal",
  "kq1-formats",
  "kq1-frontend",
+ "kq1-ibm",
  "minifb",
 ]
 
@@ -474,6 +479,7 @@ dependencies = [
  "cpal",
  "kq1-formats",
  "kq1-frontend",
+ "kq1-ibm",
  "minifb",
 ]
 
