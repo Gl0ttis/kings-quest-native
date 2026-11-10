@@ -97,6 +97,8 @@ fn main() {
     let bios = kq1_pc_refemu::bios_next_to(disk);
     let port_hashes = if compare { port(&game, bios.as_deref(), &log, passes, None).0 } else { Vec::new() };
     let mut r = Runner::new(&raw).unwrap_or_else(|e| panic!("{e}"));
+    // KQ_RGB=1: a run that chose the second edition's RGB colours (as recorded).
+    r.rgb = std::env::var_os("KQ_RGB").is_some();
     // The BIOS's font, from bios.rom next to the disk, if it is there.
     if let Some(b) = kq1_pc_refemu::bios_next_to(disk) {
         r.m.set_font(&b).unwrap_or_else(|e| panic!("bios.rom: {e}"));

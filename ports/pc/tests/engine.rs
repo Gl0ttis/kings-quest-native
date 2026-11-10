@@ -134,6 +134,17 @@ fn the_second_editions_play_diskette_is_its_originals() {
     assert_eq!(second("restore_play", Some(play)).unwrap().0, 155);
 }
 
+/// The second edition in RGB colour (chosen at its first screen): the walk and a death,
+/// against its original in RGB. The game differs from the composite runs (v5 holds
+/// the RGB patterns), and the screens are the RGB patterns.
+#[test]
+fn the_second_editions_rgb_runs_match_its_original() {
+    for (name, passes) in [("rgb_walk_rooms_1_16", 781), ("rgb_death_river", 429)] {
+        let Some((n, _)) = second(name, None) else { return };
+        assert_eq!(n, passes, "{name}");
+    }
+}
+
 #[test]
 fn the_second_editions_deaths_match_its_original() {
     for (name, passes) in [("death_river", 429), ("death_rock", 438), ("death_stream", 565)] {

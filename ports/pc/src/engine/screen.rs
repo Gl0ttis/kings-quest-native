@@ -25,11 +25,39 @@ pub const HEIGHT: usize = 168;
 pub struct Screen {
     pub work: Vec<u8>,
     pub shown: Vec<u8>,
+    /// The second edition's RGB colours, when chosen: the planes then hold each pixel's
+    /// dot pattern, as the original's picture buffer does, not its colour.
+    pub rgb: Option<Rgb>,
 }
 
 impl Default for Screen {
     fn default() -> Self {
-        Screen { work: vec![0; WIDTH * HEIGHT], shown: vec![0; WIDTH * HEIGHT] }
+        Screen { work: vec![0; WIDTH * HEIGHT], shown: vec![0; WIDTH * HEIGHT], rgb: None }
+    }
+}
+
+/// The second edition's RGB patterns (its own data). The picture's: three bytes a
+/// colour from DS:12C8 (`$17F8`), the composite pattern and then the RGB patterns for
+/// odd and even rows (the plot takes the first on an odd row, `$4C3D`). The actors':
+/// one a colour, DS:1308 (`$1890`, the views' colours turned into patterns as they are
+/// loaded). Each byte holds its pattern in both halves.
+#[derive(Clone, Copy, Debug)]
+pub struct Rgb {
+    pub picture: [[u8; 2]; 16],
+    pub cel: [u8; 16],
+}
+
+impl Rgb {
+    pub fn from_data(ds: &[u8]) -> Rgb {
+        Rgb {
+            picture: std::array::from_fn(|c| [ds[0x12C8 + 3 * c + 1] & 0x0F, ds[0x12C8 + 3 * c + 2] & 0x0F]),
+            cel: std::array::from_fn(|c| ds[0x1308 + c] & 0x0F),
+        }
+    }
+
+    /// The pattern the picture's colour `c` is drawn in on row `y`.
+    pub fn picture(&self, c: u8, y: usize) -> u8 {
+        self.picture[(c & 15) as usize][if y & 1 == 1 { 0 } else { 1 }]
     }
 }
 
@@ -76,6 +104,14 @@ impl Mem for Pages<'_> {
     fn write(&mut self, seg: u32, off: u16, v: u8) {
         if let Some(i) = at(off) {
             if seg == 0x1800 {
+                // RGB: the pattern of the colour on this row (`$4C3D`), in both halves.
+                let v = match &self.s.rgb {
+                    Some(t) => {
+                        let p = t.picture(v, i / WIDTH);
+                        p << 4 | p
+                    }
+                    None => v,
+                };
                 self.s.shown[i] = v;
                 if let Some(l) = self.log.as_mut() {
                     l.writes.push((i, v));

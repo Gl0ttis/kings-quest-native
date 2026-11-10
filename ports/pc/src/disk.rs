@@ -82,11 +82,13 @@ impl Edition {
 
     /// The first edition's data-segment address `pc` in this edition's data segment.
     /// The second's data is the first's in blocks, each moved by a constant: 14 bytes
-    /// in, then 48 more before the colour table (DS:`$12BA`), then 2 more at DS:`$2006`.
-    /// Within the blocks only pointers differ (to what moved). None at DS:`$1FE8`-`$2005`,
-    /// whose 30 bytes differ throughout (nothing the port reads), and past the data.
+    /// in, then 48 more before the colour table (DS:`$12BA`), 1 more after the visual
+    /// colour (DS:`$1FDC`: the second edition keeps two), then 1 more at DS:`$2006`.
+    /// Within the blocks only pointers differ (to what moved: the picture commands'
+    /// table at DS:`$1FE8` holds code addresses). None past the data.
     pub fn ds(self, pc: usize) -> Option<usize> {
-        const BLOCKS: [(usize, usize, usize); 3] = [(0x0000, 0x12BA, 14), (0x12BA, 0x1FE8, 62), (0x2006, 0x20DB, 64)];
+        const BLOCKS: [(usize, usize, usize); 4] =
+            [(0x0000, 0x12BA, 14), (0x12BA, 0x1FDD, 62), (0x1FDD, 0x2006, 63), (0x2006, 0x20DB, 64)];
         match self {
             Edition::Cga => Some(pc),
             Edition::CgaRgb => BLOCKS.iter().find(|b| (b.0..b.1).contains(&pc)).map(|b| pc + b.2),

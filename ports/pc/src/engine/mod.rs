@@ -822,7 +822,9 @@ impl World {
         let mut f = Vec::with_capacity(1 + 80 * 200 + 1000);
         f.push(self.text.text_mode as u8);
         if !self.text.text_mode {
-            let p = |c: u8| crate::composite::PATTERN[(c & 15) as usize];
+            // The planes hold colours, or in RGB already the patterns.
+            let rgb = self.screen.rgb.is_some();
+            let p = |c: u8| if rgb { c & 15 } else { crate::composite::PATTERN[(c & 15) as usize] };
             let mut cga: Vec<u8> = self.screen.shown.chunks(2).map(|c| p(c[0]) << 4 | p(c[1])).collect();
             cga.resize(80 * 200, 0);
             let g = &self.text.graphics;

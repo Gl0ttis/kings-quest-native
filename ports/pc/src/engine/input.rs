@@ -265,6 +265,7 @@ impl World {
             let k = self.keys.pop_front().unwrap_or(0) as u8;
             if k == 0x1B {
                 self.g.rgb = !self.g.rgb;
+                self.set_colours();
                 self.title_screen_second();
             } else if k == b' ' {
                 break;
@@ -275,6 +276,11 @@ impl World {
         self.g.keys_on = true;
         self.g.heap = self.heap_start();
         self.wait_until("the tune to end", |w| w.vars[15] != 0);
+    }
+
+    /// The second edition's colours (`$19E8`): in RGB, the planes take the patterns.
+    fn set_colours(&mut self) {
+        self.screen.rgb = self.g.rgb.then(|| super::screen::Rgb::from_data(&self.res.ds));
     }
 
     /// `$4FF6`: the second edition's first screen: the title picture (83), the mode it

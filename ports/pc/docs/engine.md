@@ -203,9 +203,14 @@ second edition"). The port plays it with the same engine:
   takes from sector 662.
 - **RGB colour** (`$19E8`): mode 4 as an ordinary 320-dot, 4-colour screen (3D8h = 0Ah,
   3D9h = 01h: palette 0 on a blue background). The picture's colours come from a
-  second table (DS:12C8, 3 bytes a colour: the composite pattern, then a word the RGB
-  mode uses instead, `$17F8`; how its two bytes are laid on the screen is still to
-  work out). The port doesn't play RGB yet.
+  second table (DS:12C8, 3 bytes a colour: the composite pattern, then the RGB patterns
+  for odd and even rows, `$17F8`); the plot keeps both (DS:201A, 201B) and takes the
+  first on an odd row (`$4C3D`): the colours are dithered. The views' colours become
+  patterns as they are loaded, from DS:1308 in RGB (`$1890`). As the PC's picture buffer
+  holds patterns, v5 (the pattern under Graham) takes the RGB patterns: the game itself
+  differs from the composite runs (the walk's variables from room 16 on). The port's
+  planes hold the patterns in RGB (`Screen::rgb`); its two RGB runs (`rgb_*`) match the
+  original's on every pass.
 
 The second edition's ten runs (reference/cga_rgb/, in composite colour) match its
 original on every pass, in state, on screen and in the speaker's notes, and its save
