@@ -630,7 +630,8 @@ impl World {
             self.read_sectors_counted(2);
             let mut s = Vec::new();
             self.disk(false, 10, 2, &mut s);
-            if s[..0x400] == self.res.code[0x88..0x488] {
+            let t = self.res.edition.table_addr();
+            if s[..0x400] == self.res.code[t..t + 0x400] {
                 return;
             }
             self.clear_text_screen(true);

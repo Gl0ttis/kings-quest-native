@@ -237,6 +237,7 @@ impl World {
 
     /// An engine string (DS offset) queued.
     pub fn queue_engine_string(&mut self, at: usize) {
+        let at = self.res.d(at);
         let ds = self.res.ds.clone();
         self.queue_message(ds, at);
     }

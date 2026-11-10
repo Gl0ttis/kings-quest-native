@@ -7,9 +7,6 @@ use crate::disk::Disk;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-/// The engine's data segment as loaded: its offset in the code segment.
-pub const DATA: usize = 0x5110;
-
 /// A script: the actions, the cycle rules, the parser rules and the messages, one after
 /// another as the loader leaves them; the sections' starts are offsets in `data`.
 pub struct Script {
@@ -72,7 +69,9 @@ pub struct Resources {
     /// The Master's sectors (the restart reads its initial state from them).
     pub disk_image: Vec<u8>,
     /// The engine's data segment as loaded (64 KB, zeros past the image): its tables
-    /// and strings.
+    /// and strings, at the disk's edition's own addresses. The engine names them by the
+    /// first edition's ([`Resources::d`] maps them); a pointer read from it is the
+    /// edition's own, and indexes it as it is.
     pub ds: Rc<Vec<u8>>,
     /// The engine's code segment as loaded.
     pub code: Vec<u8>,
@@ -80,14 +79,16 @@ pub struct Resources {
     pub vocab: Vec<u8>,
     scripts: RefCell<Vec<Option<Rc<Script>>>>,
     views: RefCell<Vec<Option<Rc<View>>>>,
+    pub edition: crate::disk::Edition,
 }
 
 impl Resources {
     pub fn new(disk: &Disk) -> Result<Resources, String> {
         let code = disk.code_segment();
-        let mut ds = code.get(DATA..).ok_or("engine too short")?.to_vec();
+        let e = disk.edition;
+        let mut ds = code.get(e.data_segment()..).ok_or("engine too short")?.to_vec();
         ds.resize(0x10000, 0);
-        let vocab = decode_vocab(&ds);
+        let vocab = decode_vocab(&ds[e.ds(0).ok_or("no data")?..]);
         Ok(Resources {
             disk: Disk {
                 image: disk.image.clone(),
@@ -101,24 +102,38 @@ impl Resources {
             vocab,
             scripts: RefCell::new(vec![None; 256]),
             views: RefCell::new(vec![None; 256]),
+            edition: e,
         })
     }
 
-    /// A word of the engine's initial data.
+    /// The first edition's data address `a` on the disk's edition.
+    pub fn d(&self, a: usize) -> usize {
+        self.edition.ds(a).unwrap_or_else(|| panic!("data address {a:04X} isn't mapped to {}", self.edition.name()))
+    }
+
+    /// The first edition's code address `a` on the disk's edition.
+    pub fn c(&self, a: u16) -> u16 {
+        self.edition.code(a).unwrap_or_else(|| panic!("code address {a:04X} isn't in {}", self.edition.name()))
+    }
+
+    /// A word of the engine's initial data, at the first edition's address `a`.
     pub fn ds_word(&self, a: usize) -> u16 {
+        let a = self.d(a);
         u16::from_le_bytes([self.ds[a], self.ds[a + 1]])
     }
 
-    /// A string in the engine's data, up to `end` (FF or 0).
+    /// A string in the engine's data at the first edition's address `a`, up to `end`
+    /// (FF or 0).
     pub fn ds_bytes(&self, a: usize, end: u8) -> Vec<u8> {
-        self.ds[a..].iter().take_while(|&&b| b != end).copied().collect()
+        self.ds[self.d(a)..].iter().take_while(|&&b| b != end).copied().collect()
     }
 
     /// The object table as the engine starts with it (DS:1967).
     pub fn initial_objects(&self) -> [Object; OBJECTS] {
         let mut o = [Object::default(); OBJECTS];
         for (i, r) in o.iter_mut().enumerate() {
-            let b = &self.ds[0x1967 + 8 * i..0x1967 + 8 * i + 8];
+            let at = self.d(0x1967) + 8 * i;
+            let b = &self.ds[at..at + 8];
             *r = Object {
                 name: u16::from_le_bytes([b[0], b[1]]),
                 room: b[2],

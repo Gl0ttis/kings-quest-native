@@ -199,7 +199,8 @@ impl World {
         for row in &mut self.text.graphics.visible[..21] {
             *row = [false; 40];
         }
-        let frame = self.res.ds[pic::FRAME..pic::FRAME + 11].to_vec();
+        let at = self.res.d(pic::FRAME);
+        let frame = self.res.ds[at..at + 11].to_vec();
         self.interpret(&frame);
         self.draw_loaded_picture();
         self.drawing_room = false;

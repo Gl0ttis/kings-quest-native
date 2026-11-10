@@ -144,7 +144,7 @@ impl World {
         self.g.music_on = false;
         // $20E9: the speaker's gate on; the music starts with silence.
         self.speaker.push(super::Speaker::Gate(true));
-        self.g.music = Some(super::Stream { data: self.res.ds.clone(), at: SILENCE });
+        self.g.music = Some(super::Stream { data: self.res.ds.clone(), at: self.res.d(SILENCE) });
         self.g.music_on = true;
         let start_room = if self.g.first_start { self.start_room.take() } else { None };
         if self.g.first_start {
@@ -196,7 +196,7 @@ impl World {
             let mut at = CREDITS;
             for _ in 0..9 {
                 let colour = self.res.code_byte(at + 3);
-                let colour = if colour >= 0x10 { self.res.ds[CREDIT_COLOUR] } else { colour };
+                let colour = if colour >= 0x10 { self.res.ds[self.res.d(CREDIT_COLOUR)] } else { colour };
                 let mut c = self.res.code_byte(at + 4);
                 let text = self.code_string(at + 5);
                 at += 5 + text.len() as u16 + 1;
@@ -663,7 +663,7 @@ impl World {
                 } else {
                     0
                 };
-                let text: Vec<u8> = self.res.ds[CANNED[which]..].iter().take_while(|&&b| b != 0xFF).copied().collect();
+                let text: Vec<u8> = self.res.ds_bytes(CANNED[which], 0xFF);
                 let p = &mut self.g.parse;
                 p.line[..text.len()].copy_from_slice(&text);
                 p.line[text.len()] = 0xFF;

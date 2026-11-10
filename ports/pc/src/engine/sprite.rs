@@ -268,7 +268,7 @@ impl World {
         let (mut nx, mut ny) = (x.x, x.y);
         let (mut dx, mut dy) = (0u8, 0u8);
         if x.countdown == 0 && x.no_move == 0 {
-            let at = DIRECTIONS + 2 * (x.dir as usize & 0x7F);
+            let at = self.res.c(DIRECTIONS as u16) as usize + 2 * (x.dir as usize & 0x7F);
             let (xs, ys) = (self.res.code[at], self.res.code[at + 1]);
             dx = match xs {
                 0 => 0,

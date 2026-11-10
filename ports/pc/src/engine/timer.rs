@@ -108,7 +108,7 @@ impl World {
         } else {
             2
         };
-        self.g.joy_dir = self.res.ds[JOY_DIRS + col + row];
+        self.g.joy_dir = self.res.ds[self.res.d(JOY_DIRS) + col + row];
         if self.g.joy_dir != 0 {
             self.vars[31] = 0;
         }
@@ -288,7 +288,7 @@ impl World {
             if al == 0 {
                 // $1BBB: the keypad walks; pressing the same direction again stops.
                 if (0x47..=0x51).contains(&ah) {
-                    let mut d = self.res.ds[KEYPAD + (ah - 0x47) as usize];
+                    let mut d = self.res.ds[self.res.d(KEYPAD) + (ah - 0x47) as usize];
                     if self.g.key_dir == d {
                         d = 0;
                     }
@@ -306,7 +306,7 @@ impl World {
                     }
                     return;
                 }
-                if (0x10..=0x32).contains(&ah) && self.res.ds[ALT_CODES + (ah - 0x10) as usize] != 0xFF {
+                if (0x10..=0x32).contains(&ah) && self.res.ds[self.res.d(ALT_CODES) + (ah - 0x10) as usize] != 0xFF {
                     return;
                 }
                 continue;
@@ -316,7 +316,7 @@ impl World {
                 // sound table and its flags; the port reads the table's initial bytes.
                 self.log.push(format!("key {k:04X}: character {al:02X} is past the key table"));
             }
-            match self.res.ds[KEY_CODES + al as usize] {
+            match self.res.ds[self.res.d(KEY_CODES) + al as usize] {
                 0xFF => {}
                 c @ 0..=0x7F => {
                     if self.g.ring.len() < RING {

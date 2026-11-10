@@ -4,18 +4,23 @@
 //! (refemu-pc `--trace`), and its screen the original's (kqframes-pc `--hashes`).
 //! Skipped without the original's disk in original/.
 
-use kq1_pc::disk::Disk;
+use kq1_pc::disk::{Disk, Edition};
 use kq1_pc::engine::clock::{Clock, Event, Joystick, Replay, CPU_HZ, CYCLES_PER_TICK};
 use kq1_pc::engine::World;
 use std::path::Path;
 
-/// The first release's original (the reference runs are its).
+/// The first release's original (reference/ holds its runs).
 fn original() -> Option<Disk> {
+    original_of(Edition::Cga)
+}
+
+/// An edition's original (the second's runs are in reference/cga_rgb/).
+fn original_of(edition: Edition) -> Option<Disk> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("original");
     std::fs::read_dir(dir).ok()?.find_map(|e| {
         let p = e.ok()?.path();
         (p.extension()?.to_str()? == "mfm").then_some(())?;
-        Disk::from_file(std::fs::read(&p).ok()?).ok().filter(|d| d.edition == kq1_pc::disk::Edition::Cga)
+        Disk::from_file(std::fs::read(&p).ok()?).ok().filter(|d| d.edition == edition)
     })
 }
 
@@ -31,7 +36,13 @@ fn replay(disk: &Disk, name: &str) -> usize {
 
 /// The same, with `play` as the Play diskette (else a blank one); and the game after.
 fn replay_with(disk: &Disk, name: &str, play: Option<Vec<u8>>) -> (usize, World) {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("reference");
+    replay_in(disk, "reference", name, play)
+}
+
+/// Replay route `name` of the runs in `folder` (reference/, or reference/cga_rgb/ for
+/// the second edition's).
+fn replay_in(disk: &Disk, folder: &str, name: &str, play: Option<Vec<u8>>) -> (usize, World) {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(folder);
     let events = std::fs::read_to_string(dir.join(format!("{name}.events"))).expect("the event log");
     let trace = std::fs::read_to_string(dir.join(format!("{name}.csv"))).expect("the trace");
     let reference: Vec<Vec<&str>> = trace.lines().skip(1).map(|l| l.split(',').collect()).collect();
@@ -94,6 +105,14 @@ fn replay_with(disk: &Disk, name: &str, play: Option<Vec<u8>>) -> (usize, World)
 fn the_walk_route_matches_the_original() {
     let Some(disk) = original() else { return };
     assert_eq!(replay(&disk, "walk_rooms_1_16"), 781);
+}
+
+/// The second edition (CGA+RGB): the walk through rooms 1 and 16, against its original.
+#[test]
+#[ignore = "the second edition's title and colours are to come"]
+fn the_second_editions_walk_matches_its_original() {
+    let Some(disk) = original_of(Edition::CgaRgb) else { return };
+    assert_eq!(replay_in(&disk, "reference/cga_rgb", "walk_rooms_1_16", None).0, 781);
 }
 
 #[test]

@@ -141,7 +141,7 @@ impl World {
         } else {
             1
         };
-        let d = self.res.ds[DIRECTIONS + 3 * xs + ys];
+        let d = self.res.ds[self.res.d(DIRECTIONS) + 3 * xs + ys];
         self.actors[a].dir = d;
         if d == 0 {
             Next::Arrive
@@ -233,7 +233,7 @@ impl World {
                 }
                 4 => {
                     let d = self.actors[a].dir as usize;
-                    self.actors[a].dir = self.res.ds[MIRROR + d];
+                    self.actors[a].dir = self.res.ds[self.res.d(MIRROR) + d];
                     self.g.detour_state = 5;
                     self.g.detour_count = self.g.detour_len;
                     return Next::Exit;
@@ -291,7 +291,7 @@ impl World {
         } else {
             1
         };
-        let d = self.res.ds[DIRECTIONS + 3 * xs + ys];
+        let d = self.res.ds[self.res.d(DIRECTIONS) + 3 * xs + ys];
         self.actors[a].dir = d;
         self.g.chase_dir = d;
         if d == 0 {
