@@ -59,6 +59,10 @@ git_release_enable = false
 name = "kq1-ibm"
 git_release_enable = false
 
+[[package]]
+name = "kq1-ibm-player"
+git_release_enable = false
+
 # The ports: their changelogs list the shared crates' changes as well.
 [[package]]
 name = "kq1-apple2"
@@ -66,11 +70,11 @@ changelog_include = ["kq1-formats", "kq1-frontend"]
 
 [[package]]
 name = "kq1-pcjr"
-changelog_include = ["kq1-formats", "kq1-frontend", "kq1-ibm"]
+changelog_include = ["kq1-formats", "kq1-frontend", "kq1-ibm", "kq1-ibm-player"]
 
 [[package]]
 name = "kq1-pc"
-changelog_include = ["kq1-formats", "kq1-frontend", "kq1-ibm"]
+changelog_include = ["kq1-formats", "kq1-frontend", "kq1-ibm", "kq1-ibm-player"]
 
 # The reference emulators are tools for measuring the ports, never released.
 [[package]]

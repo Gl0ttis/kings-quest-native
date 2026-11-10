@@ -68,7 +68,7 @@
 //! `<L>` `<R>` the arrows), and the screen at --until is written as a PNG (640 × 400,
 //! each line doubled), with the text on it printed.
 
-use kq1_frontend::player::{self, audio, Drives, PlayerClock, RouteClock, ScriptClock, WindowSetup};
+use kq1_ibm_player::{self as player, audio, Drives, PlayerClock, RouteClock, ScriptClock, WindowSetup};
 use kq1_pc::composite::{self, Mode};
 use kq1_pc::disk::{Disk, IMAGE_LEN};
 use kq1_pc::engine::clock::{Clock, Replay, CPU_HZ};

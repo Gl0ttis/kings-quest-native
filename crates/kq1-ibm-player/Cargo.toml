@@ -1,0 +1,26 @@
+[package]
+name = "kq1-ibm-player"
+version = "0.1.0"
+description = "The half the IBM PC and PCjr King's Quest players share: their clocks, window, sound output and Play diskette handling."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "kq1_ibm_player"
+path = "src/lib.rs"
+
+[dependencies]
+minifb = { version = "0.29.0", default-features = false, features = ["x11"] }
+# The platform side (the paint hook, full screen, the joystick, the error box).
+kq1-frontend = { path = "../kq1-frontend" }
+# The IBM PC and PCjr engines' clock, which the players' clocks give events to.
+kq1-ibm = { path = "../kq1-ibm" }
+
+# Linux: the sound output.
+[target.'cfg(target_os = "linux")'.dependencies]
+cpal = "0.15"

@@ -53,7 +53,7 @@
 //! `<L>` `<R>` the arrows), and the screen at --until is written as a PNG, with the
 //! text on it printed.
 
-use kq1_frontend::player::{self, audio, Drives, PlayerClock, RouteClock, ScriptClock, WindowSetup};
+use kq1_ibm_player::{self as player, audio, Drives, PlayerClock, RouteClock, ScriptClock, WindowSetup};
 use kq1_pcjr::disk::{Disk, IMAGE_LEN};
 use kq1_pcjr::engine::clock::{Clock, Replay, CPU_HZ};
 use kq1_pcjr::engine::screen::{HEIGHT, WIDTH};

@@ -315,11 +315,13 @@ the docs.
 - the player's platform side: `crates/kq1-frontend` (the Windows paint hook, full
   screen, the joystick as a raw reading, the `fatal()` message box), which the Apple
   and PCjr players both use; a player gives the hook its picture's size and shape and
-  turns the joystick reading into its machine's. Its `player` module is the half the
-  IBM PC and PCjr players share: the clocks for play, routes and --headless, the window
-  and its keys, the sound output (the port gives its samples), finding the disk, and the
-  Play diskette's handling. A player of that family keeps only its screen, sound, font
-  and engine glue;
+  turns the joystick reading into its machine's;
+- the IBM PC and PCjr players' shared half: `crates/kq1-ibm-player` (the clocks for
+  play, routes and --headless, the window and its keys, the sound output, the port
+  giving its samples, finding the disk, and the Play diskette's handling). A player of
+  that family keeps only its screen, sound, font and engine glue. It is a crate of its
+  own so that changes to it don't release the Apple IIe, whose player shares only
+  `kq1-frontend`;
 - the IBM PC and PCjr engines' shared parts: `crates/kq1-ibm` (the clock's types, the
   picture painter, the text screens, the views, the resource table's entries, the
   built-in font);
