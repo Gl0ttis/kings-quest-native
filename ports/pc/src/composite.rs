@@ -90,9 +90,10 @@ pub fn group(pattern: u8) -> [u8; 3] {
     decode(bits(pattern), 0)
 }
 
-/// The 16 group colours, by pattern.
+/// The 16 group colours, by pattern (worked out once).
 pub fn palette() -> [[u8; 3]; 16] {
-    std::array::from_fn(|p| group(p as u8))
+    static PALETTE: std::sync::OnceLock<[[u8; 3]; 16]> = std::sync::OnceLock::new();
+    *PALETTE.get_or_init(|| std::array::from_fn(|p| group(p as u8)))
 }
 
 /// One line of dots (each 0 or 1, from the line's first dot) as colours, one per dot.
@@ -109,14 +110,32 @@ pub fn line(dots: &[u8], mode: Mode) -> Vec<[u8; 3]> {
                 .collect()
         }
         Mode::Signal => {
-            let at = |n: isize| if n < 0 { 0 } else { dots.get(n as usize).copied().unwrap_or(0) };
-            (0..dots.len() as isize)
+            // The brightness over the cycle from two dots before each dot to one after
+            // it; the colour over three cycles round it. The line's signal is summed
+            // once (with the black border, 6 dots each side) and each dot's windows
+            // taken from the running sums.
+            const PAD: usize = 6;
+            let phase: [(f64, f64); 4] = std::array::from_fn(|k| {
+                let a = HUE.to_radians() + std::f64::consts::FRAC_PI_2 * k as f64;
+                (a.cos() / 2.0, a.sin() / 2.0)
+            });
+            let len = dots.len() + 2 * PAD;
+            let (mut sy, mut si, mut sq) = (vec![0.0; len + 1], vec![0.0; len + 1], vec![0.0; len + 1]);
+            for p in 0..len {
+                // Padded position p is dot p - PAD, whose subcarrier position is its own
+                // (mod 4).
+                let d = p.checked_sub(PAD).and_then(|k| dots.get(k)).map_or(0.0, |&d| d as f64 * LEVEL);
+                let (c, s) = phase[(p + 4 - PAD % 4) % 4];
+                sy[p + 1] = sy[p] + d;
+                si[p + 1] = si[p] + d * c;
+                sq[p + 1] = sq[p] + d * s;
+            }
+            (0..dots.len())
                 .map(|n| {
-                    // The brightness over the cycle from two dots before this one to one
-                    // after it; the colour over three cycles round it.
-                    let y = (n - 2..n + 2).map(|k| at(k) as f64 * LEVEL).sum::<f64>() / 4.0;
-                    let w: Vec<u8> = (n - 6..n + 6).map(at).collect();
-                    rgb(y, chroma(&w, (n - 6).rem_euclid(4) as usize))
+                    let p = n + PAD;
+                    let y = (sy[p + 2] - sy[p - 2]) / 4.0;
+                    let (i, q) = ((si[p + 6] - si[p - 6]) / 3.0, (sq[p + 6] - sq[p - 6]) / 3.0);
+                    rgb(y, (i * SATURATION, q * SATURATION))
                 })
                 .collect()
         }
@@ -133,6 +152,31 @@ pub fn picture_row(colours: &[u8], mode: Mode) -> Vec<[u8; 3]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The signal's decoding, dot by dot as it is defined (each dot's windows taken
+    /// afresh), against the running sums `line` uses: the same colours.
+    #[test]
+    fn the_signal_decoding_is_its_definition() {
+        let mut x = 12345u32;
+        let dots: Vec<u8> = (0..640)
+            .map(|_| {
+                x = x.wrapping_mul(1103515245).wrapping_add(12345);
+                (x >> 16 & 1) as u8
+            })
+            .collect();
+        let at = |n: isize| if n < 0 { 0 } else { dots.get(n as usize).copied().unwrap_or(0) };
+        let slow: Vec<[u8; 3]> = (0..dots.len() as isize)
+            .map(|n| {
+                let y = (n - 2..n + 2).map(|k| at(k) as f64 * LEVEL).sum::<f64>() / 4.0;
+                let w: Vec<u8> = (n - 6..n + 6).map(at).collect();
+                rgb(y, chroma(&w, (n - 6).rem_euclid(4) as usize))
+            })
+            .collect();
+        let fast = line(&dots, Mode::Signal);
+        for (n, (a, b)) in slow.iter().zip(&fast).enumerate() {
+            assert!(a.iter().zip(b).all(|(p, q)| p.abs_diff(*q) <= 1), "dot {n}: {a:?} against {b:?}");
+        }
+    }
 
     /// The hues of the one-dot patterns run green, blue, red, brown, a quarter turn
     /// apart, as on composite CGA, and the two-dot ones in between.
