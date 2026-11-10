@@ -1,4 +1,4 @@
-//! primap DISK ROOM [X1 X2 Y1 Y2]: a room picture's priorities (hex), one row per line,
+//! primap-pcjr DISK ROOM [X1 X2 Y1 Y2]: a room picture's priorities (hex), one row per line,
 //! for reading where the ego can walk.
 use kq1_pcjr::{disk::Disk, pic, vocab};
 

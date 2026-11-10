@@ -1,4 +1,4 @@
-// primap PIC [Y0 Y1 STEP]: print a picture's priority map as hex digits, one row per line.
+// primap-apple2 PIC [Y0 Y1 STEP]: print a picture's priority map as hex digits, one row per line.
 fn main() {
     let a: Vec<String> = std::env::args().collect();
     let imgs: Vec<Vec<u8>> = (1..=3).map(|n| std::fs::read(format!("extracted/disk{n}.do")).unwrap()).collect();

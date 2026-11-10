@@ -45,3 +45,13 @@ path = "src/bin/kqextract-pcjr.rs"
 name = "kq-pcjr"
 path = "src/bin/kq-pcjr.rs"
 required-features = ["player"]
+
+# Named apart from the other ports' examples of the same names, which share the
+# workspace's target folder.
+[[example]]
+name = "costdump-pcjr"
+path = "examples/costdump.rs"
+
+[[example]]
+name = "primap-pcjr"
+path = "examples/primap.rs"
