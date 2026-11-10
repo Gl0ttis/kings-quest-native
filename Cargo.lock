@@ -453,7 +453,10 @@ dependencies = [
 name = "kq1-pc"
 version = "0.1.0"
 dependencies = [
+ "cpal",
  "kq1-formats",
+ "kq1-frontend",
+ "minifb",
 ]
 
 [[package]]

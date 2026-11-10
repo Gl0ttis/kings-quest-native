@@ -16,7 +16,7 @@ release, each behaving as that release did: same rules, same timing, same quirks
 | Port | Original | Status | Crates |
 |---|---|---|---|
 | [Apple IIe](ports/apple2/README.md) | 1984, Sierra, Apple version by Jeff Stephenson (double hi-res, 128K) | Playable start to finish; matches the original on every pass of a 158-point playthrough | `kq1-apple2`, `kq1-apple2-refemu` |
-| [IBM PC (CGA)](ports/pc/README.md) | 1984, Sierra (self-booting; CGA, composite colour) | Started: the disk, its copy protection and every resource read and checked; composite colour; the reference PC, timed against 86Box | `kq1-pc`, `kq1-pc-refemu` |
+| [IBM PC (CGA)](ports/pc/README.md) | 1984, Sierra (self-booting; CGA, composite colour) | Playable start to finish; matches the original on every pass, screen and speaker note of three whole-game playthroughs; composite colour in two modes; its Play diskette is the original's | `kq1-pc`, `kq1-pc-refemu` |
 | [IBM PCjr](ports/pcjr/README.md) | 1984, Sierra/IBM (self-booting; PCjr only) | Playable start to finish; matches the original on every pass and screen of three whole-game playthroughs; its Play diskette is the original's | `kq1-pcjr`, `kq1-pcjr-refemu` |
 
 ## Layout
@@ -34,7 +34,7 @@ ports/
     reference/          traces measured from the original (numbers only), for the tests
     original/           your disk images (not in git)
     extracted/          decoded game data (not in git)
-  pc/                   the IBM PC port (CGA): crate kq1-pc (in progress)
+  pc/                   the IBM PC port (CGA): crate kq1-pc (engine, kq-pc, tools)
     refemu/             crate kq1-pc-refemu: the reference PC with the CGA (measuring only)
   pcjr/                 the IBM PCjr port: crate kq1-pcjr (engine, kq-pcjr, tools)
     refemu/             crate kq1-pcjr-refemu: the reference PCjr (measuring only)
@@ -55,6 +55,8 @@ a folder of its own, put your own game disk images next to `kq` in it and start 
 
 - Apple IIe: `kq-apple2-<version>-<system>`, with the three game disks.
   [ports/apple2/PLAYING.md](ports/apple2/PLAYING.md) has the details, keys and options.
+- IBM PC: `kq-pc-<version>-<system>`, with the game disk.
+  [ports/pc/PLAYING.md](ports/pc/PLAYING.md) has the details, keys and options.
 - IBM PCjr: `kq-pcjr-<version>-<system>`, with the game disk.
   [ports/pcjr/PLAYING.md](ports/pcjr/PLAYING.md) has the details, keys and options.
 
@@ -64,10 +66,12 @@ Put the disk images in the port's `original/` folder (git ignores it), then:
 
 ```
 cargo run --release -p kq1-apple2 --bin kq-apple2 -- ports/apple2/original
+cargo run --release -p kq1-pc --bin kq-pc
 cargo run --release -p kq1-pcjr --bin kq-pcjr
 ```
 
-See [ports/apple2/README.md](ports/apple2/README.md) and
+See [ports/apple2/README.md](ports/apple2/README.md),
+[ports/pc/README.md](ports/pc/README.md) and
 [ports/pcjr/README.md](ports/pcjr/README.md) for the tools, tests and documentation.
 
 ## Licence

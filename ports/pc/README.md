@@ -6,9 +6,20 @@ emulation. It follows [docs/porting-guide.md](../../docs/porting-guide.md), with
 IBM PCjr port in [ports/pcjr/](../pcjr/README.md), this release's sibling, as the
 model.
 
-**Status:** started. The disk image (the original's copy protection included), its
-files, the resource table and every resource are read and checked. See
-[docs/port-plan.md](docs/port-plan.md) for what comes next.
+**Status:** playable. The native engine matches the original on every pass of ten
+reference runs (three whole games among them), in state, on screen and in the speaker's
+notes, and runs at the original's speed (the whole runs within 0.4%); its Play diskette
+is the original's. The player, `kq-pc`, shows the screen as a composite monitor did, in
+two modes, and plays the speaker. See [docs/port-plan.md](docs/port-plan.md).
+
+## Playing
+
+```
+cargo run --release -p kq1-pc --bin kq-pc
+```
+
+[PLAYING.md](PLAYING.md) has the keys, the options and the details (it is the guide
+shipped with the release, where the player is `kq`).
 
 ## What you need
 
@@ -21,6 +32,10 @@ Both give the same game. The disk's boot sector says "BOOT v1.1". The CGA+RGB ed
 ("BOOT v1.2") is a different disk, and not this port's.
 
 ## Tools
+
+The player's `--headless "SECONDS:KEYS;..." --until S --shot FILE.png` plays without a
+window and writes the screen (see the top of
+[src/bin/kq-pc.rs](src/bin/kq-pc.rs)).
 
 ```
 cargo run --release -p kq1-pc --bin kqextract-pc -- original/<disk>.mfm
@@ -64,4 +79,4 @@ screens are left out of the tests, and refemu-pc leaves the characters' cells bl
 - [docs/disk-layout.md](docs/disk-layout.md): the disk, its files and protection, boot,
   the resource table, the resources, the display
 - [docs/engine.md](docs/engine.md): the engine against the PCjr's, the address map, the
-  checkpoints
+  checkpoints, how the PC differs, the speed model

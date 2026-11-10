@@ -30,6 +30,7 @@ jobs:
     outputs:
       apple2-tag: ${{ steps.tags.outputs.apple2 }}
       pcjr-tag: ${{ steps.tags.outputs.pcjr }}
+      pc-tag: ${{ steps.tags.outputs.pc }}
     steps:
       # The whole history and its tags: release-plz finds each package's last release
       # by its tag.
@@ -66,7 +67,7 @@ jobs:
         env:
           RELEASES: ${{ steps.release.outputs.releases }}
         run: |
-          for port in apple2 pcjr; do
+          for port in apple2 pcjr pc; do
             tag=$(jq -r --arg p "kq1-$port" '.[]? | select(.package_name == $p) | .tag' <<<"${RELEASES:-[]}")
             echo "$port=$tag" >> "$GITHUB_OUTPUT"
             [ -n "$tag" ] && echo "released $tag"
@@ -168,3 +169,51 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${{ needs.release.outputs.pcjr-tag }}" ${{ steps.package.outputs.dir }}.* --clobber
+
+  build-pc:
+    name: kq-pc (${{ matrix.name }})
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            exe: .exe
+          - name: linux-x64
+            os: ubuntu-latest
+            exe: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Linux window and sound libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxkbcommon-dev libxcursor-dev libxrandr-dev libasound2-dev
+      - name: Build
+        run: cargo build --release --locked -p kq1-pc --bin kq-pc
+      # The archive: kq-pc-<version>-<platform>/, the player in it as kq (every
+      # port's runs as kq), with the licence and the player's guide.
+      - name: Package
+        id: package
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' ports/pc/Cargo.toml | head -1)
+          dir="kq-pc-$version-${{ matrix.name }}"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+          mkdir "$dir"
+          cp "target/release/kq-pc${{ matrix.exe }}" "$dir/kq${{ matrix.exe }}"
+          cp LICENSE "$dir/"
+          cp ports/pc/PLAYING.md "$dir/README.md"
+          if [ "$RUNNER_OS" = "Windows" ]; then 7z a "$dir.zip" "$dir" > /dev/null; else tar czf "$dir.tar.gz" "$dir"; fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.package.outputs.dir }}
+          path: ${{ steps.package.outputs.dir }}.*
+      - name: Attach to the release
+        if: needs.release.outputs.pc-tag != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ needs.release.outputs.pc-tag }}" ${{ steps.package.outputs.dir }}.* --clobber

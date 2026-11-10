@@ -18,7 +18,28 @@ path = "src/lib.rs"
 # The resource formats (views, scripts, the vocabulary) and the MFM disk images,
 # shared with the other ports.
 kq1-formats = { path = "../../crates/kq1-formats" }
+# Only the windowed player (kq-pc) uses it; the engine library has no other
+# dependencies. X11 only on Linux (Wayland desktops run it through XWayland).
+minifb = { version = "0.29.0", optional = true, default-features = false, features = ["x11"] }
+
+# The platform side the players share (crates/kq1-frontend), with the player.
+kq1-frontend = { path = "../../crates/kq1-frontend", optional = true }
+
+# Linux: sound (cpal).
+[target.'cfg(target_os = "linux")'.dependencies]
+cpal = { version = "0.15", optional = true }
+
+[features]
+default = ["player"]
+player = ["dep:minifb", "dep:cpal", "dep:kq1-frontend"]
 
 [[bin]]
 name = "kqextract-pc"
 path = "src/bin/kqextract-pc.rs"
+
+# Shipped as `kq` (the release archive renames it); `kq-pc` in the workspace, where
+# each port's player needs a name of its own.
+[[bin]]
+name = "kq-pc"
+path = "src/bin/kq-pc.rs"
+required-features = ["player"]
