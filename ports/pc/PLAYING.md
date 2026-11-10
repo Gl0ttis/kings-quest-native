@@ -89,7 +89,9 @@ patterns of dots into colours. `kq` shows them two ways:
 - **With fringes** (F7, or `--signal`): as a composite monitor shows the signal, with
   the soft coloured fringes where colours meet.
 
-The inventory screen is text in the PC's colours.
+The text is always shown as the monitor showed it, plain light letters: the monitor's
+colour was too soft to colour such thin strokes. The inventory screen is text in the
+PC's colours.
 
 ## Saved games
 

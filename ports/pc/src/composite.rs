@@ -14,9 +14,12 @@
 //! **The two modes** decode the same signal:
 //! - [`Mode::Groups`]: each 4-dot group as one colour, the group's pattern decoded on its
 //!   own (the 16 colours the game was drawn for);
-//! - [`Mode::Signal`]: every dot decoded with the dots round it, over one subcarrier
-//!   cycle, as the monitor does: the same colours inside areas of one colour, and the
-//!   fringes a monitor shows where they meet.
+//! - [`Mode::Signal`]: every dot decoded with the dots round it, as the monitor does:
+//!   the brightness over one subcarrier cycle (4 dots), the colour over three (12
+//!   dots: a monitor's colour has a narrower bandwidth than its brightness, so thin
+//!   lines, the text's strokes, show mostly as brightness, and colour spreads across
+//!   edges). The same colours inside areas of one colour, and the fringes a monitor
+//!   shows where they meet.
 //!
 //! **Calibration.** Three numbers, measured from the original running in 86Box (an IBM
 //! PC with the CGA on a composite monitor, docs/port-plan.md): the subcarrier's phase
@@ -52,21 +55,30 @@ pub enum Mode {
     Signal,
 }
 
-/// Decode `dots` (each 0 or 1), whose first is at subcarrier position `first` (0-3):
-/// the brightness and the two colour components, over the window's one cycle.
-fn decode(dots: [u8; 4], first: usize) -> [u8; 3] {
-    let mut y = 0.0;
+/// The colour components of `dots` (each 0 or 1, a whole number of subcarrier
+/// cycles), whose first is at subcarrier position `first` (0-3).
+fn chroma(dots: &[u8], first: usize) -> (f64, f64) {
+    let cycles = (dots.len() / 4) as f64;
     let (mut i, mut q) = (0.0, 0.0);
     for (k, &d) in dots.iter().enumerate() {
         let d = d as f64 * LEVEL;
         let a = HUE.to_radians() + std::f64::consts::FRAC_PI_2 * ((first + k) % 4) as f64;
-        y += d / 4.0;
-        i += d * a.cos() / 2.0;
-        q += d * a.sin() / 2.0;
+        i += d * a.cos() / 2.0 / cycles;
+        q += d * a.sin() / 2.0 / cycles;
     }
-    let (i, q) = (i * SATURATION, q * SATURATION);
+    (i * SATURATION, q * SATURATION)
+}
+
+/// A colour from its brightness `y` and colour components.
+fn rgb(y: f64, (i, q): (f64, f64)) -> [u8; 3] {
     let to = |v: f64| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
     [to(y + 0.956 * i + 0.621 * q), to(y - 0.272 * i - 0.647 * q), to(y - 1.106 * i + 1.703 * q)]
+}
+
+/// Decode one cycle of `dots`, whose first is at subcarrier position `first` (0-3).
+fn decode(dots: [u8; 4], first: usize) -> [u8; 3] {
+    let y = dots.iter().map(|&d| d as f64 * LEVEL).sum::<f64>() / 4.0;
+    rgb(y, chroma(&dots, first))
 }
 
 fn bits(nibble: u8) -> [u8; 4] {
@@ -100,9 +112,11 @@ pub fn line(dots: &[u8], mode: Mode) -> Vec<[u8; 3]> {
             let at = |n: isize| if n < 0 { 0 } else { dots.get(n as usize).copied().unwrap_or(0) };
             (0..dots.len() as isize)
                 .map(|n| {
-                    // The cycle from two dots before this one to one after it.
-                    let w = [at(n - 2), at(n - 1), at(n), at(n + 1)];
-                    decode(w, (n - 2).rem_euclid(4) as usize)
+                    // The brightness over the cycle from two dots before this one to one
+                    // after it; the colour over three cycles round it.
+                    let y = (n - 2..n + 2).map(|k| at(k) as f64 * LEVEL).sum::<f64>() / 4.0;
+                    let w: Vec<u8> = (n - 6..n + 6).map(at).collect();
+                    rgb(y, chroma(&w, (n - 6).rem_euclid(4) as usize))
                 })
                 .collect()
         }

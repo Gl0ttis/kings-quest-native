@@ -442,10 +442,15 @@ fn shift_line<T: Copy + Default>(src: &[T], shift: i32, out: &mut [T]) {
 /// (the engine's frame: the picture's dot patterns and the text the BIOS draws over
 /// them) through the composite model; the text screen in the CGA's colours. Moved
 /// across by the screen position, the edges black.
+///
+/// The text is always shown as the monitor shows the signal, mostly as brightness:
+/// its strokes aren't colour patterns, and taken a 4-dot group at a time (the plain
+/// mode) they would be blocks of colour.
 fn render(w: &World, mode: Mode, out: &mut [u32]) {
     let shift = (CENTRE - w.g.hpos as i32) * 16;
     if !w.text.text_mode {
         let f = w.frame();
+        let g = &w.text.graphics;
         let (mut dots, mut line) = (vec![0u8; OUT_W], vec![0u8; OUT_W]);
         for y in 0..OUT_H {
             for (x, &b) in f[1 + y * 80..1 + (y + 1) * 80].iter().enumerate() {
@@ -454,7 +459,22 @@ fn render(w: &World, mode: Mode, out: &mut [u32]) {
                 }
             }
             shift_line(&dots, shift, &mut line);
-            for (o, c) in out[y * OUT_W..(y + 1) * OUT_W].iter_mut().zip(composite::line(&line, mode)) {
+            let mut colours = composite::line(&line, mode);
+            // The cells with text in them (the text window's rows; above it, the
+            // characters still shown), through the signal's decoding.
+            let r = y / 8;
+            let text: Vec<usize> = (0..40).filter(|&c| r >= 21 || (g.visible[r][c] && g.cells[r][c] != b' ')).collect();
+            if mode == Mode::Groups && !text.is_empty() {
+                let signal = composite::line(&line, Mode::Signal);
+                for c in text {
+                    for x in c as i32 * 16 + shift..(c as i32 + 1) * 16 + shift {
+                        if (0..OUT_W as i32).contains(&x) {
+                            colours[x as usize] = signal[x as usize];
+                        }
+                    }
+                }
+            }
+            for (o, c) in out[y * OUT_W..(y + 1) * OUT_W].iter_mut().zip(colours) {
                 *o = (c[0] as u32) << 16 | (c[1] as u32) << 8 | c[2] as u32;
             }
         }
