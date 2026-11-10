@@ -403,7 +403,11 @@ impl Drives {
         // keeps the ones before, and the copy's label line names the Play diskette too);
         // the text screen, cleared, has its request at the top.
         let text: String = (0..25).map(|r| w.text.row(r)).collect::<Vec<_>>().join(" ");
-        if let Some(at) = text.rfind("insert your") {
+        let asked = text.rfind("insert your");
+        // A write error after it: the game writes only to the Play diskette.
+        if text.rfind("Write Error").is_some_and(|e| asked.is_none_or(|a| e > a)) {
+            w.drive = 1;
+        } else if let Some(at) = asked {
             let asked = &text[at..];
             if asked.contains("Master") {
                 w.drive = 0;
