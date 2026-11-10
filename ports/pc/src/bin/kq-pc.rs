@@ -373,6 +373,71 @@ impl Clock for ScriptClock {
     }
 }
 
+/// The drive and the Play diskette, for the window and --headless alike: a disk the
+/// game asks for goes in the drive (the player presses Enter), and the Play diskette's
+/// image is written to its file once the game has stopped writing to it, and when the
+/// game ends.
+struct Drives {
+    /// The Play diskette's file; none keeps it in memory (a route's).
+    play: Option<PathBuf>,
+    saved_writes: u64,
+    pending: bool,
+}
+
+impl Drives {
+    /// Load the Play diskette from its file, if there is one, and put it in the drive:
+    /// the game plays from it once it has been made (it holds a copy of the game's data),
+    /// and saves to it and restores from it without asking for it (`$4CA3`); the
+    /// original's player boots the Master and then puts the Play diskette in.
+    fn new(play: Option<PathBuf>, w: &mut World) -> Drives {
+        if let Some(img) = play.as_ref().and_then(|p| std::fs::read(p).ok()).filter(|i| i.len() == IMAGE_LEN) {
+            w.disks[1].image = img;
+            w.drive = 1;
+        }
+        Drives { play, saved_writes: w.disks[1].writes, pending: false }
+    }
+
+    /// At each frame.
+    fn look(&mut self, w: &mut World) {
+        // The latest request on the screen: in graphics the text window scrolls (it
+        // keeps the ones before, and the copy's label line names the Play diskette too);
+        // the text screen, cleared, has its request at the top.
+        let text: String = (0..25).map(|r| w.text.row(r)).collect::<Vec<_>>().join(" ");
+        if let Some(at) = text.rfind("insert your") {
+            let asked = &text[at..];
+            if asked.contains("Master") {
+                w.drive = 0;
+            } else if asked.contains("Play") {
+                w.drive = 1;
+            }
+        }
+        if w.disks[1].writes != self.saved_writes {
+            self.saved_writes = w.disks[1].writes;
+            self.pending = true;
+        } else if self.pending {
+            self.write(w);
+        }
+    }
+
+    /// The Play diskette to its file, if it has changed since.
+    fn write(&mut self, w: &World) {
+        self.pending = false;
+        self.saved_writes = w.disks[1].writes;
+        if let Some(p) = &self.play {
+            if let Err(e) = std::fs::write(p, &w.disks[1].image) {
+                eprintln!("{}: {e}", p.display());
+            }
+        }
+    }
+
+    /// The game has ended: anything not yet written.
+    fn finish(&mut self, w: &World) {
+        if self.pending || w.disks[1].writes != self.saved_writes {
+            self.write(w);
+        }
+    }
+}
+
 /// --headless: play the script, then write the screen at `until` seconds of the game.
 fn headless(
     disk: &Disk,
@@ -383,14 +448,18 @@ fn headless(
     shot: &str,
     rate: Option<u64>,
     room: Option<u8>,
+    play: Option<PathBuf>,
 ) {
     let mut w = World::new(disk, Box::new(ScriptClock::parse(plan))).expect("the engine");
     w.font = Some(std::rc::Rc::new(Font(font)));
+    let drives = std::rc::Rc::new(std::cell::RefCell::new(Drives::new(play, &mut w)));
+    let d2 = drives.clone();
     w.fixed_pass_cycles = rate;
     w.start_room = room;
     let end = (until * CPU_HZ) as u64;
     let shot_path = shot.to_string();
     w.on_frame = Some(Box::new(move |w: &mut World| {
+        d2.borrow_mut().look(w);
         if w.cycles < end {
             return;
         }
@@ -407,16 +476,20 @@ fn headless(
         std::fs::write(&shot_path, kq1_formats::png::encode_rgb(640, 400, &rgb)).expect("write the shot");
         let text: Vec<String> = (0..25).map(|r| w.text.row(r)).filter(|r| !r.trim().is_empty()).collect();
         println!(
-            "at {:.1} s ({:.1} s of it loading: the disk and the pictures), pass {}, room {}:\n{}",
+            "at {:.1} s ({:.1} s of it loading: the disk and the pictures), pass {}, room {}, Graham at ({}, {}), score {}:\n{}",
             w.cycles as f64 / CPU_HZ,
             w.loading_cycles as f64 / CPU_HZ,
             w.passes,
             w.vars[1],
+            w.actors[0].x,
+            w.actors[0].y,
+            w.vars[19],
             text.join("\n")
         );
         w.stop("the end of the script".into());
     }));
     w.run();
+    drives.borrow_mut().finish(&w);
 }
 
 /// The CGA's 16 colours (RGBI), as 0RGB: the text screen's.
@@ -834,7 +907,7 @@ fn main() {
         },
     };
     if let Some(plan) = plan {
-        headless(&disk, font, mode, &plan, until, &shot, rate, room);
+        headless(&disk, font, mode, &plan, until, &shot, rate, room, play_file.map(PathBuf::from));
         return;
     }
     let play_path = play_file
@@ -881,16 +954,10 @@ fn main() {
             w.start_room = room;
             // A route starts with the Play diskette the original had (a blank one), and
             // keeps it in memory.
-            if !replaying {
-                if let Ok(img) = std::fs::read(&play_path) {
-                    if img.len() == IMAGE_LEN {
-                        w.disks[1].image = img;
-                    }
-                }
-            }
+            let drives =
+                std::rc::Rc::new(std::cell::RefCell::new(Drives::new((!replaying).then_some(play_path), &mut w)));
+            let d2 = drives.clone();
             let mut rgb = vec![0u32; OUT_W * OUT_H];
-            let mut saved_writes = w.disks[1].writes;
-            let mut pending_save = false;
             let s2 = shared.clone();
             let mut loading = 0;
             let mut was_replaying = false;
@@ -923,25 +990,10 @@ fn main() {
                 if std::mem::take(&mut was_replaying) {
                     println!("at pass {}: room {}, score {}", w.passes, w.vars[1], w.vars[19]);
                 }
-                // A disk asked for goes in the drive (the player presses Enter).
-                let text: String = (21..25).map(|r| w.text.row(r)).collect::<Vec<_>>().join(" ");
-                if text.contains("insert your") && text.contains("Play") {
-                    w.drive = 1;
-                } else if text.contains("insert your") && text.contains("Master") {
-                    w.drive = 0;
-                }
-                // The Play diskette, written back once the game has stopped writing.
-                if w.disks[1].writes != saved_writes {
-                    saved_writes = w.disks[1].writes;
-                    pending_save = true;
-                } else if pending_save {
-                    pending_save = false;
-                    if let Err(e) = std::fs::write(&play_path, &w.disks[1].image) {
-                        eprintln!("{}: {e}", play_path.display());
-                    }
-                }
+                d2.borrow_mut().look(w);
             }));
             let why = w.run();
+            drives.borrow_mut().finish(&w);
             shared.lock().unwrap().ended = Some(why);
         });
     }
