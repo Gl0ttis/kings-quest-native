@@ -262,7 +262,7 @@ impl World {
         self.wait_until("the messages to print", |w| w.vars[23] == 0);
     }
 
-    /// `$1AD8`: read keys while the game lets the timer (0E27 and v25).
+    /// `$1AD8`: read keys while the game lets the timer (DS:142B and v25).
     fn key_tick(&mut self) {
         loop {
             if !self.g.keys_on || self.vars[25] == 0 {

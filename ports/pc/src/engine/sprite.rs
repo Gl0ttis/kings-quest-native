@@ -65,7 +65,10 @@ impl World {
 
     /// `$3FB7`: count down every actor's delay (to the end of the table); if any
     /// reached 0, the actors are redrawn: backgrounds back, steps, backgrounds saved,
-    /// drawn.
+    /// drawn. Before they move, the PC waits (`$3FE7`) until a tick has come since
+    /// they last did (SS:1E65, cleared by the timer), so the actors take at most one
+    /// step a tick: most of the PC's time goes on this wait. (SS:1E66, which nothing
+    /// sets, would skip it.)
     pub fn countdowns(&mut self) {
         self.checkpoint(0x3FB7);
         self.g.current = 0;
@@ -83,11 +86,13 @@ impl World {
             }
         }
         if any {
+            self.wait_until("a tick", |w| !w.g.moved);
             self.restore_all();
             self.move_all();
             self.save_all();
             self.draw_all();
         }
+        self.g.moved = true;
     }
 
     /// `$4063`: take the current actor off the screen. The others take their pending

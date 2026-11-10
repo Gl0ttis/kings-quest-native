@@ -170,127 +170,130 @@ impl PartialEq for Stream {
 #[derive(Clone)]
 pub struct Globals {
     // -- The timer and the keyboard.
-    /// 0CDC: the joystick was polled last tick.
+    /// 12E0: the joystick was polled last tick.
     pub joy_skip: bool,
-    /// 0CDD: ticks to the next word printed.
+    /// 12E1: ticks to the next word printed.
     pub print_countdown: u8,
-    /// 0E48: the key ring (80 characters).
+    /// 144C: the key ring (80 characters).
     pub ring: VecDeque<u8>,
-    /// 0DD2/0EA8: where the messages print.
+    /// 13D6/14AE: where the messages print.
     pub text_row: u8,
     pub text_col: u8,
-    /// 0E24: ticks to the next music record.
+    /// 1428: ticks to the next music record.
     pub music_countdown: u8,
-    /// 0E26: sound on (key '1').
+    /// 142A: sound on (key '1').
     pub sound_on: bool,
-    /// 0E27: the timer may read the keyboard.
+    /// 142B: the timer may read the keyboard.
     pub keys_on: bool,
-    /// 0E28: the prompt is current.
+    /// 142C: the prompt is current.
     pub prompt_shown: bool,
-    /// 0E29: a parser rule matched the line.
+    /// 142D: a parser rule matched the line.
     pub matched: bool,
-    /// 0E2D: the prompt is to be drawn again.
+    /// 1431: the prompt is to be drawn again.
     pub prompt_due: bool,
-    /// 0E2E-0E33: keys '3' (save game), '5' (restore), '7' (restart), '9' (retype),
+    /// 1432-1437: keys '3' (save game), '5' (restore), '7' (restart), '9' (retype),
     /// Tab (status), '.'.
     pub key_flags: [bool; 6],
-    /// 0E34: Ctrl-V, the debug mode.
+    /// 1438: Ctrl-V, the debug mode.
     pub debug: bool,
-    /// 0E35: the message queue (8).
+    /// 1439: the message queue (8).
     pub queue: VecDeque<Msg>,
-    /// 0E47: print whole messages at once.
+    /// 144B: print whole messages at once.
     pub print_all: bool,
-    /// 0E99: op 32 asked to save.
+    /// 149D: op 32 asked to save.
     pub save_requested: bool,
-    /// 0E9B, 0E9C, 0E9E/0EA0: the music: playing, the tune to go on to, the record
+    /// 149F, 14A0, 14A2/14A4: the music: playing, the tune to go on to, the record
     /// being played and the tune's start.
     pub music_on: bool,
     pub music_next: Option<Stream>,
     pub music: Option<Stream>,
     pub music_start: Option<Stream>,
-    /// 0EA5: paused (Esc).
+    /// 14A9: paused (Esc).
     pub paused: bool,
-    /// 0D24: the sound table, 40 streams (none loaded: silence).
+    /// SS:1E65: the actors have moved since the last tick (set by every draw pass,
+    /// `$3FFD`; cleared by every tick, `$1A12`). Set at start (in the engine's image).
+    pub moved: bool,
+    /// 1328: the sound table, 40 streams (none loaded: silence).
     pub sounds: Vec<Option<Stream>>,
     // -- The parser.
     pub parse: input::Parse,
     // -- Actors and motion.
-    /// 0EA6/0EAB: the actor op 02's helpers last selected.
+    /// 14AC/14B1: the actor op 02's helpers last selected.
     pub selected: usize,
-    /// 125A: input off (game over).
+    /// 1860: input off (game over).
     pub input_off: bool,
-    /// 125B: the actor count (the highest slot in use).
+    /// 1861: the actor count (the highest slot in use).
     pub actor_count: u8,
-    /// 125C/125D: the barriers (0: none), and 125E-1261 their bands.
+    /// 1862/1863: the barriers (0: none), and 1864-1867 their bands.
     pub barrier_x: u8,
     pub barrier_y: u8,
     pub band_x: (u8, u8),
     pub band_y: (u8, u8),
-    /// 1262/1263: the ego under the program's control.
+    /// 1868/1869: the ego under the program's control.
     pub program: bool,
     pub program2: bool,
-    /// 1264/1265: the motion target.
+    /// 186A/186B: the motion target.
     pub target: (u8, u8),
-    /// 1266/1267: the chase's slack.
+    /// 186C/186D: the chase's slack.
     pub slack: (u8, u8),
-    /// 1268/1269: the follow distance and state.
+    /// 186E/186F: the follow distance and state.
     pub follow_dist: u8,
     pub follow_state: u8,
-    /// 126A, 1270: an x step kept by ops 2D and 28.
+    /// 1870, 1876: an x step kept by ops 2D and 28.
     pub kept_step: u8,
     pub kept_step28: u8,
-    /// 126B, 126C, 1271, 1272: the chase's detour (shared by every actor).
+    /// 1871, 1872, 1877, 1878: the chase's detour (shared by every actor).
     pub detour_count: u8,
     pub detour_turn: u8,
     pub detour_len: u8,
     pub detour_state: u8,
-    /// 126D: the follower's patrol side.
+    /// 1873: the follower's patrol side.
     pub patrol_side: u8,
-    /// 126E: op 2D's step.
+    /// 1874: op 2D's step.
     pub special_step: u8,
-    /// 126F: a room change happened.
+    /// 1875: a room change happened.
     pub room_changed: u8,
-    /// 1273: the chase follows a barrier.
+    /// 1879: the chase follows a barrier.
     pub barrier_latch: u8,
-    /// 1275: the ego's direction before the update.
+    /// 187B: the ego's direction before the update.
     pub saved_dir: u8,
-    /// 1276: the chase's last direction.
+    /// 187C: the chase's last direction.
     pub chase_dir: u8,
-    /// 1277, 1278, 1279: the joystick timed out; its direction; the keypad's.
+    /// 187D, 187E, 187F: the joystick timed out; its direction; the keypad's.
     pub joy_timeout: u8,
     pub joy_dir: u8,
     /// The joystick's centre, as the first good read took it (DS:115E set, its counts),
     /// for the thresholds.
     pub joy_centre: Option<(u8, u8)>,
     pub key_dir: u8,
-    /// 127C: a set_loop waiting for the actor's next update (its view number; FF
+    /// 1882: a set_loop waiting for the actor's next update (its view number; FF
     /// none).
     pub pending_loop: u8,
-    /// 127E: op 42 asked for a Play diskette.
+    /// 1884: op 42 asked for a Play diskette.
     pub play_disk: bool,
-    /// 180D/180E: the last position any motion call left.
+    /// 1E59/1E5A: the last position any motion call left.
     pub last_pos: (u8, u8),
-    /// 1810: the actor the sprite routines work on.
+    /// 1E5C: the actor the sprite routines work on.
     pub current: usize,
-    /// 1814: the wanderer's edge toggle.
+    /// 1E60: the wanderer's edge toggle.
     pub wander_toggle: u8,
-    /// 1815: the random byte's place in the engine's code; 1817 the wander timer.
+    /// 1E61: the random byte's place in the engine's code; 1E63 the wander timer.
     pub random: u16,
     /// The original's memory for resources, from DS:20D8 up: its top (DS:1DD8), where
     /// the next resource goes; the last room script's sections (DS:1DD0-1F5E); and the
-    /// room's, kept by new_room (DS:15CA-0FCA), to which clearing the actors goes back.
+    /// room's, kept by new_room (DS:15CA-15D0), to which clearing the actors goes back.
     /// The port reads its resources from its own copy of the disk; it keeps these only
     /// for the pointers the actor records hold, which a save keeps.
     pub heap: u16,
     pub room_ptrs: [u16; 4],
     pub room_marks: [u16; 4],
     pub wander_timer: u16,
-    /// 1820-1826: the last three (key, slot) pairs of the draw order, which the sort
+    /// 1E6C-1E72: the last three (key, slot) pairs of the draw order, which the sort
     /// includes but never refills.
     pub order_spare: [(u8, u8); 3],
-    /// 1E91: restoring after a Play diskette was made (nothing drawn meanwhile).
+    /// 10CD: restoring after a Play diskette was made (nothing drawn meanwhile).
     pub restoring: bool,
-    /// 1F15/1F16/1F18: set_ego_view's fit check, the ego's kept loop and cel, the
+    /// 1151/1152/1154: set_ego_view's fit check, the ego's kept loop and cel, the
     /// water placement's target.
     pub fit_check: bool,
     pub kept_loop_cel: (u8, u8),
@@ -299,18 +302,18 @@ pub struct Globals {
     pub pic: crate::pic::State,
     /// The picture loaded (linear F000h).
     pub picture: Option<Rc<Vec<u8>>>,
-    /// The first start (0DD3).
+    /// The first start (13D7).
     pub first_start: bool,
     // -- The text screen and the BIOS.
-    /// 1EF9: the text screen's attribute; 1EF7/1EF8: its cursor (row, column).
+    /// 1135: the text screen's attribute; 1133/1134: its cursor (row, column).
     pub text_attr: u8,
     pub text_cursor: (u8, u8),
-    /// 1EF4: the graphics cursor, kept while the text screen is up.
+    /// 1164: the graphics cursor, kept while the text screen is up.
     pub gfx_cursor: (u8, u8),
     pub hpos_gfx: u8,
     pub hpos_text: u8,
     pub hpos: u8,
-    /// 1259, 1274, 127A: bytes among the saved globals that nothing uses.
+    /// 185F, 187A, 1880: bytes among the saved globals that nothing uses.
     pub spare: [u8; 3],
 }
 
@@ -483,6 +486,7 @@ impl World {
             music: None,
             music_start: None,
             paused: false,
+            moved: true,
             sounds: vec![None; 40],
             parse: input::Parse::default(),
             selected: 0,
@@ -737,6 +741,8 @@ impl World {
             Event::Tick(_) => {
                 if self.timer_on {
                     self.cost.ticks += 1;
+                    // `$1A04`: the flag cleared on every tick, before `$1A18`'s early out.
+                    self.g.moved = false;
                     self.int1c();
                 }
             }

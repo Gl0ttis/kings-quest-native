@@ -6,7 +6,7 @@ use super::res::Script;
 use super::World;
 
 /// The inventory's strings: pointers to "You Are Now Carrying:", "nothing", "Your
-/// Score Is: ", "with a ", " time penalty" (DS:10D8, 1EB4, 1EBE, 1ED0, 1EDA).
+/// Score Is: ", "with a ", " time penalty" (DS:10D8, 10F0, 10FA, 110C, 1116).
 const CARRYING: usize = 0x10D8;
 const NOTHING: usize = 0x10F0;
 const SCORE: usize = 0x10FA;

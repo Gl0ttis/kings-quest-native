@@ -14,7 +14,7 @@ use super::World;
 const VOCAB_END: u8 = b'{';
 /// The input line: 37 characters, then 00 FF.
 const LINE_MAX: usize = 37;
-/// The canned lines typed by keys '3', '5' and Tab (DS:12E2, 0CE9, 0CF7).
+/// The canned lines typed by keys '3', '5' and Tab (DS:12E2, 12ED, 12FB).
 const CANNED: [usize; 3] = [0x12E2, 0x12ED, 0x12FB];
 /// "Restart Game (y/n)?" (DS:1DF5).
 const RESTART_PROMPT: usize = 0x1DF5;
@@ -46,35 +46,35 @@ impl Ptr {
 /// The parser's and the line editor's state.
 #[derive(Clone)]
 pub struct Parse {
-    /// 0EA9: the first call has been made.
+    /// 14AF: the first call has been made.
     pub started: bool,
-    /// 0E2C: the phrase state.
+    /// 1430: the phrase state.
     pub phrase: u8,
-    /// 0EAE: a verb was found in this line.
+    /// 14B4: a verb was found in this line.
     pub verb_found: bool,
-    /// 0EAF/0EB0: the verb and noun being tried.
+    /// 14B5/14B6: the verb and noun being tried.
     pub verb: u8,
     pub noun: u8,
-    /// 0EB1: the line was edited (reprinted with the prompt).
+    /// 14B7: the line was edited (reprinted with the prompt).
     pub edited: bool,
-    /// 0E2A: where the next verb is looked for; 0EB5, 0EB7, 0EB9, 0EBD: the cursors.
+    /// 142E: where the next verb is looked for; 14BB, 14BD, 14BF, 14C3: the cursors.
     pub next_verb: Ptr,
     pub vocab: Ptr,
     pub noun_at: Ptr,
     pub saved: Ptr,
     pub text: Ptr,
-    /// 0FD4/0FD5: the word read.
+    /// 15DA/15DB: the word read.
     pub word: Vec<u8>,
     /// 1000-1002: the vocabulary entry last found: position (2: a phrase's first
     /// word), type (2 verb, 3 noun, 4 ignored), id.
     pub found: [u8; 3],
-    /// 0F8A: the typed line (spaces stored as 0), ended by 00 FF.
+    /// 1590: the typed line (spaces stored as 0), ended by 00 FF.
     pub line: Vec<u8>,
-    /// 17A2, 17A4, 17A6: the line's length, the cursor in it, and on screen.
+    /// 1DEE, 1DF0, 1DF2: the line's length, the cursor in it, and on screen.
     pub count: u8,
     pub at: usize,
     pub column: u8,
-    /// 1F14: a parser rule's actions ran.
+    /// 1150: a parser rule's actions ran.
     pub acted: bool,
 }
 

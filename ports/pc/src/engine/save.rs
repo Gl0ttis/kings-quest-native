@@ -16,12 +16,12 @@
 
 use super::{Actor, CelRef, Object, World, ACTORS, OBJECTS};
 
-/// The save block: "vrsn#", the slot, v0-v255, the objects, DS:17E7-127C.
+/// The save block: "vrsn#", the slot, v0-v255, the objects, DS:17E7-1882.
 const SIGNATURE: &[u8; 5] = b"vrsn#";
 const VARS_AT: usize = 6;
 const OBJECTS_AT: usize = VARS_AT + 256;
 const ACTORS_AT: usize = OBJECTS_AT + 8 * OBJECTS;
-/// The original's actor table holds 4 records; the globals DS:185F-127C follow.
+/// The original's actor table holds 4 records; the globals DS:185F-1882 follow.
 const RECORDS: usize = 4;
 const GLOBALS_AT: usize = ACTORS_AT + 30 * RECORDS;
 pub const SAVE_LEN: usize = GLOBALS_AT + 0x24;
@@ -140,7 +140,7 @@ impl World {
         }
     }
 
-    /// The globals DS:185F-127C, in order.
+    /// The globals DS:185F-1882, in order.
     fn globals_bytes(&self) -> [u8; 0x24] {
         let g = &self.g;
         [
@@ -384,7 +384,7 @@ impl World {
 
     // ---- The dialog.
 
-    /// `$4CA3`: the save or restore dialog. After making a Play diskette (1E91), slot 0
+    /// `$4CA3`: the save or restore dialog. After making a Play diskette (10CD), slot 0
     /// is restored without asking.
     pub fn save_restore_dialog(&mut self) {
         self.checkpoint(0x4CA3);
@@ -482,7 +482,7 @@ impl World {
     // ---- Restarting.
 
     /// `$1C33`: restart. Slot FF is restored from the disk in the drive; then
-    /// everything from the key flags to the keypad's direction (DS:1432-1279: the
+    /// everything from the key flags to the keypad's direction (DS:1432-187F: the
     /// variables, the actors, the barriers, the parser...) is cleared, and the music's
     /// countdown and the flags before them set to 1. What is left of the restored
     /// state is the object table, the horizontal position and the pending set_loop.
@@ -493,14 +493,14 @@ impl World {
         };
         self.objects = Self::objects_from(&block);
         let kept = (block[GLOBALS_AT + 0x21], block[GLOBALS_AT + 0x22], block[GLOBALS_AT + 0x23]);
-        // DS:1428-0E2D = 1.
+        // DS:1428-1431 = 1.
         self.g.music_countdown = 1;
         self.g.sound_on = true;
         self.g.keys_on = true;
         self.g.prompt_shown = true;
         self.g.matched = true;
         self.g.prompt_due = true;
-        // DS:1432-1279 = 0.
+        // DS:1432-187F = 0.
         let line_len = self.g.parse.line.len();
         let (count, at, column) = (self.g.parse.count, self.g.parse.at, self.g.parse.column);
         self.g.parse =
