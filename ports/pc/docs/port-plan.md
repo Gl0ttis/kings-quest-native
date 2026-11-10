@@ -22,7 +22,7 @@ both have it working.
 
 | Phase | Status |
 |---|---|
-| 1. Disk image | **Done.** The original as dumped (HxC `.mfm`, through the shared decoder, which now lists unreadable sectors) and the cracked 360K `.img`. The copy protection, one unreadable sector on track 6, is required on the original; the two images hold the same game (tested). The CGA+RGB edition is recognised and refused. |
+| 1. Disk image | **Done.** The original as dumped (HxC `.mfm`, through the shared decoder, which now lists unreadable sectors) and the cracked 360K `.img`. The copy protection, one unreadable sector on track 6, is required on the original; the two images hold the same game (tested). The CGA+RGB edition is read too (below). |
 | 2. Disk layout | **Done** ([disk-layout.md](disk-layout.md)): a DOS disk with three files; the engine `MAIN.EXE`, run at 0060:0000, its data segment at CS + `$511`; the resource table on sectors 10-11, read over the code at CS:`$88`, in the PCjr's entry format; the read routine. |
 | 3. Static formats | **Done** (`kqextract-pc`). With the PCjr port's decoders: all 80 well-formed scripts parse, all 79 pictures draw cleanly, all 88 views decode (byte for byte the PCjr's), all 40 sounds parse, and the 369-word vocabulary. The scripts are a revision of the PCjr's (renumbered variables, some rooms changed); eight pictures and three sound resources differ. |
 | Composite colour | **Done** ([src/composite.rs](../src/composite.rs)). The engine draws only colours 0 and 7, so the signal is two levels a dot, and the colours are the monitor's decoding of the dot patterns. Two modes from one model: each 4-dot group in its own colour, and the signal decoded dot by dot with the fringes between colours. Its hue, saturation and level are measured from the original in 86Box (IBM's BIOS, the CGA's composite output; [tools/86box/](../tools/86box/README.md)): within 6/255 in flat areas. The engine's colour table (DS:`$12BA`) gives each PCjr colour's pattern. |
@@ -59,8 +59,8 @@ edition".
 
 ## Decisions
 
-- **The CGA+RGB edition** (`ports/pc2`, "BOOT v1.2") comes after this port is done (the
-  user's order), likely sharing most of it.
+- **The CGA+RGB edition** ("BOOT v1.2") is a second edition of this port, not a port of
+  its own (the user's choice): one crate plays both.
 
 - **Composite colour: both modes** (the user's choice), from one model of the signal.
   Each 4-dot group's own colour is the default. The signal decoded with its fringes is
