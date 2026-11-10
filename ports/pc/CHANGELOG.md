@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/Gl0ttis/kings-quest-native/compare/kq1-pc-v0.1.1...kq1-pc-v0.2.0) (2026-11-10)
+
+
+### Features
+
+* **pc:** the second edition (CGA+RGB) plays too, in composite or RGB ([#31](https://github.com/Gl0ttis/kings-quest-native/pull/31)) ([cd341de](https://github.com/Gl0ttis/kings-quest-native/commit/cd341de0f44dae3785fe997ffbb26fe1a1c45201))
+
+
+### Refactoring
+
+* **workspace:** the IBM ports' shared code in crates ([#30](https://github.com/Gl0ttis/kings-quest-native/pull/30)) ([a6a9c24](https://github.com/Gl0ttis/kings-quest-native/commit/a6a9c245049c4f106e36530dbfa343c000a11220))
+
 ## [0.1.1](https://github.com/Gl0ttis/kings-quest-native/compare/kq1-pc-v0.1.0...kq1-pc-v0.1.1) (2026-11-10)
 
 
