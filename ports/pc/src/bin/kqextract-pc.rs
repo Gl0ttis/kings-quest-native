@@ -104,7 +104,8 @@ fn main() {
             }
         }
         if r > 0 && !room.picture.is_empty() {
-            let p = pic::draw_room(&cs[vocab::DATA_SEGMENT + pic::FRAME..], room.picture);
+            let frame = disk.edition.data_segment() + disk.edition.ds(pic::FRAME).unwrap();
+            let p = pic::draw_room(&cs[frame..], room.picture);
             let data = &room.picture[..p.end.min(room.picture.len())];
             fs::write(out.join(format!("res/room/{r:03}.pic.bin")), data).unwrap();
             let clean = p.warnings.is_empty() && room.picture.get(p.end.wrapping_sub(1)) == Some(&0xFF);
@@ -193,7 +194,7 @@ fn main() {
         }
     }
     fs::write(out.join("res/manifest.txt"), manifest).unwrap();
-    match vocab::read(&cs) {
+    match vocab::read(&cs, disk.edition) {
         Ok(words) => {
             let text: String = words
                 .iter()

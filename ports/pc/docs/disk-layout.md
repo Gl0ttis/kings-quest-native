@@ -5,9 +5,9 @@ the Color/Graphics Adapter. Its boot sector reads "BOOT v1.1 (c) Copyright Sierr
 On-Line, Inc. 1984". Unlike the PCjr's disk, it is a DOS-format disk with a FAT
 filesystem, though it doesn't need DOS: its boot sector loads the files itself.
 
-A second edition exists, the "CGA+RGB" disk ("BOOT v1.2"): its engine offers RGB
-colour besides composite. It isn't this port's. The disk reader refuses it with a
-message saying so.
+A second edition exists, the "CGA+RGB" disk ("BOOT v1.2", August 16, 1984): its engine
+offers RGB colour besides composite. The disk reader reads both ([The second
+edition](#the-second-edition-cgargb)).
 
 [src/disk.rs](../src/disk.rs) implements this document, and `kqextract-pc` checks it on
 every resource. Addresses are in the engine's code segment (segment `0060h`) unless
@@ -138,3 +138,33 @@ from a buffer at segment `1400h` to the screen at `B800h`, taking each pair of
 picture pixels' high nibbles into one byte (two 4-dot groups): 168 rows of 80 bytes,
 in CGA's interleaved rows. Like the PCjr's engine, it writes the CRTC's register 2,
 the horizontal sync position, from a variable (`[$112F]`, `2Dh` at start).
+
+## The second edition (CGA+RGB)
+
+The second release (August 16, 1984) is the same game on a disk laid out a little
+differently. Its known changes: RGB colour as well as composite, a different copy
+protection (Formaster's Copylock), three script bugs fixed, and Chris Iden credited.
+Compared with the first release (both editions' originals and cracks, `tests/disk.rs`):
+
+- **The boot sector** says "BOOT v1.2", 6 bytes in (after a jump). `LOAD` is 1,482
+  bytes (sectors 12-14), `MAIN.EXE` 30,912 (from sector 16), `290K` the same as the
+  first's.
+- **The engine** is the first's with additions: 98% of the first's instructions are in
+  it, in the same order, and every one of the 22 checkpoints. The additions: a screen
+  at the start choosing composite or RGB colour (the space bar plays), the RGB
+  drawing, Chris Iden's credit, and the protection's read (below). Its data segment
+  starts at CS + `$52A` (the first's `$511`) and is the first's data in blocks, each
+  moved by a constant (`Edition::ds`): 14 bytes in, then 48 more before the colour
+  table, then 2 more. The resource table is read to CS:`$8D` (the first's `$88`).
+- **The data** is the first's but for three bytes of script, one each in rooms 18, 21
+  and 65 (the fixes), laid out 57 sectors lower: the resource table's sectors are
+  the first's less 57. Its unused table entries are `FF FF FF FF` (the first's are
+  zeros).
+- **The protection** is the same sector, track 6 side 0 record 1 (sector 108), with
+  a size code of 1, but its data's CRC fails, not its ID's. That sector is in the data
+  area here: room 0's script runs over it. When a read of it fails three times, the
+  engine reads its data from cylinder 36, side 1, sector 6 (sector 662) instead and
+  goes on (`$20A6`). The disk reader does the same with the original's dump. The
+  crack has the data in sector 108 itself, and only its `MAIN.EXE` header changed (the
+  start address).
+

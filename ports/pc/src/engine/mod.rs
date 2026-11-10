@@ -464,6 +464,9 @@ pub fn frame_hash(f: &[u8]) -> u64 {
 
 impl World {
     pub fn new(disk: &Disk, clock: Box<dyn Clock>) -> Result<World, String> {
+        if disk.edition != crate::disk::Edition::Cga {
+            return Err(format!("{} isn't playable yet", disk.edition.name()));
+        }
         let res = Resources::new(disk)?;
         let objects = res.initial_objects();
         let g = Globals {

@@ -304,7 +304,8 @@ fn find_bios_font(disk: &Path) -> Option<(PathBuf, Vec<u8>)> {
 fn find_disk(given: Option<&str>) -> Result<PathBuf, String> {
     player::find_disk(
         given,
-        |raw| Disk::from_file(raw).is_ok(),
+        // The second edition isn't playable yet (its engine's addresses are to come).
+        |raw| Disk::from_file(raw).is_ok_and(|d| d.edition == kq1_pc::disk::Edition::Cga),
         "No disk image of King's Quest (IBM PC) was found.\n\nPut the game's disk image (an HxC .mfm dump or a \
          360K .img) next to kq, or give its path: kq DISK",
     )

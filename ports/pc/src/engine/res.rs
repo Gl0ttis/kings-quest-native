@@ -89,7 +89,12 @@ impl Resources {
         ds.resize(0x10000, 0);
         let vocab = decode_vocab(&ds);
         Ok(Resources {
-            disk: Disk { image: disk.image.clone(), engine: disk.engine.clone(), original: disk.original },
+            disk: Disk {
+                image: disk.image.clone(),
+                engine: disk.engine.clone(),
+                original: disk.original,
+                edition: disk.edition,
+            },
             disk_image: disk.image.clone(),
             ds: Rc::new(ds),
             code,

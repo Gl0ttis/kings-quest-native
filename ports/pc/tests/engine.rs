@@ -9,12 +9,13 @@ use kq1_pc::engine::clock::{Clock, Event, Joystick, Replay, CPU_HZ, CYCLES_PER_T
 use kq1_pc::engine::World;
 use std::path::Path;
 
+/// The first release's original (the reference runs are its).
 fn original() -> Option<Disk> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("original");
     std::fs::read_dir(dir).ok()?.find_map(|e| {
         let p = e.ok()?.path();
         (p.extension()?.to_str()? == "mfm").then_some(())?;
-        Disk::from_file(std::fs::read(&p).ok()?).ok()
+        Disk::from_file(std::fs::read(&p).ok()?).ok().filter(|d| d.edition == kq1_pc::disk::Edition::Cga)
     })
 }
 
