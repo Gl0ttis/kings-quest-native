@@ -78,7 +78,8 @@ These keys control `kq` itself:
 The game saves to its "Play diskette", which it makes itself: type `copy disk` before
 your first save and answer `y` (when it asks you to put the Play or the Master
 diskette in the drive, `kq` does it for you: just press Enter). The
-Play diskette is kept as `KQ1 Play.img` next to the game's disk. It's the original's
+Play diskette is kept as `KQ1 Play.img` next to the game's disk. When you start `kq` again, it is
+already in the drive, so `restore game` finds your saves. It's the original's
 own format: an emulator running the original can read it, and `kq` reads one
 made by the original.
 
