@@ -421,7 +421,7 @@ dependencies = [
 
 [[package]]
 name = "kq1-apple2"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "cpal",
  "kq1-formats",
@@ -438,7 +438,7 @@ dependencies = [
 
 [[package]]
 name = "kq1-formats"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "kq1-frontend"
@@ -469,7 +469,7 @@ dependencies = [
 
 [[package]]
 name = "kq1-pcjr"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "cpal",
  "kq1-formats",
