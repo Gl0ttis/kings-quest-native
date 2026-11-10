@@ -1,7 +1,7 @@
 [package]
 name = "kq1-ibm"
 version = "0.1.0"
-description = "What the IBM PC and PCjr King's Quest ports' engines share: the clock and the picture painter."
+description = "What the IBM PC and PCjr King's Quest ports' engines share: the clock, the picture painter, the text screens, the views, the resource table's entries and the ports' own font."
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -13,3 +13,7 @@ workspace = true
 [lib]
 name = "kq1_ibm"
 path = "src/lib.rs"
+
+[dependencies]
+# The view cels' encoding, which the Apple version has too.
+kq1-formats = { path = "../kq1-formats" }

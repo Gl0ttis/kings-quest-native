@@ -454,6 +454,9 @@ dependencies = [
 [[package]]
 name = "kq1-ibm"
 version = "0.1.0"
+dependencies = [
+ "kq1-formats",
+]
 
 [[package]]
 name = "kq1-pc"
