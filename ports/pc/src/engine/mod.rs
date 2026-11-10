@@ -210,6 +210,9 @@ pub struct Globals {
     pub music_start: Option<Stream>,
     /// 14A9: paused (Esc).
     pub paused: bool,
+    /// The second edition's colours (DS:2118 there): RGB rather than composite, chosen
+    /// at its first screen (Esc switches).
+    pub rgb: bool,
     /// SS:1E65: the actors have moved since the last tick (set by every draw pass,
     /// `$3FFD`; cleared by every tick, `$1A12`). Set at start (in the engine's image).
     pub moved: bool,
@@ -488,6 +491,7 @@ impl World {
             music: None,
             music_start: None,
             paused: false,
+            rgb: false,
             moved: true,
             sounds: vec![None; 40],
             parse: input::Parse::default(),
@@ -643,6 +647,16 @@ impl World {
                 ev => ev,
             })
             .collect()
+    }
+
+    /// Where the resource memory starts (the title's `$500A` and the restart's `$1C5B`
+    /// set it): DS:20D8 in the first edition; DS:211A in the second, whose colours' flag
+    /// comes before it.
+    pub fn heap_start(&self) -> u16 {
+        match self.res.edition {
+            crate::disk::Edition::Cga => 0x20D8,
+            crate::disk::Edition::CgaRgb => 0x211A,
+        }
     }
 
     /// The speed model: the cycles of the work counted since the last charge added to

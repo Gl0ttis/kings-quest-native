@@ -65,7 +65,8 @@ fn replay_in(disk: &Disk, folder: &str, name: &str, play: Option<Vec<u8>>) -> (u
     w.max_passes = reference.len() as u64;
     w.frame_hashes = frames.is_some().then(Vec::new);
     let why = w.run();
-    assert!(w.trace.len() >= reference.len(), "{name}: stopped after {} passes: {why}", w.trace.len());
+    // The passes the port ran, compared first: where it stopped short, the first pass
+    // that differs says more than the stop.
     for (row, r) in w.trace.iter().zip(&reference) {
         let mine = [
             row.room.to_string(),
@@ -77,6 +78,7 @@ fn replay_in(disk: &Disk, folder: &str, name: &str, play: Option<Vec<u8>>) -> (u
         ];
         assert_eq!(mine.as_slice(), &r[3..9], "{name}: pass {} differs", row.pass);
     }
+    assert!(w.trace.len() >= reference.len(), "{name}: stopped after {} passes: {why}", w.trace.len());
     if let (Some(orig), Some(port)) = (&frames, &w.frame_hashes) {
         assert_eq!(orig.len(), reference.len(), "{name}: a frame hash per pass");
         for (k, (a, b)) in orig.iter().zip(port).enumerate() {
@@ -107,12 +109,45 @@ fn the_walk_route_matches_the_original() {
     assert_eq!(replay(&disk, "walk_rooms_1_16"), 781);
 }
 
-/// The second edition (CGA+RGB): the walk through rooms 1 and 16, against its original.
+/// The second edition (CGA+RGB): its runs (reference/cga_rgb/, recorded from its
+/// original, in composite colour), each compared on every pass as the first's are.
+fn second(name: &str, play: Option<Vec<u8>>) -> Option<(usize, World)> {
+    let disk = original_of(Edition::CgaRgb)?;
+    Some(replay_in(&disk, "reference/cga_rgb", name, play))
+}
+
 #[test]
-#[ignore = "the second edition's title and colours are to come"]
 fn the_second_editions_walk_matches_its_original() {
-    let Some(disk) = original_of(Edition::CgaRgb) else { return };
-    assert_eq!(replay_in(&disk, "reference/cga_rgb", "walk_rooms_1_16", None).0, 781);
+    let Some((n, _)) = second("walk_rooms_1_16", None) else { return };
+    assert_eq!(n, 781);
+}
+
+/// The second edition's save is its original's, byte for byte (the block's hash, at
+/// its slot A: sector 6), and a fresh start restores it as its original did.
+#[test]
+fn the_second_editions_play_diskette_is_its_originals() {
+    use kq1_pc::engine::frame_hash;
+    let Some((n, w)) = second("save_restore", None) else { return };
+    assert_eq!(n, 319);
+    let play = w.disks[1].image.clone();
+    assert_eq!(frame_hash(&play[6 * 512..6 * 512 + 1306]), 0x1a79_b76c_de2e_6bec, "the save block differs");
+    assert_eq!(second("restore_play", Some(play)).unwrap().0, 155);
+}
+
+#[test]
+fn the_second_editions_deaths_match_its_original() {
+    for (name, passes) in [("death_river", 429), ("death_rock", 438), ("death_stream", 565)] {
+        let Some((n, _)) = second(name, None) else { return };
+        assert_eq!(n, passes, "{name}");
+    }
+}
+
+#[test]
+fn the_second_editions_whole_games_match_its_original() {
+    for (name, passes) in [("gold_key", 16757), ("max_score", 20197), ("magic_ring", 21262), ("giant_sling", 19268)] {
+        let Some((n, _)) = second(name, None) else { return };
+        assert_eq!(n, passes, "{name}");
+    }
 }
 
 #[test]

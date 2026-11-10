@@ -51,10 +51,11 @@ pub struct RestartNow;
 impl World {
     /// The 3 sectors of slot `slot` (FF: the initial state).
     /// On the PC (`$07DA`): 3Fh + 3 × slot, the initial state (FF, taken as 1Ah) at
-    /// 8Dh, the data area's first sector.
-    fn slot_sector(slot: u8) -> usize {
+    /// 8Dh, the data area's first sector; on the second edition 6 + 3 × slot, the
+    /// initial state at 54h (`Edition::play_layout`).
+    fn slot_sector(&self, slot: u8) -> usize {
         let n = if slot == 0xFF { 0x1A } else { slot as usize };
-        0x3F + 3 * n
+        self.res.edition.play_layout().0 + 3 * n
     }
 
     // ---- The save block.
@@ -305,7 +306,7 @@ impl World {
         self.checkpoint(0x0867);
         self.read_sectors_counted(3);
         let mut data = Vec::new();
-        self.disk(false, Self::slot_sector(slot), 3, &mut data);
+        self.disk(false, self.slot_sector(slot), 3, &mut data);
         if &data[..5] != SIGNATURE || data[5] != slot {
             return Err(10);
         }
@@ -331,7 +332,7 @@ impl World {
         self.g.keys_on = false;
         loop {
             self.cost.sectors += 3;
-            match self.disk(true, Self::slot_sector(slot), 3, &mut b) {
+            match self.disk(true, self.slot_sector(slot), 3, &mut b) {
                 0 => break,
                 3 => {
                     self.print_now(NOT_ON_PLAY);
@@ -533,7 +534,7 @@ impl World {
         self.set_globals_bytes(&g);
         self.clear_actors();
         // $1C5B: the resource memory from its start.
-        self.g.heap = 0x20D8;
+        self.g.heap = self.heap_start();
         self.vars[24] = 3;
     }
 
@@ -574,7 +575,7 @@ impl World {
     /// `$0552`: the copy: three passes of 65 + 128 sectors from sector 141 (`$04DE`),
     /// the first pass formatting the Play diskette (`$062C`).
     fn copy_master(&mut self) {
-        let mut next = 0x8Dusize;
+        let mut next = self.res.edition.play_layout().1;
         let mut passes = 4u8;
         loop {
             let (at1, at2) = (next, next + 0x41);

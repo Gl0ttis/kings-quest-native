@@ -121,6 +121,17 @@ impl Edition {
         }
     }
 
+    /// The Play diskette's layout, which follows the Master's data: its first save slot's
+    /// sector (slot n at 3 × n sectors on; the initial state, slot FF, as slot 1Ah),
+    /// 3Fh in the first edition (`$07E7`) and 6 in the second (`$07EC`); and the first
+    /// sector of the Master's data the copy takes (`$04DE`: 8Dh; `$04E3`: 54h).
+    pub fn play_layout(self) -> (usize, usize) {
+        match self {
+            Edition::Cga => (0x3F, 0x8D),
+            Edition::CgaRgb => (0x06, 0x54),
+        }
+    }
+
     /// What the disk fills an unused table entry with.
     pub fn unused_entry(self) -> [u8; 4] {
         match self {
