@@ -4,11 +4,14 @@
 //!   picture at its shape, also while the window is dragged, and catches Alt+Enter;
 //! - [`fullscreen`]: borderless full screen and back (Windows, X11);
 //! - [`joystick`]: the first joystick or game controller, as a raw reading;
-//! - [`fatal`]: an error before the window opens, in a message box on Windows.
+//! - [`fatal`]: an error before the window opens, in a message box on Windows;
+//! - [`player`]: the half the IBM PC and PCjr players share (their clocks, the window,
+//!   the sound output, the Play diskette).
 
 pub mod fullscreen;
 pub mod hook;
 pub mod joystick;
+pub mod player;
 
 /// Report an error that stops a player before its window opens, and exit. On Windows it is
 /// shown in a message box too, since a player is often started from Explorer, whose console
