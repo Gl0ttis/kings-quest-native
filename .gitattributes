@@ -10,3 +10,7 @@
 *.py text diff=python
 
 *.png binary
+
+# The reference runs are the tools' own output, compared byte for byte (refemu follows an
+# event log by its text): always LF, on every platform.
+ports/*/reference/** text eol=lf
