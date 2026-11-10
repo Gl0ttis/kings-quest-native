@@ -450,6 +450,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "kq1-pc"
+version = "0.1.0"
+dependencies = [
+ "cpal",
+ "kq1-formats",
+ "kq1-frontend",
+ "minifb",
+]
+
+[[package]]
+name = "kq1-pc-refemu"
+version = "0.1.0"
+dependencies = [
+ "kq1-formats",
+ "kq1-pc",
+]
+
+[[package]]
 name = "kq1-pcjr"
 version = "0.1.1"
 dependencies = [

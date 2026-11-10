@@ -4,7 +4,7 @@
 //! protection). The engine finds every resource through a table at the start of its
 //! code segment. See docs/disk-layout.md.
 //!
-//! Two kinds of image are read: the original as dumped (an HxC `.mfm`, see mfm.rs),
+//! Two kinds of image are read: the original as dumped (an HxC `.mfm`, see kq1-formats' mfm),
 //! and the cracked 360K sector image (`.img`), which has the engine copied to sectors
 //! 648-707 instead (byte for byte the same) and a boot sector patched to load it there.
 
@@ -80,7 +80,7 @@ impl Disk {
     /// A disk image file: an HxC MFM dump of the original, or a 360K sector image.
     pub fn from_file(raw: Vec<u8>) -> Result<Disk, String> {
         if raw.starts_with(b"HXCMFM\0") {
-            Disk::from_tracks(&crate::mfm::decode(&raw)?)
+            Disk::from_tracks(&kq1_formats::mfm::decode(&raw)?)
         } else {
             Disk::new(raw)
         }
@@ -100,7 +100,7 @@ impl Disk {
 
     /// The original's tracks: 512-byte sectors into the image, and the engine from the
     /// 1 KB sectors in disk order.
-    pub fn from_tracks(tracks: &[crate::mfm::Track]) -> Result<Disk, String> {
+    pub fn from_tracks(tracks: &[kq1_formats::mfm::Track]) -> Result<Disk, String> {
         let mut image = vec![0xF6u8; IMAGE_LEN];
         let mut big: Vec<(u8, u8, u8, &[u8])> = Vec::new();
         for t in tracks {

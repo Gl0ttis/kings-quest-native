@@ -1,0 +1,443 @@
+# Translated from the PCjr port's routes/giant_sling.route, with this revision's variable
+# numbers (docs/engine.md, "Variables"). Run: kqroute-pc DISK routes/giant_sling.route
+# Translated from the Apple port's routes/giant_sling.route: the PCjr's variable numbers
+# (docs/engine.md, "Variables"). Run: kqroute-pcjr DISK routes/giant_sling.route
+# Giant-with-the-sling route: the max-score route, except that the giant is killed with
+# the sling (+3, -1 for the pebble) instead of left to fall asleep (+7). Ends at 153.
+# Run with: kqroute extracted/disk1.do extracted/disk2.do extracted/disk3.do routes/giant_sling.route
+
+# Room 3: the dagger under the rock (rock 2 points, dagger 5).
+room 3
+area 109 110 135 130
+say move rock
+wait 30
+expect score 2
+say get dagger
+expect score 7
+
+# Room 6: look into the stump (1), take the pouch (3), open it: diamonds (3).
+room 6
+area 1 96 33 143
+say look stump
+wait 5
+say get pouch
+say open pouch
+expect score 14
+
+# Room 12: cut the well rope with the dagger, take the bucket (2).
+room 12
+area 10 109 71 153
+say cut rope
+expect score 16
+
+# Room 15: walk into the carrot patch from below (sets v142), pick a carrot (2).
+room 15
+goto 90 152
+goto 90 132
+say get carrot
+expect score 18
+
+# Room 11: open the corral gate, walk in through it (v121), show the goat the carrot (5).
+room 11
+area 1 132 56 166
+say open gate
+wait 10
+goto 30 158
+goto 30 140
+# The goat starts in room 11's half of the corral, and wanders into room 10's (v51 = 10;
+# Apple v53): show it the carrot where it is.
+if 53 10 edge L
+say show carrot
+expect score 23
+# Wait for the goat to reach Graham: it merges into his sprite (view 67, v40 = 1). Until
+# then room 11's gateway is barred ("You're not leaving without him").
+waitvar 41 1 400   # Apple v40
+# Back into room 11 (if in room 10) and out through the gate.
+if 1 10 edge R
+goto 30 140
+goto 30 160
+
+# Room 25: step onto the bridge (the troll appears), then the goat butts it off (4).
+# Go round by room 22: the direct way left lands inside the corral again in room 10.
+room 22
+room 24
+room 25
+area 5 93 30 94
+wait 5
+# On the PCjr the goat, walking down off the bridge to (48, 108) after the butt, is
+# stopped by touching Graham if he stands in its way (x 41 on row 92). Started from
+# x 40-66, the scene puts him there (A0056); from x 13-39 he stays where he is (A0039).
+area 13 91 30 92
+wait 30
+expect score 27
+
+# Small items. Room 24: four-leaf clover (2).
+room 24
+area 25 108 80 154
+say get clover
+expect score 29
+# Room 30: walnut (3), opening it reveals gold (3).
+room 30
+area 9 112 98 166
+say get gold nut
+say open gold nut
+expect score 35
+# Room 31: bowl (3).
+room 31
+area 114 126 146 148
+say get bowl
+expect score 38
+# The word on its bottom (+1); this needs the bowl, so before the woodcutter.
+say read bowl
+expect score 39
+# Room 34: pebbles (1).
+room 34
+area 68 83 94 109
+say get pebble
+expect score 40
+# Deferred: the mushroom in room 47 (1, and 3 for eating it later). Lakes cut its side
+# of the room off from rooms 33, 34 and 46 on foot; reaching it needs swimming support.
+
+# Woodcutter's cottage (room 44 -> 79). Giving the empty bowl first scores most:
+# give it (+6 -3), "fill bowl" in front of them (+2), then take the fiddle (+3).
+room 44
+enter 79 128 105 138 127
+say give bowl
+# The PCjr rule is "fill" alone (noun 2 is a verb with nothing after it).
+say fill
+area 120 140 158 166
+say get fiddle
+expect score 48
+# Out through the cottage door.
+enter 44 16 103 20 128
+
+# The elf (room 18) appears when the random bit v14 is 1 on entry; the autopilot
+# steps out to a neighbouring room and back until it does (each room change draws
+# v14 from the next byte of the engine's code; timing makes no difference).
+# Speaking to him gives the magic ring.
+room 31
+room 18
+require 103 1
+say speak elf
+expect score 51
+
+# The castle door (room 2): open it from the doorstep; the door leads to room 55.
+room 2
+area 97 120 124 126
+say open door
+expect score 52
+waitvar 1 55 200
+wait 4
+# Up the hall (room 55 -> 54 -> 53) and bow to the king, not too close.
+enter 54 1 1 158 72
+room 53
+area 60 100 90 120
+say bow king
+expect score 55
+
+# The well (room 12): lower the rope, then climb onto it from the rim; climbing down
+# to y 133 (x 37-43) takes Graham into the well (room 49, +1 on arrival).
+room 12
+area 10 109 71 150
+say lower rope
+say climb rope
+waitvar 136 3 100   # Apple v126
+hold D
+waitvar 1 49 200
+wait 4
+expect score 56
+# Climb down the rope (x 77-84; leaving it falls) into the water: Graham swims (v24).
+hold D
+waitvar 55 1 200   # Apple v24
+say get water
+expect score 58
+# Dive: under the water to room 52 (+2).
+say dive
+waitvar 1 52 200
+wait 4
+expect score 60
+# Through the hole to the dragon's cave (room 51, +1). Douse the dragon from outside
+# [105,96,145,166] (+5), take the mirror (+8), and leave by the far side (room 50).
+# The planner finds no landing in room 51 from here (the PCjr port's doesn't either,
+# now): through the hole by hand, at its rows (118-126, x 4).
+goto 6 122
+hold L
+hold L
+waitvar 1 51 40
+wait 6
+expect score 61
+goto 100 136
+say douse dragon
+expect score 66
+wait 20
+area 26 104 59 127
+say get mirror
+expect score 74
+
+# The gnome (room 40): ask him, then his name first time (+5): Rumpelstiltskin written
+# with the alphabet reversed. He leaves magic beans (+4).
+room 40 10 100 90 150
+area 10 100 90 150
+say speak gnome
+wait 3
+say ifnkovhgroghprm
+expect score 79
+wait 3
+say get beans
+expect score 83
+
+# The witch's house (room 28 -> 65). The witch is home only if the random bit v14 is
+# set on entry and no protective spell is active (v55 = 0, Apple v56); she gives the
+# most points. Each entry to room 28 toggles v155 (Apple v154: the witch alerted, set
+# on odd entries); she can only be caught off guard on an even entry, so step out to
+# room 37 and back first. The fairy (room 9, when v14 is set on entry) casts a spell
+# that lasts while timer v9 runs; wait for it to wear off.
+waitvar 57 0 3000
+room 28
+room 37
+room 28 40 127 70 135
+area 40 127 70 135
+say open door
+waitvar 1 65 200
+wait 4
+require 112 1
+# Wait on the right side (x >= 100) while she appears and goes to heat her oven; once
+# she is busy at it (v101 = 2), step up behind her to push her in (+7).
+area 110 120 140 150
+waitvar 103 2 600
+area 34 110 40 128
+waitvar 49 1 200   # Apple v49
+expect score 90
+# The cabinet (+2 when it opens), the cheese (+2), and the note on the table (+2).
+area 23 89 55 100
+say open cabinet
+wait 30
+say get cheese
+area 114 132 140 160
+say get note
+expect score 96
+# Out by the door, and eat some of the house (+2).
+area 42 158 58 162
+hold D
+waitvar 1 28 60
+wait 4
+area 20 120 110 135
+say eat house
+expect score 98
+
+# The mushroom (room 47): on the east bank of the Raging River, reached from room 48.
+# By room 38 (south of 43), round to room 33 and up: room 42's overlay leaves its east
+# landing a pocket that the planner (picture only) cannot see.
+room 38
+room 48
+room 47 64 61 114 101
+area 64 61 114 101
+say get mushroom
+expect score 99
+
+# The hole in room 48 (priority-0 ground around x 66-88, y 114-128) drops Graham into the
+# tunnels (room 73).
+room 48
+enter 73 70 116 82 124 water
+# Graham falls, tumbles and gets up (v101 = 2) before he can walk.
+waitvar 103 2 300
+
+# The rat (room 75) chases Graham and kills on contact; giving it the cheese from
+# x <= 116 sends it into the wall (+4, -2 for the cheese). Then open the door and go
+# west to the leprechauns (room 76).
+room 75
+area 95 112 112 146
+say give cheese
+expect score 101
+wait 20
+area 24 103 43 125
+say open door
+wait 20
+# In the doorway [24,106,38,121] the script lets Graham through the wall; walk west.
+area 26 108 36 119
+hold L
+waitvar 1 76 100
+wait 4
+# Room 76: playing the fiddle sends the leprechauns dancing away (+3).
+say play fiddle
+expect score 104
+waitvar 213 1 200   # Apple v211
+# Room 77 (south): the leprechaun king walks off and leaves his sceptre (v213 = 1).
+# The shield (+8) and the sceptre (+6) can both be taken from x 121-142, y 118-138.
+room 77
+waitvar 215 1 800   # Apple v213
+area 121 118 142 138
+say get shield
+expect score 112
+say get sceptre   # the PCjr only knows this spelling (and rod, staff)
+expect score 118
+# West to room 78 (on the PCjr the exit is rule 00AD: x 2-8, y 60-85, of which only
+# y 78-85 is on Graham's side of the wall; the Apple's works at y 78-102): eat the
+# mushroom (+3) to shrink, and
+# leave west through the small hole (+1). Eating it scores +3 but the mushroom item's
+# point goes with it (net +2).
+enter 78 4 79 8 84
+wait 4
+# The mushroom lasts while timer v2 runs (150 passes; at 2 a cycle rule kills Graham in
+# the hole), not long enough to cross the room: walk to the hole first (x 9 is as far as
+# full size goes), then eat it.
+area 12 77 16 79
+say eat mushroom
+expect score 120
+edge L
+expect score 121
+
+# The note (+1 for reading it).
+say read note
+expect score 122
+# Small, Graham can't leave room 36 (rule 0039 cancels the edge): wait until the
+# mushroom wears off (v45).
+waitvar 45 0 300
+
+# The condor (room 22) appears when the random bit v14 is 1 on entry and the beanstalk
+# hasn't been planted. If it touches Graham while he is in mid-jump, it carries him
+# off (+3) to room 80.
+room 27
+room 22
+wait 4
+require 103 1
+area 60 100 100 130
+jumpuntil 151 1 1500
+waitvar 1 80 300
+expect score 125
+# The condor flies to room 48 and drops Graham there.
+waitvar 1 48 600
+wait 4
+
+# The beanstalk: plant the beans in room 6 (+2), standing clear of where it grows
+# ([49,1,97,124]), then climb it from its base ([58,80,83,87]) and go straight up to
+# the clouds (room 70). Moving sideways off the stalk (x 57-59 or 82-84) falls.
+room 6 110 128 140 150
+area 110 128 140 150
+say plant beans
+expect score 127
+waitvar 36 1 400   # Apple v35
+wait 10
+area 66 81 76 86
+say climb beanstalk
+waitvar 109 1 100
+hold U
+waitvar 1 70 400
+wait 4
+# Room 70 is the top of the stalk: Graham must stay on it (x 60-77 below y 116,
+# x 66-79 above) or he falls. The stalk's own band-B pixels block x 70 at y 128-135,
+# so climb at x 76.
+area 76 138 77 141
+hold U
+waitvar 1 71 400
+wait 4
+# Room 71: more stalk (safe x 66-76 below y 101, 65-76 up to y 56, then 62-74). The
+# stalk's band-7 pixels block Graham while his own priority is 7 (y 96-103), so pass
+# that stretch at x 76, then move back to x 72 before y 56.
+area 76 100 76 106
+area 76 56 76 64
+area 72 56 72 64
+hold U
+waitvar 1 72 400
+wait 4
+# Room 72: climb to the cloud bank and step off the stalk to the right ([75,50,158,124]
+# turns Graham back into his walking self). Anywhere outside the stalk and the two
+# cloud banks he falls.
+keepin 46 94 113 115 112 68 158 124 65 50 74 166
+area 69 102 70 110
+# Along the stalk to mid-bank height first: climbing moves two rows a pass, and a
+# diagonal off the stalk reaches the bank's top line (y 94) and falls past it.
+area 71 103 75 109
+area 80 100 100 116
+
+# The sling first (room 62), passing the giant in room 58 (the shield protects Graham).
+# Off the bank with the cloud zones two pixels in (a walk along its top line falls).
+keepin 46 96 113 113 114 70 156 122 65 50 74 166
+room 62 112 100 142 128
+# y <= 52 leads back to room 59, y >= 152 falls through the clouds.
+keepin 11 54 140 150
+area 112 100 142 128
+say get sling
+expect score 129
+keepin 11 1 140 150
+room 59
+keepin
+
+# The giant (room 58), killed with the sling and a pebble (+3, -1 for the pebble)
+# instead of left to fall asleep (+7). The chest is then taken from the dead giant
+# (+8), with no position check.
+room 58
+# Stop in the open first: the throw takes control from the player, and Graham must
+# still be in the room when the giant falls (room 58's timer v11 finishes it).
+area 70 110 100 130
+# Where the giant is when the pebble hits matters: with another actor placed on top
+# of him, his wandering ($2D55) finds every step blocked and the original hangs.
+# kqroute retries a hung pass (here two round trips from the line before).
+say use sling
+waitvar 186 1 400
+expect score 131
+say get chest
+expect score 139
+
+# Back down the beanstalk: room 56's west exit leads to room 72 once the beans are
+# planted (v105). Step onto the stalk there and climb down through rooms 71 and 70
+# (the same band-priority detours as on the way up) to room 6.
+room 72
+# The cloud zones two pixels in: the shortest way to the stalk runs along the
+# bank's lower line (y 115), and a late turn there is a fall.
+keepin 46 96 113 113 114 70 156 122 65 50 74 166
+area 66 100 70 110
+waitvar 109 1 50
+hold D
+waitvar 1 71 400
+wait 4
+keepin 66 101 76 166 65 56 76 101 62 1 74 56
+area 69 44 70 54
+area 76 56 76 64
+area 76 98 76 106
+hold D
+waitvar 1 70 400
+wait 4
+keepin 60 115 77 166 66 1 79 116
+area 76 44 76 52
+hold D
+waitvar 1 6 400
+wait 4
+keepin
+hold D
+waitvar 109 0 400
+
+# The eagle's nest: climb the tree in room 14 from [75,131,158,166] into the treetop
+# (room 63, +2) and take the golden egg (+6).
+room 14 80 135 150 160
+area 80 135 150 160
+say climb tree
+waitvar 1 63 100
+wait 4
+expect score 141
+area 51 70 97 102
+say get egg
+expect score 147
+
+# Home with the three treasures (chest, mirror, shield: v62 = 1 re-arms the castle
+# door, +1 again). Bow to the king (+3) and the ending plays.
+room 2 97 120 124 126
+area 97 120 124 126
+# Dousing the dragon took back the bucket's 2 points; refill it from the moat (room 2's
+# water rectangle [10,120,158,166] includes the doorstep).
+say get water
+expect score 149
+say open door
+expect score 150
+waitvar 1 55 200
+wait 4
+enter 54 1 1 158 72
+room 53
+area 60 100 90 120
+say bow king
+expect score 153
+# The King dies and Graham may move again (v178 = 5): walking to the throne side
+# ([1,82,60,106]) crowns him and ends the game.
+waitvar 180 5 800
+final 3 84 58 104
+wait 100

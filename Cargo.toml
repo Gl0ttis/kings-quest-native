@@ -6,6 +6,8 @@ members = [
     "crates/kq1-frontend",
     "ports/apple2",
     "ports/apple2/refemu",
+    "ports/pc",
+    "ports/pc/refemu",
     "ports/pcjr",
     "ports/pcjr/refemu",
 ]
