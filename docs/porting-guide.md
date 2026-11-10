@@ -320,8 +320,12 @@ the docs.
   and its keys, the sound output (the port gives its samples), finding the disk, and the
   Play diskette's handling. A player of that family keeps only its screen, sound, font
   and engine glue;
-- the IBM PC and PCjr engines' shared parts: `crates/kq1-ibm` (the clock's types and
-  the picture painter);
+- the IBM PC and PCjr engines' shared parts: `crates/kq1-ibm` (the clock's types, the
+  picture painter, the text screens, the views, the resource table's entries, the
+  built-in font);
+- for measuring: `crates/kq1-x86`, the 8086 core of the IBM ports' refemu, and
+  `crates/kq1-autopilot`, the route autopilot (`kqroute`), to which a port gives its
+  refemu's runner (the `Original` trait) and its engine's data addresses;
 - the documentation layout.
 
 **Probably reusable in idea, not code:**

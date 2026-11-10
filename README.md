@@ -28,7 +28,10 @@ crates/
   kq1-formats/          the resource formats every port reads (views, scripts, vocabulary)
   kq1-frontend/         the players' platform side (Windows paint hook, full screen, joystick),
                         and the IBM players' shared half (clocks, window, sound output)
-  kq1-ibm/              what the IBM PC and PCjr engines share (the clock, the picture painter)
+  kq1-ibm/              what the IBM PC and PCjr engines share (the clock, the picture painter,
+                        the text screens, the views, the table entries, the built-in font)
+  kq1-x86/              the 8086 core of the IBM ports' reference machines (measuring only)
+  kq1-autopilot/        the IBM ports' route autopilot, kqroute (measuring only)
 ports/
   apple2/               the Apple IIe port: crate kq1-apple2 (engine, kq-apple2, tools)
     refemu/             crate kq1-apple2-refemu: the reference emulator (measuring only)
@@ -48,8 +51,9 @@ Each port lives in `ports/<platform>/`. To start a new one, read
 [docs/porting-guide.md](docs/porting-guide.md). Code the ports share lives in crates
 under `crates/`: `kq1-formats`, the resource formats, which the releases have in
 common; `kq1-frontend`, the platform side of the players, and the half of the IBM PC
-and PCjr players that is the same; and `kq1-ibm`, what the IBM PC and PCjr engines
-share. Each port's player is `kq` in its download (`kq-<port>` in the workspace).
+and PCjr players that is the same; `kq1-ibm`, what the IBM PC and PCjr engines share;
+and, for measuring only, `kq1-x86` and `kq1-autopilot`, the IBM ports' reference
+machines' 8086 core and their route autopilot. Each port's player is `kq` in its download (`kq-<port>` in the workspace).
 
 ## Playing
 
