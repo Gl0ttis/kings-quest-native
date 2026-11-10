@@ -1,5 +1,8 @@
 //! The half the IBM PC and PCjr players share: each keeps only its own screen, sound,
-//! font and engine glue.
+//! font and engine glue. The platform side under it (the window's paint hook, full
+//! screen, the joystick, the error box) is kq1-frontend's, which the Apple IIe's player
+//! uses too; this crate is the IBM players' alone, so their changes leave the Apple IIe
+//! alone.
 //! - [`Shared`]: what the window, the engine's thread and the sound share;
 //! - the engine's clocks: [`PlayerClock`] (the original's pace by the wall clock, the
 //!   keys and the joystick), [`RouteClock`] (a recorded run of the original), and
@@ -217,7 +220,8 @@ pub struct ScriptClock {
 
 impl ScriptClock {
     /// "SECONDS:KEYS;..." (KEYS typed as text; `|` is Enter, `<U>` `<D>` `<L>` `<R>`
-    /// the arrows, `<S>` the same arrow again).
+    /// the arrows, `<S>` the same arrow again, `<CL>` `<CR>` Ctrl+Left and Right, `<ESC>`
+    /// Esc).
     pub fn parse(plan: &str) -> ScriptClock {
         let mut script = VecDeque::new();
         for item in plan.split(';').filter(|i| !i.trim().is_empty()) {
@@ -233,6 +237,7 @@ impl ScriptClock {
                     ("<R>", 0x4D00),
                     ("<CL>", 0x7300),
                     ("<CR>", 0x7400),
+                    ("<ESC>", 0x011B),
                 ];
                 if let Some((n, k)) = named.iter().find(|(n, _)| rest.starts_with(n)) {
                     codes.push(*k);
@@ -445,11 +450,11 @@ pub fn find_disk(given: Option<&str>, is_game: impl Fn(Vec<u8>) -> bool, missing
     Err(missing.into())
 }
 
-/// The joystick (crate::joystick: winmm on Windows, /dev/input/js0 on Linux) as the
+/// The joystick (kq1_frontend::joystick: winmm on Windows, /dev/input/js0 on Linux) as the
 /// game reads it, from positions 0.0-1.0 across each axis; the hat (d-pad) pushes to
 /// the edges.
 pub fn joystick() -> Option<Joystick> {
-    let s = crate::joystick::read()?;
+    let s = kq1_frontend::joystick::read()?;
     let (mut x, mut y) = (s.axes.0 as f64 / 65535.0, s.axes.1 as f64 / 65535.0);
     if let Some(degrees) = s.hat {
         let a = degrees.to_radians();
@@ -668,7 +673,7 @@ pub fn run_window(
     mut extra: impl FnMut(Key, &mut Window),
 ) {
     let WindowSetup { title, width, height, scale, fullscreen, help, caption, ctrl_arrows } = setup;
-    crate::hook::dpi_aware();
+    kq1_frontend::hook::dpi_aware();
     // N times 320 × 240 (the screen at its 4:3 shape); on Windows the hook sizes it
     // again at the display's scale.
     let scale = scale.max(1);
@@ -683,16 +688,16 @@ pub fn run_window(
             ..WindowOptions::default()
         },
     )
-    .unwrap_or_else(|e| crate::fatal(caption, &format!("no window: {e}")));
-    crate::hook::size_window(&window, 320 * scale as u32, 240 * scale as u32);
+    .unwrap_or_else(|e| kq1_frontend::fatal(caption, &format!("no window: {e}")));
+    kq1_frontend::hook::size_window(&window, 320 * scale as u32, 240 * scale as u32);
     let l = shared.clone();
-    crate::hook::install(
+    kq1_frontend::hook::install(
         &window,
-        crate::hook::Picture { width, height, aspect: (4, 3) },
+        kq1_frontend::hook::Picture { width, height, aspect: (4, 3) },
         Box::new(move |buf| buf.copy_from_slice(&l.lock().unwrap().rgb)),
     );
     window.set_input_callback(Box::new(Chars(shared.clone())));
-    let mut full = crate::fullscreen::Fullscreen::default();
+    let mut full = kq1_frontend::fullscreen::Fullscreen::default();
     let mut want_full = fullscreen;
     println!("{help}");
     let fast_title = |on: bool| format!("{title}{}", if on { " - fast loads" } else { "" });
@@ -733,7 +738,7 @@ pub fn run_window(
             && window.is_key_pressed(Key::Enter, KeyRepeat::No);
         #[cfg(windows)]
         let alt_enter = false;
-        if std::mem::take(&mut want_full) || crate::hook::take_alt_enter() || alt_enter {
+        if std::mem::take(&mut want_full) || kq1_frontend::hook::take_alt_enter() || alt_enter {
             full.toggle(&mut window);
         }
         let ctrl = ctrl_arrows && (window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl));

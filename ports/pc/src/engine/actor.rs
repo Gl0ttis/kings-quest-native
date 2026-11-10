@@ -275,8 +275,8 @@ impl World {
         let x = &self.actors[a];
         let dir = x.dir as usize;
         let mut new = match x.loops() {
-            4 => self.res.ds[LOOPS_4 + dir],
-            2 => self.res.ds[LOOPS_2 + dir],
+            4 => self.res.ds[self.res.d(LOOPS_4) + dir],
+            2 => self.res.ds[self.res.d(LOOPS_2) + dir],
             1 => return,
             n => {
                 // The original takes an uninitialised local here; no view of the game
@@ -519,7 +519,7 @@ impl World {
         let e = self.vars[3].wrapping_sub(1);
         if e <= 3 {
             self.vars[3] = 0;
-            let at = self.res.ds[EDGE_ENTRY + e as usize];
+            let at = self.res.ds[self.res.d(EDGE_ENTRY) + e as usize];
             if e >> 1 == 0 {
                 self.actors[0].x = at;
             } else {

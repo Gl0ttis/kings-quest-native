@@ -4,14 +4,16 @@
 
 pub use kq1_formats::vocab::{Entry, Names};
 
-/// The engine's data segment starts `$5110` bytes into its code segment: DS = CS +
-/// `$511` (start-up, `$3E`: the relocated `$511`, less the 32 paragraphs of the EXE
-/// header the image was loaded after).
+/// The first edition's data segment starts `$5110` bytes into its code segment, DS
+/// being CS plus `$511` (start-up, `$3E`: the relocated `$511`, less the 32 paragraphs
+/// of the EXE header the image was loaded after). Each edition's:
+/// `disk::Edition::data_segment`.
 pub const DATA_SEGMENT: usize = 0x5110;
 /// The vocabulary's offset in the data segment.
 pub const VOCAB: usize = 0x4;
 
-/// The vocabulary, from the engine's code segment (`Disk::code_segment`).
-pub fn read(code_segment: &[u8]) -> Result<Vec<Entry>, String> {
-    kq1_formats::vocab::parse(code_segment.get(DATA_SEGMENT + VOCAB..).ok_or("engine too short")?)
+/// The vocabulary, from the engine's code segment (`Disk::code_segment`) of `edition`.
+pub fn read(code_segment: &[u8], edition: crate::disk::Edition) -> Result<Vec<Entry>, String> {
+    let at = edition.data_segment() + edition.ds(VOCAB).ok_or("no vocabulary")?;
+    kq1_formats::vocab::parse(code_segment.get(at..).ok_or("engine too short")?)
 }

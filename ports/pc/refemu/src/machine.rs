@@ -125,6 +125,9 @@ pub struct Machine {
     /// at the merge.
     pub plot_log: Option<String>,
     plot_writes: Option<u64>,
+    /// Where the plot log starts and ends: the picture drawing past the restoring check
+    /// (`$48EA`) and the colours' merge (`$14DC`), on the disk's edition.
+    pub plot_marks: (u16, u16),
     pub sectors_read: u64,
     /// Checkpoints passed so far (the port's clock's), counted by the runner.
     pub checkpoint: u64,
@@ -165,6 +168,7 @@ impl Machine {
             cga_writes: 0,
             plot_log: std::env::var_os("REFEMU_PLOTLOG").map(|_| String::new()),
             plot_writes: None,
+            plot_marks: (0x48EA, 0x14DC),
             sectors_read: 0,
             checkpoint: 0,
             events: None,
@@ -266,12 +270,13 @@ impl Machine {
             self.cga_accesses = 0;
             if let (Some(log), 0x60) = (self.plot_log.as_mut(), cpu.s[CS]) {
                 use std::fmt::Write;
+                let (start, end) = self.plot_marks;
                 match (cpu.ip, self.plot_writes) {
-                    (0x48EA, None) => {
+                    (ip, None) if ip == start => {
                         self.plot_writes = Some(self.cga_writes);
                         let _ = writeln!(log, "S {}", cpu.cycles);
                     }
-                    (0x14DC, Some(_)) => {
+                    (ip, Some(_)) if ip == end => {
                         self.plot_writes = None;
                         let _ = writeln!(log, "E {}", cpu.cycles);
                     }

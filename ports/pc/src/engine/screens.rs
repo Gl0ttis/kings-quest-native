@@ -73,6 +73,7 @@ impl World {
 
     /// `$05DA`: an engine string at the text cursor, then a new line.
     pub fn print_ds(&mut self, at: usize) {
+        let at = self.res.d(at);
         let ds = self.res.ds.clone();
         let (row, col) = self.g.text_cursor;
         self.print_wrapped(&ds, at, row, col);

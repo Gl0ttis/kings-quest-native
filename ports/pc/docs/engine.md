@@ -175,6 +175,53 @@ original's (tests/engine.rs), then implemented in the port.
   the PCjr's page 7 is: on the PC that is ordinary memory. The screen position is the
   game's own throughout (DS:1881); the PCjr's comes from its BIOS (0040:0089).
 
+## The second edition (CGA+RGB)
+
+The second release's engine is the first's with additions (docs/disk-layout.md, "The
+second edition"). The port plays it with the same engine:
+
+- **Addresses.** The engine names code and data by the first edition's addresses. On
+  the second they are mapped: code through `Edition::code` (the first's code in 69
+  stretches, each moved by a constant, from aligning the two engines' instructions, and
+  a table for places the second rewrote), data through `Edition::ds` (three blocks: +14,
+  +62, +64). A pointer read from the data, such as the resource memory's next free
+  address, a room's script pointers or an object's name, is the edition's own: it goes
+  into saves, so the port keeps it as it is. A tick's address in the second edition's
+  log is mapped back to the first's for the code sites. The random numbers walk the
+  second edition's own code bytes, between the same bounds.
+- **The title** (`$4F5E`) adds a screen after the logo: the title picture, the mode
+  it is in ("This is the composite color mode. For the RGB mode, press <Esc>"), "To
+  play the game, press the space bar", and the credits, ten lines from row 6 with Chris
+  Iden's. Esc switches between composite and RGB (DS:2118, `$19E8`) and draws the screen
+  again; the space bar plays; other keys are let go; there is no time limit. The tune
+  plays after the screen is drawn.
+- **The resource memory** starts at DS:211A (the first's DS:20D8): the colours' flag
+  comes before it.
+- **The Play diskette** follows the Master's data: save slot n at sector 6 + 3n (the
+  first's 3Fh + 3n), the initial state (slot FF, as 1Ah) at 54h, and the copy from
+  sector 54h (the first's 8Dh), through the protection's sector, whose data the read
+  takes from sector 662.
+- **RGB colour** (`$19E8`): mode 4 as an ordinary 320-dot, 4-colour screen (3D8h = 0Ah,
+  3D9h = 01h: palette 0 on a blue background). The picture's colours come from a
+  second table (DS:12C8, 3 bytes a colour: the composite pattern, then the RGB patterns
+  for odd and even rows, `$17F8`); the plot keeps both (DS:201A, 201B) and takes the
+  first on an odd row (`$4C3D`): the colours are dithered. The views' colours become
+  patterns as they are loaded, from DS:1308 in RGB (`$1890`). As the PC's picture buffer
+  holds patterns, v5 (the pattern under Graham) takes the RGB patterns: the game itself
+  differs from the composite runs (the walk's variables from room 16 on). The port's
+  planes hold the patterns in RGB (`Screen::rgb`); its two RGB runs (`rgb_*`) match the
+  original's on every pass.
+
+The second edition's ten runs (reference/cga_rgb/, in composite colour) match its
+original on every pass, in state, on screen and in the speaker's notes, and its save
+is its original's byte for byte (`tests/engine.rs`).
+
+**A site both editions needed** came out of them: a tick that interrupts the rule
+matcher before it reads a rule's conditions (`$115A`-`$1170`, `$117A`-`$1189`) fires
+before that rule (`Site::RuleStart`). In the second edition's maximum-score run the key
+for Graham's jump came that way, read by the timer just before the jump's rule tested
+it. The first edition's runs had no tick there.
+
 ## Speed
 
 See [src/engine/cost.rs](../src/engine/cost.rs). The PC's one speed control is the draw

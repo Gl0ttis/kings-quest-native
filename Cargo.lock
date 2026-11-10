@@ -451,8 +451,6 @@ version = "0.2.0"
 name = "kq1-frontend"
 version = "0.1.0"
 dependencies = [
- "cpal",
- "kq1-ibm",
  "minifb",
  "raw-window-handle",
  "x11-dl",
@@ -466,6 +464,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "kq1-ibm-player"
+version = "0.1.0"
+dependencies = [
+ "cpal",
+ "kq1-frontend",
+ "kq1-ibm",
+ "minifb",
+]
+
+[[package]]
 name = "kq1-pc"
 version = "0.1.1"
 dependencies = [
@@ -473,6 +481,7 @@ dependencies = [
  "kq1-formats",
  "kq1-frontend",
  "kq1-ibm",
+ "kq1-ibm-player",
  "minifb",
 ]
 
@@ -494,6 +503,7 @@ dependencies = [
  "kq1-formats",
  "kq1-frontend",
  "kq1-ibm",
+ "kq1-ibm-player",
  "minifb",
 ]
 

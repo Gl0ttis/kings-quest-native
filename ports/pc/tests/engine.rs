@@ -4,17 +4,23 @@
 //! (refemu-pc `--trace`), and its screen the original's (kqframes-pc `--hashes`).
 //! Skipped without the original's disk in original/.
 
-use kq1_pc::disk::Disk;
+use kq1_pc::disk::{Disk, Edition};
 use kq1_pc::engine::clock::{Clock, Event, Joystick, Replay, CPU_HZ, CYCLES_PER_TICK};
 use kq1_pc::engine::World;
 use std::path::Path;
 
+/// The first release's original (reference/ holds its runs).
 fn original() -> Option<Disk> {
+    original_of(Edition::Cga)
+}
+
+/// An edition's original (the second's runs are in reference/cga_rgb/).
+fn original_of(edition: Edition) -> Option<Disk> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("original");
     std::fs::read_dir(dir).ok()?.find_map(|e| {
         let p = e.ok()?.path();
         (p.extension()?.to_str()? == "mfm").then_some(())?;
-        Disk::from_file(std::fs::read(&p).ok()?).ok()
+        Disk::from_file(std::fs::read(&p).ok()?).ok().filter(|d| d.edition == edition)
     })
 }
 
@@ -30,7 +36,13 @@ fn replay(disk: &Disk, name: &str) -> usize {
 
 /// The same, with `play` as the Play diskette (else a blank one); and the game after.
 fn replay_with(disk: &Disk, name: &str, play: Option<Vec<u8>>) -> (usize, World) {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("reference");
+    replay_in(disk, "reference", name, play)
+}
+
+/// Replay route `name` of the runs in `folder` (reference/, or reference/cga_rgb/ for
+/// the second edition's).
+fn replay_in(disk: &Disk, folder: &str, name: &str, play: Option<Vec<u8>>) -> (usize, World) {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(folder);
     let events = std::fs::read_to_string(dir.join(format!("{name}.events"))).expect("the event log");
     let trace = std::fs::read_to_string(dir.join(format!("{name}.csv"))).expect("the trace");
     let reference: Vec<Vec<&str>> = trace.lines().skip(1).map(|l| l.split(',').collect()).collect();
@@ -53,7 +65,8 @@ fn replay_with(disk: &Disk, name: &str, play: Option<Vec<u8>>) -> (usize, World)
     w.max_passes = reference.len() as u64;
     w.frame_hashes = frames.is_some().then(Vec::new);
     let why = w.run();
-    assert!(w.trace.len() >= reference.len(), "{name}: stopped after {} passes: {why}", w.trace.len());
+    // The passes the port ran, compared first: where it stopped short, the first pass
+    // that differs says more than the stop.
     for (row, r) in w.trace.iter().zip(&reference) {
         let mine = [
             row.room.to_string(),
@@ -65,6 +78,7 @@ fn replay_with(disk: &Disk, name: &str, play: Option<Vec<u8>>) -> (usize, World)
         ];
         assert_eq!(mine.as_slice(), &r[3..9], "{name}: pass {} differs", row.pass);
     }
+    assert!(w.trace.len() >= reference.len(), "{name}: stopped after {} passes: {why}", w.trace.len());
     if let (Some(orig), Some(port)) = (&frames, &w.frame_hashes) {
         assert_eq!(orig.len(), reference.len(), "{name}: a frame hash per pass");
         for (k, (a, b)) in orig.iter().zip(port).enumerate() {
@@ -93,6 +107,58 @@ fn replay_with(disk: &Disk, name: &str, play: Option<Vec<u8>>) -> (usize, World)
 fn the_walk_route_matches_the_original() {
     let Some(disk) = original() else { return };
     assert_eq!(replay(&disk, "walk_rooms_1_16"), 781);
+}
+
+/// The second edition (CGA+RGB): its runs (reference/cga_rgb/, recorded from its
+/// original, in composite colour), each compared on every pass as the first's are.
+fn second(name: &str, play: Option<Vec<u8>>) -> Option<(usize, World)> {
+    let disk = original_of(Edition::CgaRgb)?;
+    Some(replay_in(&disk, "reference/cga_rgb", name, play))
+}
+
+#[test]
+fn the_second_editions_walk_matches_its_original() {
+    let Some((n, _)) = second("walk_rooms_1_16", None) else { return };
+    assert_eq!(n, 781);
+}
+
+/// The second edition's save is its original's, byte for byte (the block's hash, at
+/// its slot A: sector 6), and a fresh start restores it as its original did.
+#[test]
+fn the_second_editions_play_diskette_is_its_originals() {
+    use kq1_pc::engine::frame_hash;
+    let Some((n, w)) = second("save_restore", None) else { return };
+    assert_eq!(n, 319);
+    let play = w.disks[1].image.clone();
+    assert_eq!(frame_hash(&play[6 * 512..6 * 512 + 1306]), 0x1a79_b76c_de2e_6bec, "the save block differs");
+    assert_eq!(second("restore_play", Some(play)).unwrap().0, 155);
+}
+
+/// The second edition in RGB colour (chosen at its first screen): the walk and a death,
+/// against its original in RGB. The game differs from the composite runs (v5 holds
+/// the RGB patterns), and the screens are the RGB patterns.
+#[test]
+fn the_second_editions_rgb_runs_match_its_original() {
+    for (name, passes) in [("rgb_walk_rooms_1_16", 781), ("rgb_death_river", 429)] {
+        let Some((n, _)) = second(name, None) else { return };
+        assert_eq!(n, passes, "{name}");
+    }
+}
+
+#[test]
+fn the_second_editions_deaths_match_its_original() {
+    for (name, passes) in [("death_river", 429), ("death_rock", 438), ("death_stream", 565)] {
+        let Some((n, _)) = second(name, None) else { return };
+        assert_eq!(n, passes, "{name}");
+    }
+}
+
+#[test]
+fn the_second_editions_whole_games_match_its_original() {
+    for (name, passes) in [("gold_key", 16757), ("max_score", 20197), ("magic_ring", 21262), ("giant_sling", 19268)] {
+        let Some((n, _)) = second(name, None) else { return };
+        assert_eq!(n, passes, "{name}");
+    }
 }
 
 #[test]

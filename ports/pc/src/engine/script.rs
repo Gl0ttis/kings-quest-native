@@ -49,6 +49,7 @@ impl World {
     fn match_rules(&mut self, s: &Rc<Script>, mut si: usize, parser: bool) -> u16 {
         loop {
             self.checkpoint(0x115A);
+            self.site(super::clock::Site::RuleStart);
             // The ego's position, read again for every rule.
             let (ex, ey) = (self.actors[0].x, self.actors[0].y);
             let al = s.at(si);
@@ -237,6 +238,7 @@ impl World {
 
     /// An engine string (DS offset) queued.
     pub fn queue_engine_string(&mut self, at: usize) {
+        let at = self.res.d(at);
         let ds = self.res.ds.clone();
         self.queue_message(ds, at);
     }

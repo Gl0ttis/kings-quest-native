@@ -28,8 +28,10 @@ Your own image of the game disk, in `original/` (git ignores it):
   directly, copy protection and all; or
 - the cracked 360K sector image (`.img`, 368,640 bytes).
 
-Both give the same game. The disk's boot sector says "BOOT v1.1". The CGA+RGB edition
-("BOOT v1.2") is a different disk, and not this port's.
+Both give the same game. Either edition plays: the first release (its boot sector says
+"BOOT v1.1") and the second, the CGA+RGB edition ("BOOT v1.2", August 1984: composite or
+RGB colour). Their runs from the originals are in `reference/` and
+`reference/cga_rgb/`.
 
 ## Tools
 

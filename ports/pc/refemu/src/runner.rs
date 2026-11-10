@@ -1,6 +1,7 @@
 //! Running the original a pass at a time, for tools that decide what to press as it goes
 //! (the route autopilot, `kqroute-pc`), refemu-pcjr's runner with the PC's addresses
-//! (docs/engine.md in kq1-pc). It runs as refemu-pc's main loop does: the
+//! (docs/engine.md in kq1-pc). The addresses are the first edition's, mapped to the
+//! disk's edition (`Edition::code`, `Edition::ds`). It runs as refemu-pc's main loop does: the
 //! checkpoints counted, the event log and the trace written, the disk swaps answered
 //! and RETURN pressed at the title. It stops at the start of each pass, and at a
 //! prompt that waits for keys outside the game cycle (the save dialog).
@@ -9,14 +10,38 @@ use crate::cpu::{self, Cpu, CS};
 use crate::machine::{Disk, Machine};
 use std::rc::Rc;
 
-/// The start of a pass: `$293A`, the game cycle.
-const MAIN_LOOP: (u16, u16) = (0x0060, 0x293A);
-/// The engine's data segment: CS + `$511`.
-const DATA_SEG: u16 = 0x0571;
+/// The start of a pass: `$293A`, the game cycle (the first edition's address).
+const MAIN_LOOP: u16 = 0x293A;
 /// The variables (DS:`$1609`) and the ego's actor (DS:`$17E7`: x, y and direction at
-/// `$18`, `$19`, `$0F`).
+/// `$18`, `$19`, `$0F`), the first edition's addresses.
 const VARS: u16 = 0x1609;
 const EGO: u16 = 0x17E7;
+
+/// The engine's addresses on the disk's edition.
+#[derive(Clone, Copy)]
+struct At {
+    main_loop: u16,
+    /// The data segment: CS + its offset in paragraphs.
+    data_seg: u16,
+    vars: u16,
+    ego: u16,
+    busy: [(u16, u16); 4],
+}
+
+impl At {
+    fn of(e: kq1_pc::disk::Edition) -> Result<At, String> {
+        let code = |a: u16| e.code(a).ok_or(format!("code address {a:04X} isn't in {}", e.name()));
+        let ds = |a: u16| e.ds(a as usize).map(|v| v as u16).ok_or(format!("data address {a:04X} isn't mapped"));
+        let wait = |r: &std::ops::RangeInclusive<u16>| Ok::<_, String>((code(*r.start())?, code(*r.end())?));
+        Ok(At {
+            main_loop: code(MAIN_LOOP)?,
+            data_seg: 0x0060 + (e.data_segment() >> 4) as u16,
+            vars: ds(VARS)?,
+            ego: ds(EGO)?,
+            busy: [wait(&BUSY_WAITS[0])?, wait(&BUSY_WAITS[1])?, wait(&BUSY_WAITS[2])?, wait(&BUSY_WAITS[3])?],
+        })
+    }
+}
 /// The picture buffer: segment `1400h`, in the PCjr pages' layout (row y at
 /// `(y & 3) * 0x2000 + (y >> 2) * 160`), each byte the visual picture's dot pattern in
 /// its high nibble and the priority in its low.
@@ -36,6 +61,7 @@ pub struct Runner {
     pub m: Machine,
     pub cpu: Cpu,
     checkpoints: Rc<Vec<bool>>,
+    at: At,
     /// Passes started.
     pub passes: u64,
     /// The trace, refemu-pcjr's columns.
@@ -59,11 +85,15 @@ pub struct Runner {
     /// When Some, the cycles spent at each 16-byte block of the engine's code
     /// (CS 0060h; the last bucket for any other code), added up until taken.
     pub profile: Option<Vec<u64>>,
+    /// On the second edition, choose the RGB colours at its first screen (Esc), not the
+    /// composite it starts in.
+    pub rgb: bool,
+    rgb_chosen: bool,
 }
 
 /// The engine's busy waits on a flag its timer handler changes: the messages printed
 /// (v23, `$0F91`), the pause (`$2832`), a tick since the actors moved (`$3FE7`), the
-/// title's tune (v15, `$5010`).
+/// title's tune (v15, `$5010`). The first edition's addresses.
 pub const BUSY_WAITS: [std::ops::RangeInclusive<u16>; 4] =
     [0x0F91..=0x0F96, 0x2832..=0x2837, 0x3FE7..=0x3FED, 0x5010..=0x5015];
 
@@ -90,14 +120,18 @@ impl Runner {
         let mut cpu = Cpu::new();
         let game = kq1_pc::disk::Disk::from_file(raw.to_vec())?;
         m.load_engine(&mut cpu, &game.read_file(&game.file("MAIN.EXE").ok_or("no MAIN.EXE")?)?)?;
+        let e = game.edition;
+        let at = At::of(e)?;
+        m.plot_marks = (e.code(0x48EA).ok_or("no picture drawing")?, e.code(0x14DC).ok_or("no colours' merge")?);
         let mut checkpoints = vec![false; 0x10000];
         for &a in &kq1_pc::checkpoints::CHECKPOINTS {
-            checkpoints[a as usize] = true;
+            checkpoints[e.code(a).ok_or(format!("checkpoint {a:04X} isn't in {}", e.name()))? as usize] = true;
         }
         Ok(Runner {
             m,
             cpu,
             checkpoints: Rc::new(checkpoints),
+            at,
             passes: 0,
             trace: String::from("pass,cycles,delta,room,ego_x,ego_y,ego_dir,score,vars_hash\n"),
             last_pass_cycle: None,
@@ -107,6 +141,8 @@ impl Runner {
             resume: false,
             replay: None,
             profile: None,
+            rgb: false,
+            rgb_chosen: false,
             cps: std::env::var("KQ_CPS").ok().and_then(|v| {
                 let (a, b) = v.split_once('-')?;
                 Some((a.parse().ok()?, b.parse().ok()?))
@@ -180,14 +216,14 @@ impl Runner {
 
     /// A byte of the engine's data segment.
     pub fn ds(&self, off: u16) -> u8 {
-        self.m.ram[cpu::lin(DATA_SEG, off) as usize]
+        self.m.ram[cpu::lin(self.at.data_seg, off) as usize]
     }
     pub fn ds_w(&self, off: u16) -> u16 {
         self.ds(off) as u16 | (self.ds(off.wrapping_add(1)) as u16) << 8
     }
     /// Variable `n`.
     pub fn v(&self, n: u8) -> u8 {
-        self.ds(VARS + n as u16)
+        self.ds(self.at.vars + n as u16)
     }
     /// The priority at (x, y) in the picture buffer (its low nibble).
     pub fn priority(&self, x: usize, y: usize) -> u8 {
@@ -230,7 +266,7 @@ impl Runner {
                     }
                 }
             }
-            if (self.cpu.s[CS], self.cpu.ip) == MAIN_LOOP && !resumed {
+            if (self.cpu.s[CS], self.cpu.ip) == (0x0060, self.at.main_loop) && !resumed {
                 self.passes += 1;
                 let n = self.passes;
                 if let Some(e) = self.m.events.as_mut() {
@@ -241,16 +277,16 @@ impl Runner {
                 let delta = self.last_pass_cycle.map_or(0, |l| self.cpu.cycles - l);
                 self.last_pass_cycle = Some(self.cpu.cycles);
                 let vars: u64 = (0..0xDFu16)
-                    .map(|v| self.ds(VARS + v) as u64)
+                    .map(|v| self.ds(self.at.vars + v) as u64)
                     .fold(1469598103934665603u64, |h, b| (h ^ b).wrapping_mul(1099511628211));
                 self.waits += &format!("{n},{}\n", std::mem::take(&mut self.waited));
                 self.trace += &format!(
                     "{n},{},{delta},{},{},{},{},{},{vars:016x}\n",
                     self.cpu.cycles,
                     self.v(1),
-                    self.ds(EGO + 0x18),
-                    self.ds(EGO + 0x19),
-                    self.ds(EGO + 0x0F),
+                    self.ds(self.at.ego + 0x18),
+                    self.ds(self.at.ego + 0x19),
+                    self.ds(self.at.ego + 0x0F),
                     self.v(19)
                 );
                 self.resume = true;
@@ -288,7 +324,19 @@ impl Runner {
                     continue;
                 }
                 if self.passes == 0 && waited > 3_000_000 {
-                    self.m.push_key(0x1C0D);
+                    // The second edition's screen choosing the colours: Esc for RGB
+                    // (once, if the run asks for it), then the space bar plays.
+                    let choosing =
+                        self.m.text.iter().any(|r| String::from_utf8_lossy(r).contains("press the space bar"));
+                    let key = match (choosing, self.rgb && !self.rgb_chosen) {
+                        (true, true) => {
+                            self.rgb_chosen = true;
+                            0x011B
+                        }
+                        (true, false) => 0x3920,
+                        (false, _) => 0x1C0D,
+                    };
+                    self.m.push_key(key);
                     self.wait_since = None;
                     self.m.idle_polls = 0;
                     self.m.blocked_reads = 0;
@@ -302,7 +350,9 @@ impl Runner {
             let (cs, ip, before, blocked) = (self.cpu.s[CS], self.cpu.ip, self.cpu.cycles, self.m.blocked_reads);
             self.m.step(&mut self.cpu);
             let spent = self.cpu.cycles - before;
-            if (cs == 0x60 && BUSY_WAITS.iter().any(|r| r.contains(&ip))) || self.m.blocked_reads > blocked {
+            if (cs == 0x60 && self.at.busy.iter().any(|&(a, b)| (a..=b).contains(&ip)))
+                || self.m.blocked_reads > blocked
+            {
                 self.waited += spent;
             }
             if let Some(p) = self.profile.as_mut() {

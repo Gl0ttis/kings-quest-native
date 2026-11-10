@@ -268,7 +268,7 @@ impl World {
         let (mut nx, mut ny) = (x.x, x.y);
         let (mut dx, mut dy) = (0u8, 0u8);
         if x.countdown == 0 && x.no_move == 0 {
-            let at = DIRECTIONS + 2 * (x.dir as usize & 0x7F);
+            let at = self.res.c(DIRECTIONS as u16) as usize + 2 * (x.dir as usize & 0x7F);
             let (xs, ys) = (self.res.code[at], self.res.code[at + 1]);
             dx = match xs {
                 0 => 0,
@@ -351,7 +351,8 @@ impl World {
                     // The PC's picture buffer holds each colour's dot pattern (its table
                     // at DS:12BA), not the colour: v5 is the pattern (light green, 10,
                     // is 11).
-                    self.vars[5] = crate::composite::PATTERN[(last >> 4) as usize & 15];
+                    let c = (last >> 4) & 15;
+                    self.vars[5] = if self.screen.rgb.is_some() { c } else { crate::composite::PATTERN[c as usize] };
                 }
             }
         }
@@ -502,6 +503,8 @@ impl World {
                     None
                 };
                 if let Some(p) = keep {
+                    // RGB: the views' colours are patterns by the time they are drawn.
+                    let colour = self.screen.rgb.map_or(colour, |t| t.cel[(colour & 15) as usize]);
                     self.set_work(px, py, colour << 4 | p);
                     shown += 1;
                 }

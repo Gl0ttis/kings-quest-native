@@ -20,6 +20,8 @@
 //!   the timer read the keys, so a tick during it must not;
 //! - in the draw pass, before it sets the flag the next pass waits on, if the tick
 //!   interrupted it ([`Site::DrawPass`]);
+//! - at a rule, before its conditions, if the tick interrupted the matcher before it
+//!   read them ([`Site::RuleStart`]);
 //! - in a busy wait (a loop on a flag the timer changes), one by one until the wait
 //!   is over;
 //! - otherwise at the next checkpoint, after the code between.
@@ -54,6 +56,13 @@ pub enum Site {
     /// queue as it was, which the timer's print countdown runs on only when it isn't
     /// empty.
     QueueAdd,
+    /// The rule matcher (`$115A`, from its checkpoint) before it reads the rule's
+    /// conditions: the ego's position read, the rule's kind dispatched (`$115A`-`$1170`,
+    /// up to the call of the conditions for a block; `$117A`-`$1189` for a test). A tick
+    /// there (the timer reading a key that sets a variable) comes before the rule tests
+    /// it: Graham's jump (v17) at the second edition's pass 14,198 of the maximum-score
+    /// run.
+    RuleStart,
     /// The draw pass (`$3FB7`, from its checkpoint) and the routines it calls, up to
     /// where it sets the flag the next pass's wait waits on to clear (`$3FFD`): every
     /// address but the caller's code after it returns (`$2A59`-`$2A83`) and the next
@@ -74,6 +83,7 @@ impl Site {
             Site::WaitKeyTimers => (0x288D..=0x28E8).contains(&ip),
             Site::QueueAdd => (0x1C72..=0x1C88).contains(&ip),
             Site::DrawPass => !(0x2A59..=0x2A83).contains(&ip) && ip != 0x1150,
+            Site::RuleStart => (0x115A..=0x1170).contains(&ip) || (0x117A..=0x1189).contains(&ip),
             Site::Op(op) => {
                 let handler = match op {
                     0x0A => 0x2FEC..0x2FF6,

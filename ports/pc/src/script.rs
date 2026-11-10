@@ -16,7 +16,7 @@ pub const OPERANDS: [u8; 0x44] = {
 pub fn listing(disk: &crate::disk::Disk, room: usize) -> Option<String> {
     use kq1_formats::script::{Cond, Mode, RuleKind, Script};
     use std::fmt::Write as _;
-    let words = crate::vocab::read(&disk.code_segment()).ok()?;
+    let words = crate::vocab::read(&disk.code_segment(), disk.edition).ok()?;
     let names = kq1_formats::vocab::Names::new(&words);
     let r = disk.room(room)?;
     let s = Script::new(r.script).ok()?;

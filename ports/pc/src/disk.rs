@@ -8,14 +8,140 @@
 //! kq1-formats' mfm), and the cracked 360K sector image (`.img`), whose loader and
 //! engine are patched not to look for that sector. The resources and their table are
 //! the same on both.
+//!
+//! Two editions are read ([`Edition`]): the first release (BOOT v1.1) and the second
+//! (BOOT v1.2, August 1984: composite or RGB colour). The second's engine is the first's
+//! with additions, its data the first's but for three bytes of script, laid out lower
+//! on the disk.
 
 /// Bytes in a 360K image.
 pub const IMAGE_LEN: usize = 368_640;
 pub const SECTOR: usize = 512;
 
-/// The boot sector's banner: this release's loader. (The CGA+RGB edition's says
-/// `BOOT v1.2`.)
-pub const BOOT_BANNER: &[u8] = b"BOOT v1.1 (c) Copyright Sierra On-Line, Inc. 1984";
+/// The game's editions, told apart by their boot sector's banner.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Edition {
+    /// The first release (BOOT v1.1): CGA, composite colour.
+    Cga,
+    /// The second release (BOOT v1.2, August 16, 1984): composite or RGB colour, chosen
+    /// at the start; three script bugs fixed; Chris Iden credited.
+    CgaRgb,
+}
+
+impl Edition {
+    /// The boot sector's banner, and where in the sector it is.
+    pub fn banner(self) -> (&'static [u8], usize) {
+        match self {
+            Edition::Cga => (b"BOOT v1.1 (c) Copyright Sierra On-Line, Inc. 1984", 3),
+            Edition::CgaRgb => (b"BOOT v1.2 (c) Copyright Sierra On-Line, Inc. 1984", 6),
+        }
+    }
+
+    /// The edition whose banner the boot sector holds.
+    pub fn of(image: &[u8]) -> Option<Edition> {
+        [Edition::Cga, Edition::CgaRgb].into_iter().find(|e| {
+            let (b, at) = e.banner();
+            image.get(at..at + b.len()) == Some(b)
+        })
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Edition::Cga => "the first release (CGA)",
+            Edition::CgaRgb => "the second release (CGA+RGB)",
+        }
+    }
+
+    /// `MAIN.EXE`'s program: the original's and the crack's lengths.
+    fn engine_len(self, original: bool) -> usize {
+        match (self, original) {
+            (Edition::Cga, true) => ORIGINAL_ENGINE_LEN,
+            (Edition::Cga, false) => CRACK_ENGINE_LEN,
+            // The second edition's crack patches the header only.
+            (Edition::CgaRgb, _) => 0x76C0,
+        }
+    }
+
+    /// Where the engine's data segment starts in its code segment: DS = CS + `$511` in
+    /// the first (start-up, `$3E`), `$52A` in the second (`$43`).
+    pub fn data_segment(self) -> usize {
+        match self {
+            Edition::Cga => 0x5110,
+            Edition::CgaRgb => 0x52A0,
+        }
+    }
+
+    /// Where the engine reads the resource table to (CS:`$88` in the first, `$8D` in
+    /// the second: its start-up has one instruction more before it).
+    pub fn table_addr(self) -> usize {
+        match self {
+            Edition::Cga => 0x88,
+            Edition::CgaRgb => 0x8D,
+        }
+    }
+
+    /// The first edition's data-segment address `pc` in this edition's data segment.
+    /// The second's data is the first's in blocks, each moved by a constant: 14 bytes
+    /// in, then 48 more before the colour table (DS:`$12BA`), 1 more after the visual
+    /// colour (DS:`$1FDC`: the second edition keeps two), then 1 more at DS:`$2006`.
+    /// Within the blocks only pointers differ (to what moved: the picture commands'
+    /// table at DS:`$1FE8` holds code addresses). None past the data.
+    pub fn ds(self, pc: usize) -> Option<usize> {
+        const BLOCKS: [(usize, usize, usize); 4] =
+            [(0x0000, 0x12BA, 14), (0x12BA, 0x1FDD, 62), (0x1FDD, 0x2006, 63), (0x2006, 0x20DB, 64)];
+        match self {
+            Edition::Cga => Some(pc),
+            Edition::CgaRgb => BLOCKS.iter().find(|b| (b.0..b.1).contains(&pc)).map(|b| pc + b.2),
+        }
+    }
+
+    /// The first edition's code address `pc` in this edition's code: the second's code is
+    /// the first's in stretches, each moved by a constant ([`CODE_MAP`], from aligning the
+    /// two engines' instructions). None where the first's code isn't in the second.
+    pub fn code(self, pc: u16) -> Option<u16> {
+        match self {
+            Edition::Cga => Some(pc),
+            Edition::CgaRgb => CODE_PLACES
+                .iter()
+                .find(|p| p.0 == pc)
+                .map(|p| p.1)
+                .or_else(|| CODE_MAP.iter().find(|b| (b.0..b.1).contains(&pc)).map(|b| (pc as i32 + b.2) as u16)),
+        }
+    }
+
+    /// This edition's code address `addr` as the first edition's (the reverse of
+    /// [`Edition::code`]). None in code the first doesn't have.
+    pub fn code_back(self, addr: u16) -> Option<u16> {
+        match self {
+            Edition::Cga => Some(addr),
+            Edition::CgaRgb => CODE_PLACES.iter().find(|p| p.1 == addr).map(|p| p.0).or_else(|| {
+                CODE_MAP
+                    .iter()
+                    .find(|b| ((b.0 as i32 + b.2) as u16..(b.1 as i32 + b.2) as u16).contains(&addr))
+                    .map(|b| (addr as i32 - b.2) as u16)
+            }),
+        }
+    }
+
+    /// The Play diskette's layout, which follows the Master's data: its first save slot's
+    /// sector (slot n at 3 × n sectors on; the initial state, slot FF, as slot 1Ah),
+    /// 3Fh in the first edition (`$07E7`) and 6 in the second (`$07EC`); and the first
+    /// sector of the Master's data the copy takes (`$04DE`: 8Dh; `$04E3`: 54h).
+    pub fn play_layout(self) -> (usize, usize) {
+        match self {
+            Edition::Cga => (0x3F, 0x8D),
+            Edition::CgaRgb => (0x06, 0x54),
+        }
+    }
+
+    /// What the disk fills an unused table entry with.
+    pub fn unused_entry(self) -> [u8; 4] {
+        match self {
+            Edition::Cga => [0; 4],
+            Edition::CgaRgb => [0xFF; 4],
+        }
+    }
+}
 
 /// The FAT12 layout of a 360K disk: two FATs of 2 sectors from sector 1, the root
 /// directory's 7 sectors from 5 (112 entries), clusters of 2 sectors from sector 12.
@@ -25,13 +151,106 @@ const ROOT_ENTRIES: usize = 112;
 const DATA: usize = 12;
 const CLUSTER: usize = 2;
 
-/// The protection: on the original, track 6 side 0's first sector has an ID that says
-/// 256 bytes and fails its CRC, so it can't be read (sector 108 in disk order).
+/// The second edition's code against the first's: (start, end, shift) for each stretch
+/// of the first's code (start inclusive, end exclusive) found in the second, moved by
+/// `shift` bytes. Built by aligning the two engines' instructions by their shapes
+/// (mnemonic and operands, addresses left out), the way tools/addrmap.py maps the PCjr's
+/// to the PC's; the gaps are code each edition has of its own.
+const CODE_MAP: [(u16, u16, i32); 69] = [
+    (0x0000, 0x0034, 0),
+    (0x0034, 0x0037, 5),
+    (0x003B, 0x0053, 5),
+    (0x0057, 0x005A, 5),
+    (0x005D, 0x006A, 5),
+    (0x006E, 0x04DE, 5),
+    (0x04E4, 0x0605, 5),
+    (0x0608, 0x07E7, 5),
+    (0x07EA, 0x0874, 5),
+    (0x0877, 0x15F3, 5),
+    (0x15F7, 0x1609, 1),
+    (0x1609, 0x160B, 5),
+    (0x160C, 0x1615, 4),
+    (0x1615, 0x1617, 6),
+    (0x1617, 0x169E, 10),
+    (0x16A0, 0x16A3, 15),
+    (0x16A5, 0x16D7, 14),
+    (0x16D7, 0x16E7, 22),
+    (0x16E7, 0x16F7, 30),
+    (0x16F7, 0x17D5, 38),
+    (0x17D7, 0x17DE, 44),
+    (0x17DE, 0x1853, 58),
+    (0x1853, 0x19A4, 68),
+    (0x19A8, 0x19B4, 89),
+    (0x19B4, 0x1A47, 129),
+    (0x1A4B, 0x1C3E, 129),
+    (0x1C42, 0x1D18, 129),
+    (0x1D1C, 0x2025, 129),
+    (0x2025, 0x27B1, 165),
+    (0x27BA, 0x27BD, 165),
+    (0x27BE, 0x27C2, 166),
+    (0x27C2, 0x2E44, 165),
+    (0x2E47, 0x2E4A, 167),
+    (0x2E4E, 0x2E4F, 166),
+    (0x2E56, 0x383B, 165),
+    (0x384A, 0x384D, 153),
+    (0x384E, 0x384F, 153),
+    (0x388C, 0x388F, 157),
+    (0x3891, 0x3892, 188),
+    (0x38B0, 0x38B1, 161),
+    (0x38B6, 0x38B7, 157),
+    (0x38C0, 0x3DA0, 165),
+    (0x3DA5, 0x3DA8, 167),
+    (0x3DAE, 0x3F83, 165),
+    (0x3F85, 0x3F88, 163),
+    (0x3F8F, 0x495F, 165),
+    (0x495F, 0x496A, 169),
+    (0x496B, 0x496E, 168),
+    (0x4972, 0x4A45, 164),
+    (0x4A45, 0x4A5E, 168),
+    (0x4A5E, 0x4B8D, 172),
+    (0x4B8D, 0x4B90, 181),
+    (0x4B94, 0x4EFB, 183),
+    (0x4EFB, 0x4F03, 251),
+    (0x4F03, 0x4F06, 258),
+    (0x4F0A, 0x4F10, 327),
+    (0x4F13, 0x4F16, 385),
+    (0x4F1F, 0x4F21, 375),
+    (0x4F21, 0x4F27, 404),
+    (0x4F27, 0x4F2D, 436),
+    (0x4F36, 0x4F5C, 432),
+    (0x4F60, 0x4F87, 432),
+    (0x4F88, 0x4F8A, 432),
+    (0x4F90, 0x4F9D, 432),
+    (0x4FA4, 0x4FAA, 432),
+    (0x4FAF, 0x4FB1, 449),
+    (0x4FB4, 0x4FC0, 449),
+    (0x4FC6, 0x4FF3, 449),
+    (0x5017, 0x5103, 413),
+];
+
+/// Places in code the second edition rewrote, which the alignment doesn't pair, found
+/// by what they do: (first edition's address, second's).
+const CODE_PLACES: [(u16, u16); 2] = [
+    // The title's wait for its tune to end (v15): `cmp [v15], 0; je` back.
+    (0x5010, 0x4FEE),
+    (0x5015, 0x4FF3),
+];
+
+/// The protection: on the original, track 6 side 0's first sector can't be read (sector
+/// 108 in disk order). In the first release its ID says 256 bytes and fails its CRC; in
+/// the second (Formaster's Copylock) its data fails its CRC. The second's data area
+/// covers that sector (room 0's script runs over it), so its engine reads the sector's
+/// real data from [`RELOCATED`] when the read fails three times (`$20A6`).
 pub const PROTECTION: (u8, u8, u8) = (6, 0, 1);
+/// Where the second edition's original keeps the protection's sector's data: cylinder
+/// 36, side 1, sector 6 (sector 662).
+pub const RELOCATED: usize = 662;
 
 /// The resource table: 2 sectors from sector 10 (in the root directory's area, after
 /// its used entries), which the engine reads to CS:`$88` at start-up (`$5A`, through
-/// its read routine `$1FB6`). It holds 4-byte entries in the PCjr's format.
+/// its read routine `$1FB6`; [`Edition::table_addr`]). It holds 4-byte entries in the
+/// PCjr's format. Its sector numbers are the disk's own: the second edition's data is
+/// 57 sectors lower.
 pub const TABLE_SECTOR: usize = 10;
 pub const TABLE_ADDR: usize = 0x88;
 pub const TABLE_LEN: usize = 2 * SECTOR;
@@ -60,9 +279,6 @@ pub const CRACK_ENGINE_LEN: usize = 0x71EB;
 /// The resource table's entries (crates/kq1-ibm, the PCjr's format).
 pub use kq1_ibm::entry::Entry;
 
-/// What this disk fills an unused table entry with (zeros).
-pub const UNUSED_ENTRY: [u8; 4] = [0; 4];
-
 /// A file in the root directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct File {
@@ -86,6 +302,7 @@ pub struct Disk {
     pub engine: Vec<u8>,
     /// Read from the original (an MFM dump) rather than the crack.
     pub original: bool,
+    pub edition: Edition,
 }
 
 impl Disk {
@@ -131,26 +348,27 @@ impl Disk {
                 image.len()
             ));
         }
-        if image.get(3..3 + BOOT_BANNER.len()) != Some(BOOT_BANNER) {
-            let edition = image.windows(9).take(SECTOR).any(|w| w == b"BOOT v1.2");
-            return Err(if edition {
-                "this is the CGA+RGB edition (BOOT v1.2), not the 1984 CGA release this port plays".into()
-            } else {
-                "not the King's Quest PC disk (its boot sector isn't Sierra's BOOT v1.1)".into()
-            });
+        let edition = Edition::of(&image)
+            .ok_or("not the King's Quest PC disk (its boot sector isn't Sierra's BOOT v1.1 or v1.2)")?;
+        let mut image = image;
+        if original && edition == Edition::CgaRgb {
+            // The protection's sector as the engine reads it: from where its data is.
+            let protection = 108 * SECTOR;
+            image.copy_within(RELOCATED * SECTOR..(RELOCATED + 1) * SECTOR, protection);
         }
-        let mut disk = Disk { image, engine: Vec::new(), original };
+        let mut disk = Disk { image, engine: Vec::new(), original, edition };
         let main = disk.file("MAIN.EXE").ok_or("no MAIN.EXE on the disk")?;
         let exe = disk.read_file(&main)?;
         if exe.get(..2) != Some(b"MZ") || exe.len() <= EXE_HEADER {
             return Err("MAIN.EXE isn't a program".into());
         }
         disk.engine = exe[EXE_HEADER..].to_vec();
-        let expected = if original { ORIGINAL_ENGINE_LEN } else { CRACK_ENGINE_LEN };
+        let expected = edition.engine_len(original);
         if disk.engine.len() != expected {
             return Err(format!(
-                "MAIN.EXE's program is {} bytes, not the {expected} of this release's {}",
+                "MAIN.EXE's program is {} bytes, not the {expected} of {}'s {}",
                 disk.engine.len(),
+                edition.name(),
                 if original { "original" } else { "crack" }
             ));
         }
@@ -214,13 +432,14 @@ impl Disk {
     pub fn code_segment(&self) -> Vec<u8> {
         let mut cs = self.engine.clone();
         let t = &self.image[TABLE_SECTOR * SECTOR..TABLE_SECTOR * SECTOR + TABLE_LEN];
-        cs[TABLE_ADDR..TABLE_ADDR + TABLE_LEN].copy_from_slice(t);
+        let at = self.edition.table_addr();
+        cs[at..at + TABLE_LEN].copy_from_slice(t);
         cs
     }
 
     fn entry_at(&self, n: usize) -> Option<Entry> {
         let at = TABLE_SECTOR * SECTOR + 4 * n;
-        Entry::decode(self.image[at..at + 4].try_into().unwrap(), UNUSED_ENTRY)
+        Entry::decode(self.image[at..at + 4].try_into().unwrap(), self.edition.unused_entry())
     }
 
     /// Entry `n` of the table (rooms from 0, sounds from 90, views from 128).
@@ -301,9 +520,10 @@ mod tests {
     fn entry_decoding() {
         // Room 1's entry: offset 280 in sector 166, 8 sectors.
         assert_eq!(
-            Entry::decode([0x18, 0x80, 0x80, 0xa6], UNUSED_ENTRY),
+            Entry::decode([0x18, 0x80, 0x80, 0xa6], Edition::Cga.unused_entry()),
             Some(Entry { sector: 166, offset: 280, sectors: 8 })
         );
-        assert_eq!(Entry::decode([0; 4], UNUSED_ENTRY), None);
+        assert_eq!(Entry::decode([0; 4], Edition::Cga.unused_entry()), None);
+        assert_eq!(Entry::decode([0xFF; 4], Edition::CgaRgb.unused_entry()), None);
     }
 }

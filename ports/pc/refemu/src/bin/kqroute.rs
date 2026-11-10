@@ -32,7 +32,8 @@
 //!   expect score N | expect room N
 //!
 //! The autopilot is crates/kq1-autopilot's, shared with the other IBM port's; this gives
-//! it the original PC game, in refemu-pc, and the engine's data addresses.
+//! it the original PC game, in refemu-pc, and the engine's data addresses (mapped to the
+//! disk's edition). `KQ_RGB=1` chooses the second edition's RGB colours.
 
 use kq1_pc::disk::Disk;
 use kq1_pc_refemu::runner::Runner;
@@ -42,24 +43,29 @@ fn main() {
         let raw = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
         let disk = Disk::from_file(raw.clone()).expect("the game disk");
         let cs = disk.code_segment();
-        let ds = &cs[kq1_pc::vocab::DATA_SEGMENT..];
-        // The engine's data addresses (docs/engine.md).
+        let e = disk.edition;
+        let ds = &cs[e.data_segment()..];
+        // The engine's data addresses (docs/engine.md), the first edition's, on the
+        // disk's edition.
+        let at = |a: usize| e.ds(a).unwrap_or_else(|| panic!("data address {a:04X} isn't mapped"));
+        let w = |a: usize| at(a) as u16;
         let port = kq1_autopilot::Port {
-            actors: 0x17E7,
-            game_over: 0x1860,
-            key_dir: 0x187F,
-            program: 0x1868,
-            actor_count: 0x1861,
-            message: 0x149C,
-            loops2: ds[0x1D55..0x1D55 + 9].try_into().unwrap(),
-            loops4: ds[0x1D5E..0x1D5E + 9].try_into().unwrap(),
-            frame: ds[kq1_pc::pic::FRAME..kq1_pc::pic::FRAME + 11].to_vec(),
+            actors: w(0x17E7),
+            game_over: w(0x1860),
+            key_dir: w(0x187F),
+            program: w(0x1868),
+            actor_count: w(0x1861),
+            message: w(0x149C),
+            loops2: ds[at(0x1D55)..at(0x1D55) + 9].try_into().unwrap(),
+            loops4: ds[at(0x1D5E)..at(0x1D5E) + 9].try_into().unwrap(),
+            frame: ds[at(kq1_pc::pic::FRAME)..at(kq1_pc::pic::FRAME) + 11].to_vec(),
             listings: (1..=84u8).filter_map(|r| kq1_pc::script::listing(&disk, r as usize).map(|t| (r, t))).collect(),
             pictures: (0..=84).filter_map(|r| disk.room(r).map(|x| (r, x.picture.to_vec()))).collect(),
             views: (0..=255).filter_map(|v| disk.view(v).map(|raw| (v, raw.to_vec()))).collect(),
         };
-        #[allow(unused_mut)]
         let mut r = Runner::new(&raw).expect("refemu");
+        // KQ_RGB=1: on the second edition, choose the RGB colours at its first screen.
+        r.rgb = std::env::var_os("KQ_RGB").is_some();
         // The BIOS's font, from bios.rom next to the disk, if it is there.
         if let Some(b) = kq1_pc_refemu::bios_next_to(path) {
             r.m.set_font(&b).unwrap_or_else(|e| panic!("bios.rom: {e}"));

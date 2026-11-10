@@ -210,6 +210,9 @@ pub struct Globals {
     pub music_start: Option<Stream>,
     /// 14A9: paused (Esc).
     pub paused: bool,
+    /// The second edition's colours (DS:2118 there): RGB rather than composite, chosen
+    /// at its first screen (Esc switches).
+    pub rgb: bool,
     /// SS:1E65: the actors have moved since the last tick (set by every draw pass,
     /// `$3FFD`; cleared by every tick, `$1A12`). Set at start (in the engine's image).
     pub moved: bool,
@@ -468,9 +471,9 @@ impl World {
         let objects = res.initial_objects();
         let g = Globals {
             joy_skip: false,
-            print_countdown: res.ds[0x12E1],
+            print_countdown: res.ds[res.d(0x12E1)],
             ring: VecDeque::new(),
-            text_row: res.ds[0x13D6],
+            text_row: res.ds[res.d(0x13D6)],
             text_col: 0,
             music_countdown: 1,
             sound_on: true,
@@ -488,6 +491,7 @@ impl World {
             music: None,
             music_start: None,
             paused: false,
+            rgb: false,
             moved: true,
             sounds: vec![None; 40],
             parse: input::Parse::default(),
@@ -520,16 +524,16 @@ impl World {
             joy_dir: 0,
             joy_centre: None,
             key_dir: 0,
-            pending_loop: res.ds[0x1882],
+            pending_loop: res.ds[res.d(0x1882)],
             play_disk: false,
             last_pos: (0, 0),
             current: 0,
             wander_toggle: 0,
-            random: u16::from_le_bytes([res.ds[0x1E61], res.ds[0x1E62]]),
+            random: u16::from_le_bytes([res.ds[res.d(0x1E61)], res.ds[res.d(0x1E62)]]),
             heap: res.ds_word(0x1DD8),
             room_ptrs: std::array::from_fn(|i| res.ds_word(0x1DD0 + 2 * i)),
             room_marks: std::array::from_fn(|i| res.ds_word(0x15CA + 2 * i)),
-            wander_timer: u16::from_le_bytes([res.ds[0x1E63], res.ds[0x1E64]]),
+            wander_timer: u16::from_le_bytes([res.ds[res.d(0x1E63)], res.ds[res.d(0x1E64)]]),
             order_spare: [(0, 0); 3],
             restoring: false,
             fit_check: false,
@@ -538,13 +542,13 @@ impl World {
             pic: crate::pic::State::default(),
             picture: None,
             first_start: true,
-            text_attr: res.ds[0x1135],
-            text_cursor: (res.ds[0x1134], res.ds[0x1133]),
+            text_attr: res.ds[res.d(0x1135)],
+            text_cursor: (res.ds[res.d(0x1134)], res.ds[res.d(0x1133)]),
             gfx_cursor: (0, 0),
-            hpos_gfx: res.ds[0x112F],
-            hpos_text: res.ds[0x1132],
-            hpos: res.ds[0x1881],
-            spare: [res.ds[0x185F], res.ds[0x187A], res.ds[0x1880]],
+            hpos_gfx: res.ds[res.d(0x112F)],
+            hpos_text: res.ds[res.d(0x1132)],
+            hpos: res.ds[res.d(0x1881)],
+            spare: [res.ds[res.d(0x185F)], res.ds[res.d(0x187A)], res.ds[res.d(0x1880)]],
         };
         let disks = [
             Floppy { image: res.disk_image.clone(), write_protected: true, writes: 0 },
@@ -627,7 +631,32 @@ impl World {
         if let Some(t) = self.checkpoint_trace.as_mut() {
             t.push(at);
         }
-        self.pending = self.clock.at(self.checkpoint, self.cycles).into();
+        let e = self.clock.at(self.checkpoint, self.cycles);
+        self.pending = self.own_addresses(e);
+    }
+
+    /// Events from the clock, a tick's address (the code it interrupted, on the disk's
+    /// edition) as the first edition's, which the code sites name (none, FFFF, in code
+    /// the first edition doesn't have: it fires at the next checkpoint).
+    fn own_addresses(&self, events: Vec<Event>) -> VecDeque<Event> {
+        let e = self.res.edition;
+        events
+            .into_iter()
+            .map(|ev| match ev {
+                Event::Tick(ip) if ip != 0xFFFF => Event::Tick(e.code_back(ip).unwrap_or(0xFFFF)),
+                ev => ev,
+            })
+            .collect()
+    }
+
+    /// Where the resource memory starts (the title's `$500A` and the restart's `$1C5B`
+    /// set it): DS:20D8 in the first edition; DS:211A in the second, whose colours' flag
+    /// comes before it.
+    pub fn heap_start(&self) -> u16 {
+        match self.res.edition {
+            crate::disk::Edition::Cga => 0x20D8,
+            crate::disk::Edition::CgaRgb => 0x211A,
+        }
     }
 
     /// The speed model: the cycles of the work counted since the last charge added to
@@ -685,7 +714,8 @@ impl World {
     pub fn wait_until(&mut self, what: &str, done: impl Fn(&World) -> bool) {
         while !done(self) {
             if self.pending.is_empty() {
-                self.pending = self.clock.waiting(self.checkpoint, self.cycles).into();
+                let e = self.clock.waiting(self.checkpoint, self.cycles);
+                self.pending = self.own_addresses(e);
                 if self.pending.is_empty() {
                     self.stop(format!("waiting for {what} at checkpoint {}, with no tick to come", self.checkpoint));
                 }
@@ -792,7 +822,9 @@ impl World {
         let mut f = Vec::with_capacity(1 + 80 * 200 + 1000);
         f.push(self.text.text_mode as u8);
         if !self.text.text_mode {
-            let p = |c: u8| crate::composite::PATTERN[(c & 15) as usize];
+            // The planes hold colours, or in RGB already the patterns.
+            let rgb = self.screen.rgb.is_some();
+            let p = |c: u8| if rgb { c & 15 } else { crate::composite::PATTERN[(c & 15) as usize] };
             let mut cga: Vec<u8> = self.screen.shown.chunks(2).map(|c| p(c[0]) << 4 | p(c[1])).collect();
             cga.resize(80 * 200, 0);
             let g = &self.text.graphics;

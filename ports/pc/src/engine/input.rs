@@ -28,6 +28,18 @@ const PRESS_ANY_KEY: u16 = 0x4F06;
 const CREDITS: u16 = 0x4F36;
 const CREDIT_COLOUR: usize = 0x1167;
 
+/// The second edition's title, its own code (`$4F5E`), so its own addresses: the
+/// copyright (CS:4F64); its first screen's lines, the mode it is in and how to change
+/// it (CS:5008 composite, CS:505E RGB) and "To play the game, press the space bar"
+/// (CS:50B2); and the credits' records (CS:50E6, ten, Chris Iden's among them).
+mod second {
+    pub const COPYRIGHT: u16 = 0x4F64;
+    pub const COMPOSITE: u16 = 0x5008;
+    pub const RGB: u16 = 0x505E;
+    pub const TO_PLAY: u16 = 0x50B2;
+    pub const CREDITS: u16 = 0x50E6;
+}
+
 /// A parser cursor: nothing, a place in the vocabulary, or a place in the typed line.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Ptr {
@@ -144,7 +156,7 @@ impl World {
         self.g.music_on = false;
         // $20E9: the speaker's gate on; the music starts with silence.
         self.speaker.push(super::Speaker::Gate(true));
-        self.g.music = Some(super::Stream { data: self.res.ds.clone(), at: SILENCE });
+        self.g.music = Some(super::Stream { data: self.res.ds.clone(), at: self.res.d(SILENCE) });
         self.g.music_on = true;
         let start_room = if self.g.first_start { self.start_room.take() } else { None };
         if self.g.first_start {
@@ -172,6 +184,9 @@ impl World {
     /// engine's code, after the calls that print them: the copyright (CS:4EAD) and "Press
     /// any key to play" (CS:4F06) through the BIOS teletype, then the credits.
     fn title(&mut self) {
+        if self.res.edition == crate::disk::Edition::CgaRgb {
+            return self.title_second();
+        }
         self.title_clear_rows();
         let copyright = self.code_string(COPYRIGHT);
         self.teletype_str(&copyright);
@@ -196,7 +211,7 @@ impl World {
             let mut at = CREDITS;
             for _ in 0..9 {
                 let colour = self.res.code_byte(at + 3);
-                let colour = if colour >= 0x10 { self.res.ds[CREDIT_COLOUR] } else { colour };
+                let colour = if colour >= 0x10 { self.res.ds[self.res.d(CREDIT_COLOUR)] } else { colour };
                 let mut c = self.res.code_byte(at + 4);
                 let text = self.code_string(at + 5);
                 at += 5 + text.len() as u16 + 1;
@@ -221,8 +236,86 @@ impl World {
         self.text.cursor = (0x18, 0);
         self.g.keys_on = true;
         // $500A: the resource memory from its start.
-        self.g.heap = 0x20D8;
+        self.g.heap = self.heap_start();
         self.wait_until("the tune to end", |w| w.vars[15] != 0);
+    }
+
+    /// `$4F5E`: the second edition's title. As the first's up to the logo and its wait;
+    /// then its first screen (`$4FF6`: the title picture, the mode it is in, the
+    /// credits), the tune, and the keys: Esc switches between composite and RGB colour
+    /// (`$19E8`, DS:2118) and draws the screen again, the space bar plays, and the rest
+    /// are let go. There is no time limit.
+    fn title_second(&mut self) {
+        self.title_clear_rows();
+        let copyright = self.code_string(second::COPYRIGHT);
+        self.teletype_str(&copyright);
+        self.load_picture(0x52);
+        self.g.keys_on = false;
+        self.draw_room_picture();
+        self.site_keys();
+        if self.keys.pop_front().is_none() {
+            self.title_wait();
+        }
+        self.load_sound_group(0x15);
+        self.title_screen_second();
+        self.play_sound(0x15);
+        loop {
+            self.site_keys();
+            self.wait_until("a key", |w| !w.keys.is_empty());
+            let k = self.keys.pop_front().unwrap_or(0) as u8;
+            if k == 0x1B {
+                self.g.rgb = !self.g.rgb;
+                self.set_colours();
+                self.title_screen_second();
+            } else if k == b' ' {
+                break;
+            }
+        }
+        self.title_clear_rows();
+        self.text.cursor = (0x18, 0);
+        self.g.keys_on = true;
+        self.g.heap = self.heap_start();
+        self.wait_until("the tune to end", |w| w.vars[15] != 0);
+    }
+
+    /// The second edition's colours (`$19E8`): in RGB, the planes take the patterns.
+    fn set_colours(&mut self) {
+        self.screen.rgb = self.g.rgb.then(|| super::screen::Rgb::from_data(&self.res.ds));
+    }
+
+    /// `$4FF6`: the second edition's first screen: the title picture (83), the mode it
+    /// is in and the space bar's line through the BIOS teletype, then the ten credits
+    /// from row 6 (DS:2116), as the first edition's are drawn (`$51D0`); then a wait
+    /// for the tune to have ended and a pause.
+    fn title_screen_second(&mut self) {
+        self.load_picture(0x53);
+        self.title_clear_rows();
+        let mode = self.code_string(if self.g.rgb { second::RGB } else { second::COMPOSITE });
+        self.teletype_str(&mode);
+        let play = self.code_string(second::TO_PLAY);
+        self.teletype_str(&play);
+        self.draw_room_picture();
+        let mut row = 6u8;
+        let mut at = second::CREDITS;
+        for _ in 0..10 {
+            let colour = self.res.code_byte(at + 3);
+            let colour = if colour >= 0x10 { self.res.ds[self.res.d(CREDIT_COLOUR)] } else { colour };
+            let mut c = self.res.code_byte(at + 4);
+            let text = self.code_string(at + 5);
+            at += 5 + text.len() as u16 + 1;
+            self.text.cursor = (row, c);
+            for &b in &text {
+                if b == b'\n' {
+                    row += 1;
+                } else {
+                    self.put_char_attr(b, colour | 0x80);
+                    c += 1;
+                }
+                self.text.cursor = (row, c);
+            }
+        }
+        self.wait_until("the tune to end", |w| w.vars[15] != 0);
+        self.delay(3 * 0x10000 * 17, false);
     }
 
     /// `$5086`: the text rows 21-24 cleared; the cursor to the start of row 21.
@@ -663,7 +756,7 @@ impl World {
                 } else {
                     0
                 };
-                let text: Vec<u8> = self.res.ds[CANNED[which]..].iter().take_while(|&&b| b != 0xFF).copied().collect();
+                let text: Vec<u8> = self.res.ds_bytes(CANNED[which], 0xFF);
                 let p = &mut self.g.parse;
                 p.line[..text.len()].copy_from_slice(&text);
                 p.line[text.len()] = 0xFF;

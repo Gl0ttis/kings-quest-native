@@ -8,7 +8,8 @@
 //! PC, and the timer's 18.2 ticks a second fall where they did). Room pictures appear
 //! as the original draws them, outlines then fills, at its pace.
 //!
-//! DISK is the game's disk: an HxC `.mfm` dump of the original or a 360K `.img`. With
+//! DISK is the game's disk, either edition: an HxC `.mfm` dump of the original or a 360K
+//! `.img`. With
 //! none given, kq looks next to itself, then in the current folder and its
 //! `original` folder. Saves go on the Play diskette, which the game makes itself ("copy
 //! disk") and which is kept as an image next to the game's disk (`KQ1 Play.img`, or
@@ -31,6 +32,11 @@
 //! for) and the signal decoded dot by dot, with the fringes a monitor shows where colours
 //! meet (--signal starts with it). The text screen (the inventory) is in the CGA's
 //! colours.
+//!
+//! **Both editions** play: the first release (BOOT v1.1) and the second (BOOT v1.2,
+//! "CGA+RGB"). The second asks at its start: Esc switches between composite and RGB
+//! colour, the space bar plays. In RGB the screen is the CGA's 320-dot mode on an RGB
+//! monitor (green, red and brown on blue), the game's dithered colours.
 //!
 //! Front-end keys: F11/F12 slower/faster (--speed N starts at N times the original's
 //! speed). F9 fast loads (--fast-loads): the disk reads and the picture drawing (a room
@@ -62,7 +68,7 @@
 //! `<L>` `<R>` the arrows), and the screen at --until is written as a PNG (640 × 400,
 //! each line doubled), with the text on it printed.
 
-use kq1_frontend::player::{self, audio, Drives, PlayerClock, RouteClock, ScriptClock, WindowSetup};
+use kq1_ibm_player::{self as player, audio, Drives, PlayerClock, RouteClock, ScriptClock, WindowSetup};
 use kq1_pc::composite::{self, Mode};
 use kq1_pc::disk::{Disk, IMAGE_LEN};
 use kq1_pc::engine::clock::{Clock, Replay, CPU_HZ};
@@ -223,6 +229,25 @@ fn shift_line<T: Copy + Default>(src: &[T], shift: i32, out: &mut [T]) {
 /// mode) they would be blocks of colour.
 fn render(w: &World, mode: Mode, out: &mut [u32]) {
     let shift = (CENTRE - w.g.hpos as i32) * 16;
+    if !w.text.text_mode && w.screen.rgb.is_some() {
+        // The second edition's RGB colours: the CGA's 320-dot mode on an RGB monitor,
+        // each byte four pixels of 2 bits, palette 0 on blue (3D9h = 01h, `$19E8`), each
+        // pixel two of the output's dots wide.
+        const RGB: [u32; 4] = [0x0000AA, 0x00AA00, 0xAA0000, 0xAA5500];
+        let f = w.frame();
+        let mut line = vec![0u32; OUT_W];
+        for y in 0..OUT_H {
+            for (x, &b) in f[1 + y * 80..1 + (y + 1) * 80].iter().enumerate() {
+                for k in 0..4 {
+                    let c = RGB[(b >> (6 - 2 * k) & 3) as usize];
+                    line[x * 8 + 2 * k] = c;
+                    line[x * 8 + 2 * k + 1] = c;
+                }
+            }
+            shift_line(&line, shift, &mut out[y * OUT_W..(y + 1) * OUT_W]);
+        }
+        return;
+    }
     if !w.text.text_mode {
         let f = w.frame();
         let g = &w.text.graphics;

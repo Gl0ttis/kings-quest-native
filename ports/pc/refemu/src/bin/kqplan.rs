@@ -16,6 +16,7 @@
 //! `--play-out IMG` writes the Play diskette as it is at the end. `--frames` writes a
 //! hash of the screen (runner `frame`, FNV-1a) at the start of every pass, one a line
 //! in hex, as the PCjr port's reference/*.frames (numbers, not the game's screens).
+//! `KQ_RGB=1` chooses the second edition's RGB colours at its first screen.
 
 use kq1_pc_refemu::machine::Disk;
 use kq1_pc_refemu::runner::{Runner, Stopped};
@@ -78,6 +79,8 @@ fn main() {
         .filter(|s| !s.is_empty())
         .collect();
     let mut r = Runner::new(&raw).unwrap_or_else(|e| panic!("{e}"));
+    // KQ_RGB=1: on the second edition, choose the RGB colours at its first screen.
+    r.rgb = std::env::var_os("KQ_RGB").is_some();
     // The BIOS's font, from bios.rom next to the disk, if it is there.
     if let Some(b) = kq1_pc_refemu::bios_next_to(disk) {
         r.m.set_font(&b).unwrap_or_else(|e| panic!("bios.rom: {e}"));
