@@ -19,6 +19,7 @@ name = "refemu-pc"
 path = "src/main.rs"
 
 [dependencies]
+kq1-x86 = { path = "../../../crates/kq1-x86" }
 kq1-pc = { path = ".." }
 kq1-formats = { path = "../../../crates/kq1-formats" }
 

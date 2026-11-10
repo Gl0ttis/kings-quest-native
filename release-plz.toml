@@ -84,3 +84,7 @@ release = false
 [[package]]
 name = "kq1-pc-refemu"
 release = false
+
+[[package]]
+name = "kq1-x86"
+release = false

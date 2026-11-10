@@ -31,6 +31,7 @@ name = "kqframes-pcjr"
 path = "src/bin/kqframes.rs"
 
 [dependencies]
+kq1-x86 = { path = "../../../crates/kq1-x86" }
 kq1-pcjr = { path = ".." }
 kq1-formats = { path = "../../../crates/kq1-formats" }
 
