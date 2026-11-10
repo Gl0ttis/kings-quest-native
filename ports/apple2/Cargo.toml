@@ -1,6 +1,6 @@
 [package]
 name = "kq1-apple2"
-version = "0.2.1"
+version = "0.2.2"
 description = "Native port of the 1984 Apple IIe King's Quest: engine, player (kq) and tools. Runs on the user's own disk images."
 edition.workspace = true
 license.workspace = true
