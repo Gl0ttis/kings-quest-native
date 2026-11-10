@@ -3,9 +3,9 @@
 ## [0.2.2](https://github.com/Gl0ttis/kings-quest-native/compare/kq1-apple2-v0.2.1...kq1-apple2-v0.2.2) (2026-11-10)
 
 
-### Features
+### Refactoring
 
-* the IBM PC port (CGA, composite colour), playable start to finish ([#27](https://github.com/Gl0ttis/kings-quest-native/pull/27)) ([29f3c2f](https://github.com/Gl0ttis/kings-quest-native/commit/29f3c2fd1d4407b9d775e4c0ab62764f62e41e19))
+* **workspace:** kq1-formats 0.2.0, for the IBM PC port; nothing changes for the Apple IIe ([#27](https://github.com/Gl0ttis/kings-quest-native/pull/27)) ([29f3c2f](https://github.com/Gl0ttis/kings-quest-native/commit/29f3c2fd1d4407b9d775e4c0ab62764f62e41e19))
 
 ## [0.2.1](https://github.com/Gl0ttis/kings-quest-native/compare/kq1-apple2-v0.2.0...kq1-apple2-v0.2.1) (2026-11-09)
 
