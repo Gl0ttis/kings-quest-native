@@ -88,3 +88,7 @@ release = false
 [[package]]
 name = "kq1-x86"
 release = false
+
+[[package]]
+name = "kq1-autopilot"
+release = false
