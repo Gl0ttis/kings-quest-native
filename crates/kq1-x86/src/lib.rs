@@ -1,3 +1,6 @@
+//! The 8086 core the reference machines share (the PCjr's and the PC's refemu), for
+//! measuring the originals only: no port uses it.
+//!
 //! An 8086 core, with 8088 cycle counts (approximate: the base counts of the Intel
 //! tables plus the effective-address time and 4 cycles for each word moved over the
 //! 8088's 8-bit bus). Real mode only, the documented instructions and the 8086's

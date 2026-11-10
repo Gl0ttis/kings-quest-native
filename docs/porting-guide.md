@@ -315,8 +315,17 @@ the docs.
 - the player's platform side: `crates/kq1-frontend` (the Windows paint hook, full
   screen, the joystick as a raw reading, the `fatal()` message box), which the Apple
   and PCjr players both use; a player gives the hook its picture's size and shape and
-  turns the joystick reading into its machine's. Sound output and disk discovery are
-  each player's own still;
+  turns the joystick reading into its machine's. Its `player` module is the half the
+  IBM PC and PCjr players share: the clocks for play, routes and --headless, the window
+  and its keys, the sound output (the port gives its samples), finding the disk, and the
+  Play diskette's handling. A player of that family keeps only its screen, sound, font
+  and engine glue;
+- the IBM PC and PCjr engines' shared parts: `crates/kq1-ibm` (the clock's types, the
+  picture painter, the text screens, the views, the resource table's entries, the
+  built-in font);
+- for measuring: `crates/kq1-x86`, the 8086 core of the IBM ports' refemu, and
+  `crates/kq1-autopilot`, the route autopilot (`kqroute`), to which a port gives its
+  refemu's runner (the `Original` trait) and its engine's data addresses;
 - the documentation layout.
 
 **Probably reusable in idea, not code:**

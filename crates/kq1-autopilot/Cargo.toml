@@ -1,0 +1,19 @@
+[package]
+name = "kq1-autopilot"
+version = "0.1.0"
+description = "The autopilot the IBM PC and PCjr King's Quest ports record their reference runs with, in their refemu. Not part of any port."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "kq1_autopilot"
+path = "src/lib.rs"
+
+[dependencies]
+# The views and the picture painter, to see where Graham can go.
+kq1-ibm = { path = "../kq1-ibm" }

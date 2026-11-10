@@ -57,35 +57,11 @@ const EXE_HEADER: usize = 0x200;
 pub const ORIGINAL_ENGINE_LEN: usize = 0x74F0;
 pub const CRACK_ENGINE_LEN: usize = 0x71EB;
 
-/// A directory entry: the resource starts `offset` bytes into `sector` and is read as
-/// `sectors` sectors from there.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Entry {
-    pub sector: usize,
-    pub offset: usize,
-    pub sectors: usize,
-}
+/// The resource table's entries (crates/kq1-ibm, the PCjr's format).
+pub use kq1_ibm::entry::Entry;
 
-impl Entry {
-    /// Decode the 4 bytes `b0 b1 b2 b3`: offset = b0 | (b1 bit 7) << 8; sectors =
-    /// (b1:b2 >> 4) & 0x3FF; sector = (b2:b3) & 0x3FF (big-endian pairs), as on the
-    /// PCjr. `None` for an unused entry, which is all zeros here (`****` on the PCjr).
-    pub fn decode(b: [u8; 4]) -> Option<Entry> {
-        if b == [0; 4] {
-            return None;
-        }
-        Some(Entry {
-            offset: b[0] as usize | ((b[1] >> 7) as usize) << 8,
-            sectors: (u16::from_be_bytes([b[1], b[2]]) >> 4) as usize & 0x3FF,
-            sector: u16::from_be_bytes([b[2], b[3]]) as usize & 0x3FF,
-        })
-    }
-
-    /// Where the resource starts in the image.
-    pub fn start(&self) -> usize {
-        self.sector * SECTOR + self.offset
-    }
-}
+/// What this disk fills an unused table entry with (zeros).
+pub const UNUSED_ENTRY: [u8; 4] = [0; 4];
 
 /// A file in the root directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -244,7 +220,7 @@ impl Disk {
 
     fn entry_at(&self, n: usize) -> Option<Entry> {
         let at = TABLE_SECTOR * SECTOR + 4 * n;
-        Entry::decode(self.image[at..at + 4].try_into().unwrap())
+        Entry::decode(self.image[at..at + 4].try_into().unwrap(), UNUSED_ENTRY)
     }
 
     /// Entry `n` of the table (rooms from 0, sounds from 90, views from 128).
@@ -324,7 +300,10 @@ mod tests {
     #[test]
     fn entry_decoding() {
         // Room 1's entry: offset 280 in sector 166, 8 sectors.
-        assert_eq!(Entry::decode([0x18, 0x80, 0x80, 0xa6]), Some(Entry { sector: 166, offset: 280, sectors: 8 }));
-        assert_eq!(Entry::decode([0; 4]), None);
+        assert_eq!(
+            Entry::decode([0x18, 0x80, 0x80, 0xa6], UNUSED_ENTRY),
+            Some(Entry { sector: 166, offset: 280, sectors: 8 })
+        );
+        assert_eq!(Entry::decode([0; 4], UNUSED_ENTRY), None);
     }
 }

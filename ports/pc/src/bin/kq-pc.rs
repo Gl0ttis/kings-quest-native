@@ -62,44 +62,25 @@
 //! `<L>` `<R>` the arrows), and the screen at --until is written as a PNG (640 × 400,
 //! each line doubled), with the text on it printed.
 
-use kq1_frontend::{fullscreen::Fullscreen, hook};
+use kq1_frontend::player::{self, audio, Drives, PlayerClock, RouteClock, ScriptClock, WindowSetup};
 use kq1_pc::composite::{self, Mode};
 use kq1_pc::disk::{Disk, IMAGE_LEN};
-use kq1_pc::engine::clock::{Clock, Event, Joystick, Replay, CPU_HZ, CYCLES_PER_TICK};
+use kq1_pc::engine::clock::{Clock, Replay, CPU_HZ};
 use kq1_pc::engine::{Speaker, World};
 use kq1_pc::font::Font;
-use minifb::{InputCallback, Key, KeyRepeat, Scale, ScaleMode, Window, WindowOptions};
+use minifb::Key;
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 
 const TITLE: &str = "King's Quest (IBM PC, native engine)";
+/// The error box's caption.
+const CAPTION: &str = "King's Quest (IBM PC)";
 /// The output buffer: the CGA's 640 dots × 200 lines, scaled to a 4:3 shape.
 const OUT_W: usize = 640;
 const OUT_H: usize = 200;
-const AUDIO_RATE: u32 = 44_100;
-
-/// Between the window, the engine and the sound.
-struct Shared {
-    /// The screen in RGB, the CGA's 640 × 200 (OUT_W × OUT_H), and a count of the
-    /// frames sent. It is scaled to the window in one step (4:3, its dots 2.4 times as
-    /// tall as wide), so that its rows and columns are even to within a pixel.
-    rgb: Vec<u32>,
-    seq: u64,
-    /// Keys for the game (as the PC's BIOS gives them: scan code << 8 | character).
-    keys: VecDeque<u16>,
-    /// How the composite screen is shown (F7).
-    mode: Mode,
-    speed: f64,
-    /// Fast loads: the loading's time (World::loading_cycles) isn't waited for.
-    fast_loads: bool,
-    /// A route is being replayed (--route): the disks are its log's to swap.
-    replaying: bool,
-    quit: bool,
-    /// Why the game stopped, when it has.
-    ended: Option<String>,
-}
+const AUDIO_RATE: u32 = audio::RATE;
 
 /// The speaker: the engine's events (the timer's channel 2 divisor, the gate), as a
 /// square wave of 1,193,182 Hz over the divisor while the gate is on.
@@ -109,7 +90,6 @@ struct Audio {
     gate: bool,
     /// Where in its cycle the wave is (0-1).
     phase: f64,
-    on: bool,
 }
 
 /// The integral of a square wave of period 1 (+1 for the first half, -1 for the
@@ -122,7 +102,7 @@ fn square_area(t: f64) -> f64 {
     }
 }
 
-impl Audio {
+impl audio::Render for Audio {
     fn render(&mut self, out: &mut [f32]) {
         for e in self.events.drain(..) {
             match e {
@@ -132,7 +112,7 @@ impl Audio {
         }
         let hz = 1_193_182.0 / if self.divisor == 0 { 65_536.0 } else { self.divisor as f64 };
         // The game stops a note with a divisor of 2 (600 kHz): no sound a speaker makes.
-        let audible = self.on && self.gate && (20.0..15_000.0).contains(&hz);
+        let audible = self.gate && (20.0..15_000.0).contains(&hz);
         let step = hz / AUDIO_RATE as f64;
         for o in out.iter_mut() {
             if !audible {
@@ -145,299 +125,6 @@ impl Audio {
             self.phase = end - end.floor();
             let b = square_area(self.phase);
             *o = ((b - a) / step) as f32 * 0.25;
-        }
-    }
-}
-
-/// The game's time against the wall clock: the engine waits at each checkpoint until
-/// the original would have got there, then takes the keys typed and the ticks due.
-struct PlayerClock {
-    shared: Arc<Mutex<Shared>>,
-    /// The wall-clock instant of the game's cycle 0, at the current speed.
-    origin: Instant,
-    speed: f64,
-    ticks: u64,
-    /// The loading cycles so far, and of them those skipped by fast loads (not waited
-    /// for: the wall clock runs `skipped` cycles behind the game's).
-    loading: u64,
-    skipped: u64,
-    /// Read the joystick (not --no-joystick).
-    joystick: bool,
-}
-
-impl PlayerClock {
-    fn new(shared: Arc<Mutex<Shared>>, speed: f64, joystick: bool) -> PlayerClock {
-        PlayerClock { shared, origin: Instant::now(), speed, ticks: 0, loading: 0, skipped: 0, joystick }
-    }
-
-    /// Wait until the game's cycle `cycles` is due.
-    fn wait_for(&mut self, cycles: u64) {
-        let cycles = cycles.saturating_sub(self.skipped);
-        let speed = self.shared.lock().unwrap().speed;
-        if speed != self.speed {
-            // Keep the present where it is when the speed changes.
-            let now = Instant::now();
-            let at = Duration::from_secs_f64(cycles as f64 / CPU_HZ / speed);
-            self.origin = now.checked_sub(at).unwrap_or(now);
-            self.speed = speed;
-        }
-        let due = self.origin + Duration::from_secs_f64(cycles as f64 / CPU_HZ / self.speed);
-        let now = Instant::now();
-        if due > now {
-            std::thread::sleep(due - now);
-        } else if now - due > Duration::from_millis(250) {
-            // Far behind (the window was dragged, the machine was busy): don't rush to
-            // catch up.
-            self.origin += now - due;
-        }
-    }
-
-    fn keys(&mut self) -> Vec<Event> {
-        self.shared.lock().unwrap().keys.drain(..).map(Event::Key).collect()
-    }
-}
-
-impl Clock for PlayerClock {
-    fn at(&mut self, _n: u64, cycles: u64) -> Vec<Event> {
-        self.wait_for(cycles);
-        let mut out = self.keys();
-        while (self.ticks + 1) * CYCLES_PER_TICK <= cycles {
-            self.ticks += 1;
-            out.push(Event::Tick(0xFFFF));
-        }
-        out
-    }
-
-    /// A busy wait: until the next tick.
-    fn waiting(&mut self, _n: u64, _cycles: u64) -> Vec<Event> {
-        self.wait_for((self.ticks + 1) * CYCLES_PER_TICK);
-        self.ticks += 1;
-        let mut out = self.keys();
-        out.push(Event::Tick(0xFFFF));
-        out
-    }
-
-    /// A timed delay (the title's): its time passes in real time too.
-    fn poll(&mut self, cycles: u64) -> Vec<Event> {
-        self.at(0, cycles)
-    }
-
-    fn joystick(&mut self) -> Option<Joystick> {
-        self.joystick.then(joystick::read).flatten()
-    }
-
-    fn pace(&mut self, cycles: u64) {
-        self.wait_for(cycles);
-    }
-
-    fn loading(&mut self, cycles: u64) {
-        if self.shared.lock().unwrap().fast_loads {
-            self.skipped += cycles - self.loading;
-        }
-        self.loading = cycles;
-    }
-}
-
-/// For --route: a refemu-pc event log replayed at its checkpoints, paced by the
-/// player's clock; when it runs out, the player's clock takes over.
-struct RouteClock {
-    replay: Replay,
-    play: PlayerClock,
-    handed: bool,
-}
-
-impl RouteClock {
-    /// Whether the log is spent (handing over to the player at `cycles` if so).
-    fn over(&mut self, cycles: u64) -> bool {
-        if !self.handed && self.replay.remaining() == 0 {
-            self.handed = true;
-            self.play.ticks = cycles / CYCLES_PER_TICK;
-            let mut s = self.play.shared.lock().unwrap();
-            s.keys.clear();
-            s.replaying = false;
-            println!("the route is over: the game is yours");
-        }
-        self.handed
-    }
-
-    fn typed_keys_ignored(&mut self) {
-        self.play.shared.lock().unwrap().keys.clear();
-    }
-}
-
-impl Clock for RouteClock {
-    fn at(&mut self, n: u64, cycles: u64) -> Vec<Event> {
-        if self.over(cycles) {
-            return self.play.at(n, cycles);
-        }
-        self.play.wait_for(cycles);
-        self.typed_keys_ignored();
-        self.replay.at(n, cycles)
-    }
-    fn waiting(&mut self, n: u64, cycles: u64) -> Vec<Event> {
-        if self.over(cycles) {
-            return self.play.waiting(n, cycles);
-        }
-        self.replay.waiting(n, cycles)
-    }
-    fn poll(&mut self, cycles: u64) -> Vec<Event> {
-        if self.over(cycles) {
-            return self.play.poll(cycles);
-        }
-        self.play.wait_for(cycles);
-        self.replay.poll(cycles)
-    }
-    fn joystick(&mut self) -> Option<Joystick> {
-        if self.handed {
-            self.play.joystick()
-        } else {
-            None
-        }
-    }
-    fn loading(&mut self, cycles: u64) {
-        self.play.loading(cycles);
-    }
-    fn pace(&mut self, cycles: u64) {
-        self.play.wait_for(cycles);
-    }
-}
-
-/// For --headless: the keys typed at given times of the game, no pacing.
-struct ScriptClock {
-    script: VecDeque<(u64, Vec<u16>)>,
-    ticks: u64,
-}
-
-impl ScriptClock {
-    /// "SECONDS:KEYS;..." (KEYS typed as text; `|` is Enter, `<U>` `<D>` `<L>` `<R>`
-    /// the arrows, `<S>` the same arrow again).
-    fn parse(plan: &str) -> ScriptClock {
-        let mut script = VecDeque::new();
-        for item in plan.split(';').filter(|i| !i.trim().is_empty()) {
-            let (t, keys) = item.split_once(':').expect("SECONDS:KEYS");
-            let t: f64 = t.trim().parse().expect("SECONDS");
-            let mut codes = Vec::new();
-            let mut rest = keys;
-            while let Some(c) = rest.chars().next() {
-                let named = [
-                    ("<U>", 0x4800),
-                    ("<D>", 0x5000),
-                    ("<L>", 0x4B00),
-                    ("<R>", 0x4D00),
-                    ("<CL>", 0x7300),
-                    ("<CR>", 0x7400),
-                ];
-                if let Some((n, k)) = named.iter().find(|(n, _)| rest.starts_with(n)) {
-                    codes.push(*k);
-                    rest = &rest[n.len()..];
-                    continue;
-                }
-                codes.push(match c {
-                    '|' => 0x1C0D,
-                    ' ' => 0x3920,
-                    c => c as u16,
-                });
-                rest = &rest[c.len_utf8()..];
-            }
-            script.push_back(((t * CPU_HZ) as u64, codes));
-        }
-        ScriptClock { script, ticks: 0 }
-    }
-
-    fn due(&mut self, cycles: u64) -> Vec<Event> {
-        let mut out = Vec::new();
-        while self.script.front().is_some_and(|(t, _)| *t <= cycles) {
-            out.extend(self.script.pop_front().unwrap().1.into_iter().map(Event::Key));
-        }
-        out
-    }
-}
-
-impl Clock for ScriptClock {
-    fn at(&mut self, _n: u64, cycles: u64) -> Vec<Event> {
-        let mut out = self.due(cycles);
-        while (self.ticks + 1) * CYCLES_PER_TICK <= cycles {
-            self.ticks += 1;
-            out.push(Event::Tick(0xFFFF));
-        }
-        out
-    }
-    fn waiting(&mut self, _n: u64, _cycles: u64) -> Vec<Event> {
-        self.ticks += 1;
-        let mut out = self.due(self.ticks * CYCLES_PER_TICK);
-        out.push(Event::Tick(0xFFFF));
-        out
-    }
-    fn poll(&mut self, cycles: u64) -> Vec<Event> {
-        self.at(0, cycles)
-    }
-}
-
-/// The drive and the Play diskette, for the window and --headless alike: a disk the
-/// game asks for goes in the drive (the player presses Enter), and the Play diskette's
-/// image is written to its file once the game has stopped writing to it, and when the
-/// game ends.
-struct Drives {
-    /// The Play diskette's file; none keeps it in memory (a route's).
-    play: Option<PathBuf>,
-    saved_writes: u64,
-    pending: bool,
-}
-
-impl Drives {
-    /// Load the Play diskette from its file, if there is one, and put it in the drive:
-    /// the game plays from it once it has been made (it holds a copy of the game's data),
-    /// and saves to it and restores from it without asking for it (`$4CA3`); the
-    /// original's player boots the Master and then puts the Play diskette in.
-    fn new(play: Option<PathBuf>, w: &mut World) -> Drives {
-        if let Some(img) = play.as_ref().and_then(|p| std::fs::read(p).ok()).filter(|i| i.len() == IMAGE_LEN) {
-            w.disks[1].image = img;
-            w.drive = 1;
-        }
-        Drives { play, saved_writes: w.disks[1].writes, pending: false }
-    }
-
-    /// At each frame.
-    fn look(&mut self, w: &mut World) {
-        // The latest request on the screen: in graphics the text window scrolls (it
-        // keeps the ones before, and the copy's label line names the Play diskette too);
-        // the text screen, cleared, has its request at the top.
-        let text: String = (0..25).map(|r| w.text.row(r)).collect::<Vec<_>>().join(" ");
-        let asked = text.rfind("insert your");
-        // A write error after it: the game writes only to the Play diskette.
-        if text.rfind("Write Error").is_some_and(|e| asked.is_none_or(|a| e > a)) {
-            w.drive = 1;
-        } else if let Some(at) = asked {
-            let asked = &text[at..];
-            if asked.contains("Master") {
-                w.drive = 0;
-            } else if asked.contains("Play") {
-                w.drive = 1;
-            }
-        }
-        if w.disks[1].writes != self.saved_writes {
-            self.saved_writes = w.disks[1].writes;
-            self.pending = true;
-        } else if self.pending {
-            self.write(w);
-        }
-    }
-
-    /// The Play diskette to its file, if it has changed since.
-    fn write(&mut self, w: &World) {
-        self.pending = false;
-        self.saved_writes = w.disks[1].writes;
-        if let Some(p) = &self.play {
-            if let Err(e) = std::fs::write(p, &w.disks[1].image) {
-                eprintln!("{}: {e}", p.display());
-            }
-        }
-    }
-
-    /// The game has ended: anything not yet written.
-    fn finish(&mut self, w: &World) {
-        if self.pending || w.disks[1].writes != self.saved_writes {
-            self.write(w);
         }
     }
 }
@@ -456,14 +143,18 @@ fn headless(
 ) {
     let mut w = World::new(disk, Box::new(ScriptClock::parse(plan))).expect("the engine");
     w.font = Some(std::rc::Rc::new(Font(font)));
-    let drives = std::rc::Rc::new(std::cell::RefCell::new(Drives::new(play, &mut w)));
+    let drives = std::rc::Rc::new(std::cell::RefCell::new(Drives::new(play)));
+    if let Some(img) = drives.borrow_mut().load(IMAGE_LEN, w.disks[1].writes) {
+        w.disks[1].image = img;
+        w.drive = 1;
+    }
     let d2 = drives.clone();
     w.fixed_pass_cycles = rate;
     w.start_room = room;
     let end = (until * CPU_HZ) as u64;
     let shot_path = shot.to_string();
     w.on_frame = Some(Box::new(move |w: &mut World| {
-        d2.borrow_mut().look(w);
+        look(&mut d2.borrow_mut(), w);
         if w.cycles < end {
             return;
         }
@@ -493,7 +184,14 @@ fn headless(
         w.stop("the end of the script".into());
     }));
     w.run();
-    drives.borrow_mut().finish(&w);
+    drives.borrow_mut().finish(&w.disks[1].image, w.disks[1].writes);
+}
+
+/// The Play diskette's helper's look at the game, at each frame.
+fn look(d: &mut Drives, w: &mut World) {
+    let screen: String = (0..25).map(|r| w.text.row(r)).collect::<Vec<_>>().join(" ");
+    let (image, writes) = (&w.disks[1].image, w.disks[1].writes);
+    d.look(&screen, &mut w.drive, image, writes);
 }
 
 /// The CGA's 16 colours (RGBI), as 0RGB: the text screen's.
@@ -576,69 +274,6 @@ fn render(w: &World, mode: Mode, out: &mut [u32]) {
     }
 }
 
-/// Where the screen goes in a `cw` × `ch` window: the largest 4:3 rectangle, centred
-/// (x, y, width, height).
-fn screen_rect(cw: usize, ch: usize) -> (usize, usize, usize, usize) {
-    let (w, h) = if cw * 3 > ch * 4 { (ch * 4 / 3, ch) } else { (cw, cw * 3 / 4) };
-    ((cw - w) / 2, (ch - h) / 2, w, h)
-}
-
-/// The 320 × 200 screen into a `cw` × `ch` buffer in one step (nearest pixel), in its
-/// 4:3 rectangle, the rest black.
-#[cfg_attr(windows, allow(dead_code))]
-fn fit(src: &[u32], cw: usize, ch: usize, out: &mut Vec<u32>) {
-    out.clear();
-    out.resize(cw * ch, 0);
-    let (x0, y0, w, h) = screen_rect(cw, ch);
-    if w == 0 || h == 0 {
-        return;
-    }
-    let cols: Vec<usize> = (0..w).map(|x| x * OUT_W / w).collect();
-    for y in 0..h {
-        let row = &src[(y * OUT_H / h) * OUT_W..][..OUT_W];
-        let line = &mut out[(y0 + y) * cw + x0..][..w];
-        for (o, &sx) in line.iter_mut().zip(&cols) {
-            *o = row[sx];
-        }
-    }
-}
-
-/// Typed characters, from the window's callback.
-struct Chars(Arc<Mutex<Shared>>);
-impl InputCallback for Chars {
-    fn add_char(&mut self, c: u32) {
-        let k: u16 = match c {
-            0x0D => 0x1C0D,
-            0x08 => 0x0E08,
-            0x1B => 0x011B,
-            0x09 => 0x0F09,
-            0x20 => 0x3920,
-            0x01..=0x1A | 0x21..=0x7E => c as u16,
-            _ => return,
-        };
-        self.0.lock().unwrap().keys.push_back(k);
-    }
-}
-
-/// The keys that type no character: the walking keys (the numeric keypad gives these
-/// with NumLock off, and digits with it on), and with Ctrl, Left and Right (scan codes
-/// 73h and 74h, which move the screen).
-fn special(k: Key, ctrl: bool) -> Option<u16> {
-    Some(match k {
-        Key::Left if ctrl => 0x7300,
-        Key::Right if ctrl => 0x7400,
-        Key::Up => 0x4800,
-        Key::Down => 0x5000,
-        Key::Left => 0x4B00,
-        Key::Right => 0x4D00,
-        Key::Home => 0x4700,
-        Key::PageUp => 0x4900,
-        Key::End => 0x4F00,
-        Key::PageDown => 0x5100,
-        _ => return None,
-    })
-}
-
 /// An IBM PC BIOS image next to the disk, in the current folder or in `original`, and
 /// its font: a file named `bios.rom`, or a .rom or .bin with "5150" or "ibm" in its
 /// name, of 8 or 64 KB, whose font is there.
@@ -667,183 +302,12 @@ fn find_bios_font(disk: &Path) -> Option<(PathBuf, Vec<u8>)> {
 /// The game's disk: given, or found next to the program, in the current folder or
 /// its `original` folder.
 fn find_disk(given: Option<&str>) -> Result<PathBuf, String> {
-    if let Some(p) = given {
-        return Ok(PathBuf::from(p));
-    }
-    let mut dirs: Vec<PathBuf> = Vec::new();
-    if let Some(d) = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)) {
-        dirs.push(d);
-    }
-    dirs.push(PathBuf::from("."));
-    dirs.push(PathBuf::from("original"));
-    for d in dirs {
-        let Ok(rd) = std::fs::read_dir(&d) else { continue };
-        let mut found: Vec<PathBuf> = rd
-            .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|p| {
-                let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
-                let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                (ext == "mfm" || ext == "img") && !name.contains("Play")
-            })
-            .collect();
-        // The original's dump first, then any image of the right size.
-        found.sort_by_key(|p| (p.extension().and_then(|e| e.to_str()) != Some("mfm"), p.clone()));
-        if let Some(p) = found.into_iter().find(|p| Disk::from_file(std::fs::read(p).unwrap_or_default()).is_ok()) {
-            return Ok(p);
-        }
-    }
-    Err("No disk image of King's Quest (IBM PC) was found.\n\nPut the game's disk image (an HxC .mfm dump or a \
-         360K .img) next to kq, or give its path: kq DISK"
-        .into())
-}
-
-#[cfg(windows)]
-mod audio_out {
-    //! Sound through winmm's waveOut: four buffers of 1/30 s kept queued.
-    use super::{Audio, AUDIO_RATE};
-    use std::ffi::c_void;
-    use std::sync::{Arc, Mutex};
-
-    #[repr(C)]
-    struct WaveFormatEx {
-        format_tag: u16,
-        channels: u16,
-        samples_per_sec: u32,
-        avg_bytes_per_sec: u32,
-        block_align: u16,
-        bits_per_sample: u16,
-        size: u16,
-    }
-    #[repr(C)]
-    struct WaveHdr {
-        data: *mut i16,
-        buffer_length: u32,
-        bytes_recorded: u32,
-        user: usize,
-        flags: u32,
-        loops: u32,
-        next: *mut WaveHdr,
-        reserved: usize,
-    }
-    #[link(name = "winmm")]
-    extern "system" {
-        fn waveOutOpen(
-            h: *mut *mut c_void,
-            dev: u32,
-            fmt: *const WaveFormatEx,
-            cb: usize,
-            inst: usize,
-            flags: u32,
-        ) -> u32;
-        fn waveOutPrepareHeader(h: *mut c_void, hdr: *mut WaveHdr, size: u32) -> u32;
-        fn waveOutWrite(h: *mut c_void, hdr: *mut WaveHdr, size: u32) -> u32;
-    }
-    const WAVE_MAPPER: u32 = 0xFFFF_FFFF;
-    const WHDR_DONE: u32 = 1;
-    const BUFFERS: usize = 4;
-    const SAMPLES: usize = AUDIO_RATE as usize / 30;
-
-    pub fn start(audio: Arc<Mutex<Audio>>) {
-        std::thread::spawn(move || unsafe {
-            let fmt = WaveFormatEx {
-                format_tag: 1,
-                channels: 1,
-                samples_per_sec: AUDIO_RATE,
-                avg_bytes_per_sec: AUDIO_RATE * 2,
-                block_align: 2,
-                bits_per_sample: 16,
-                size: 0,
-            };
-            let mut h: *mut c_void = std::ptr::null_mut();
-            if waveOutOpen(&mut h, WAVE_MAPPER, &fmt, 0, 0, 0) != 0 {
-                eprintln!("sound: no audio output could be opened; playing silently");
-                return;
-            }
-            let mut data: Vec<Vec<i16>> = (0..BUFFERS).map(|_| vec![0i16; SAMPLES]).collect();
-            let mut hdrs: Vec<WaveHdr> = data
-                .iter_mut()
-                .map(|d| WaveHdr {
-                    data: d.as_mut_ptr(),
-                    buffer_length: (SAMPLES * 2) as u32,
-                    bytes_recorded: 0,
-                    user: 0,
-                    flags: WHDR_DONE,
-                    loops: 0,
-                    next: std::ptr::null_mut(),
-                    reserved: 0,
-                })
-                .collect();
-            let size = std::mem::size_of::<WaveHdr>() as u32;
-            for hdr in hdrs.iter_mut() {
-                waveOutPrepareHeader(h, hdr, size);
-                hdr.flags |= WHDR_DONE;
-            }
-            let mut f = vec![0f32; SAMPLES];
-            loop {
-                for (i, hdr) in hdrs.iter_mut().enumerate() {
-                    if std::ptr::read_volatile(&hdr.flags) & WHDR_DONE != 0 {
-                        audio.lock().unwrap().render(&mut f);
-                        for (d, s) in data[i].iter_mut().zip(&f) {
-                            *d = (s * 32767.0) as i16;
-                        }
-                        hdr.flags &= !WHDR_DONE;
-                        waveOutWrite(h, hdr, size);
-                    }
-                }
-                std::thread::sleep(std::time::Duration::from_millis(5));
-            }
-        });
-    }
-}
-
-#[cfg(target_os = "linux")]
-mod audio_out {
-    //! Sound through cpal (ALSA, or PulseAudio/PipeWire through it), on a thread of
-    //! its own that keeps the stream.
-    use super::Audio;
-    use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-    use std::sync::{Arc, Mutex};
-
-    pub fn start(audio: Arc<Mutex<Audio>>) {
-        std::thread::spawn(move || {
-            let run = || -> Option<()> {
-                let device = cpal::default_host().default_output_device()?;
-                let config = device.default_output_config().ok()?;
-                let channels = config.channels() as usize;
-                let rate = config.sample_rate().0;
-                if rate != super::AUDIO_RATE {
-                    eprintln!("sound: the device runs at {rate} Hz; the music plays at {} Hz", super::AUDIO_RATE);
-                }
-                let mut mono = Vec::new();
-                let stream = device
-                    .build_output_stream(
-                        &config.into(),
-                        move |data: &mut [f32], _| {
-                            mono.resize(data.len() / channels, 0.0);
-                            audio.lock().unwrap().render(&mut mono);
-                            for (frame, s) in data.chunks_mut(channels).zip(&mono) {
-                                frame.fill(*s);
-                            }
-                        },
-                        |e| eprintln!("sound: {e}"),
-                        None,
-                    )
-                    .ok()?;
-                stream.play().ok()?;
-                loop {
-                    std::thread::park();
-                }
-            };
-            if run().is_none() {
-                eprintln!("sound: no audio output could be opened; playing silently");
-            }
-        });
-    }
-}
-
-#[cfg(not(any(windows, target_os = "linux")))]
-mod audio_out {
-    pub fn start(_audio: std::sync::Arc<std::sync::Mutex<super::Audio>>) {}
+    player::find_disk(
+        given,
+        |raw| Disk::from_file(raw).is_ok(),
+        "No disk image of King's Quest (IBM PC) was found.\n\nPut the game's disk image (an HxC .mfm dump or a \
+         360K .img) next to kq, or give its path: kq DISK",
+    )
 }
 
 fn main() {
@@ -918,17 +382,9 @@ fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(|| disk_path.parent().unwrap_or(Path::new(".")).join("KQ1 Play.img"));
 
-    let shared = Arc::new(Mutex::new(Shared {
-        rgb: vec![0; OUT_W * OUT_H],
-        seq: 0,
-        keys: VecDeque::new(),
-        mode,
-        speed,
-        fast_loads,
-        replaying: route.is_some(),
-        quit: false,
-        ended: None,
-    }));
+    let shared = player::Shared::new(OUT_W * OUT_H, speed, fast_loads, route.is_some());
+    // How the composite screen is shown (F7).
+    let mode = Arc::new(Mutex::new(mode));
     let route_log = route.map(|r| {
         let file = if Path::new(&r).is_file() {
             PathBuf::from(&r)
@@ -937,19 +393,21 @@ fn main() {
         };
         std::fs::read_to_string(&file).unwrap_or_else(|e| fatal(&format!("{}: {e}", file.display())))
     });
-    let audio = Arc::new(Mutex::new(Audio { events: VecDeque::new(), divisor: 2, gate: false, phase: 0.0, on: !mute }));
-    audio_out::start(audio.clone());
+    let audio = Arc::new(Mutex::new(Audio { events: VecDeque::new(), divisor: 2, gate: false, phase: 0.0 }));
+    let sound_on = Arc::new(AtomicBool::new(!mute));
+    audio::start(audio.clone(), sound_on.clone());
 
     // The engine, on a thread of its own (its state isn't shared: the screen goes out
     // as frames).
     {
         let shared = shared.clone();
         let audio = audio.clone();
+        let mode = mode.clone();
         std::thread::spawn(move || {
             let play = PlayerClock::new(shared.clone(), speed, use_joystick);
             let replaying = route_log.is_some();
             let clock: Box<dyn Clock> = match route_log {
-                Some(log) => Box::new(RouteClock { replay: Replay::parse(&log), play, handed: false }),
+                Some(log) => Box::new(RouteClock::new(Replay::parse(&log), play)),
                 None => Box::new(play),
             };
             let mut w = World::new(&disk, clock).expect("the engine");
@@ -958,8 +416,11 @@ fn main() {
             w.start_room = room;
             // A route starts with the Play diskette the original had (a blank one), and
             // keeps it in memory.
-            let drives =
-                std::rc::Rc::new(std::cell::RefCell::new(Drives::new((!replaying).then_some(play_path), &mut w)));
+            let drives = std::rc::Rc::new(std::cell::RefCell::new(Drives::new((!replaying).then_some(play_path))));
+            if let Some(img) = drives.borrow_mut().load(IMAGE_LEN, w.disks[1].writes) {
+                w.disks[1].image = img;
+                w.drive = 1;
+            }
             let d2 = drives.clone();
             let mut rgb = vec![0u32; OUT_W * OUT_H];
             let s2 = shared.clone();
@@ -967,10 +428,7 @@ fn main() {
             let mut was_replaying = false;
             w.on_frame = Some(Box::new(move |w: &mut World| {
                 // While a fast load goes by, its frames needn't be drawn.
-                let (fast, mode) = {
-                    let s = s2.lock().unwrap();
-                    (s.fast_loads, s.mode)
-                };
+                let (fast, mode) = (s2.lock().unwrap().fast_loads, *mode.lock().unwrap());
                 let skip = fast && w.loading_cycles != std::mem::replace(&mut loading, w.loading_cycles);
                 if !skip {
                     render(w, mode, &mut rgb);
@@ -994,137 +452,39 @@ fn main() {
                 if std::mem::take(&mut was_replaying) {
                     println!("at pass {}: room {}, score {}", w.passes, w.vars[1], w.vars[19]);
                 }
-                d2.borrow_mut().look(w);
+                look(&mut d2.borrow_mut(), w);
             }));
             let why = w.run();
-            drives.borrow_mut().finish(&w);
+            drives.borrow_mut().finish(&w.disks[1].image, w.disks[1].writes);
             shared.lock().unwrap().ended = Some(why);
         });
     }
 
-    hook::dpi_aware();
-    // --scale N times 320 × 240 (the screen at its 4:3 shape); on Windows the hook sizes
-    // it again at the display's scale.
-    let scale = scale_n.unwrap_or(3).max(1);
-    let mut window = Window::new(
-        TITLE,
-        320 * scale,
-        240 * scale,
-        WindowOptions {
-            resize: true,
-            scale: Scale::X1,
-            scale_mode: ScaleMode::AspectRatioStretch,
-            ..WindowOptions::default()
-        },
-    )
-    .unwrap_or_else(|e| fatal(&format!("no window: {e}")));
-    hook::size_window(&window, 320 * scale as u32, 240 * scale as u32);
-    let l = shared.clone();
-    hook::install(
-        &window,
-        hook::Picture { width: OUT_W, height: OUT_H, aspect: (4, 3) },
-        Box::new(move |buf| buf.copy_from_slice(&l.lock().unwrap().rgb)),
-    );
-    window.set_input_callback(Box::new(Chars(shared.clone())));
-    let mut full = Fullscreen::default();
-    let mut want_full = start_fullscreen;
-    println!("F11/F12: slower/faster, F9: fast loads, F8: sound, F7: the colours' fringes, Alt+Enter: full screen");
-    let fast_title = |on: bool| format!("{TITLE}{}", if on { " - fast loads" } else { "" });
-    if fast_loads {
-        window.set_title(&fast_title(true));
-    }
-    let mut buf = vec![0u32; OUT_W * OUT_H];
-    #[cfg(not(windows))]
-    let mut fitted: Vec<u32> = Vec::new();
-    let mut last_seq = u64::MAX;
-    while window.is_open() {
-        let (seq, ended) = {
-            let s = shared.lock().unwrap();
-            if s.seq != last_seq {
-                buf.copy_from_slice(&s.rgb);
-            }
-            (s.seq, s.ended.clone())
-        };
-        last_seq = seq;
-        if let Some(why) = ended {
-            println!("the game stopped: {why}");
-            break;
+    let setup = WindowSetup {
+        title: TITLE,
+        width: OUT_W,
+        height: OUT_H,
+        scale: scale_n.unwrap_or(3),
+        fullscreen: start_fullscreen,
+        help: "F11/F12: slower/faster, F9: fast loads, F8: sound, F7: the colours' fringes, Alt+Enter: full screen",
+        caption: CAPTION,
+        ctrl_arrows: true,
+    };
+    player::run_window(setup, shared, sound_on, |k, window| {
+        // F7: the composite screen's two modes.
+        if k == Key::F7 {
+            let mut m = mode.lock().unwrap();
+            *m = if *m == Mode::Groups { Mode::Signal } else { Mode::Groups };
+            let what = if *m == Mode::Signal { " - the signal, with its fringes" } else { "" };
+            window.set_title(&format!("{TITLE}{what}"));
         }
-        // Windows: the hook paints, stretching the screen to the window itself.
-        #[cfg(windows)]
-        window.update_with_buffer(&buf, OUT_W, OUT_H).ok();
-        // Elsewhere: scaled here to the window's size, so minifb doesn't scale again.
-        #[cfg(not(windows))]
-        {
-            let (cw, ch) = window.get_size();
-            let (cw, ch) = (cw.max(1), ch.max(1));
-            fit(&buf, cw, ch, &mut fitted);
-            window.update_with_buffer(&fitted, cw, ch).ok();
-        }
-        // After an update, so that minifb sees the size change.
-        #[cfg(not(windows))]
-        let alt_enter = (window.is_key_down(Key::LeftAlt) || window.is_key_down(Key::RightAlt))
-            && window.is_key_pressed(Key::Enter, KeyRepeat::No);
-        #[cfg(windows)]
-        let alt_enter = false;
-        if std::mem::take(&mut want_full) || hook::take_alt_enter() || alt_enter {
-            full.toggle(&mut window);
-        }
-        let ctrl = window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl);
-        for k in window.get_keys_pressed(KeyRepeat::Yes) {
-            if let Some(code) = special(k, ctrl) {
-                shared.lock().unwrap().keys.push_back(code);
-            }
-            match k {
-                Key::F7 => {
-                    let mut s = shared.lock().unwrap();
-                    s.mode = if s.mode == Mode::Groups { Mode::Signal } else { Mode::Groups };
-                    let what = if s.mode == Mode::Signal { " - the signal, with its fringes" } else { "" };
-                    window.set_title(&format!("{TITLE}{what}"));
-                }
-                Key::F8 => {
-                    let mut a = audio.lock().unwrap();
-                    a.on = !a.on;
-                    window.set_title(&format!("{TITLE}{}", if a.on { "" } else { " - muted" }));
-                }
-                Key::F9 => {
-                    let mut s = shared.lock().unwrap();
-                    s.fast_loads = !s.fast_loads;
-                    window.set_title(&fast_title(s.fast_loads));
-                }
-                Key::F11 | Key::F12 => {
-                    let mut s = shared.lock().unwrap();
-                    s.speed = if k == Key::F12 { (s.speed * 2.0).min(16.0) } else { (s.speed / 2.0).max(0.25) };
-                    window.set_title(&format!("{TITLE} - speed x{}", s.speed));
-                }
-                _ => {}
-            }
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    shared.lock().unwrap().quit = true;
+    });
 }
 
 /// Report an error that stops kq before its window opens, and exit (in a message box
 /// too on Windows).
 fn fatal(msg: &str) -> ! {
-    kq1_frontend::fatal("King's Quest (IBM PC)", msg)
-}
-
-/// The joystick (kq1_frontend::joystick: winmm on Windows, /dev/input/js0 on Linux) as
-/// positions 0.0-1.0 across each axis; the hat (d-pad) pushes to the edges.
-mod joystick {
-    use kq1_pc::engine::clock::Joystick;
-
-    pub fn read() -> Option<Joystick> {
-        let s = kq1_frontend::joystick::read()?;
-        let (mut x, mut y) = (s.axes.0 as f64 / 65535.0, s.axes.1 as f64 / 65535.0);
-        if let Some(degrees) = s.hat {
-            let a = degrees.to_radians();
-            (x, y) = (0.5 + 0.5 * a.sin(), 0.5 - 0.5 * a.cos());
-        }
-        Some(Joystick::from_position(x, y, s.buttons))
-    }
+    kq1_frontend::fatal(CAPTION, msg)
 }
 
 #[cfg(test)]
@@ -1135,7 +495,8 @@ mod tests {
     /// divisor of 2) and the gate off are silence.
     #[test]
     fn the_speaker_plays_the_notes() {
-        let mut a = Audio { events: VecDeque::new(), divisor: 2, gate: false, phase: 0.0, on: true };
+        use audio::Render;
+        let mut a = Audio { events: VecDeque::new(), divisor: 2, gate: false, phase: 0.0 };
         let mut out = vec![0f32; AUDIO_RATE as usize];
         a.events.extend([Speaker::Divisor(1193), Speaker::Gate(true)]);
         a.render(&mut out);
@@ -1149,32 +510,5 @@ mod tests {
         a.events.extend([Speaker::Divisor(1193), Speaker::Gate(false)]);
         a.render(&mut out);
         assert!(out.iter().all(|&v| v == 0.0), "the gate off is silence");
-    }
-
-    /// Scaled in one step, the screen's rows are all within a pixel of each other in
-    /// height, and its columns in width, whatever the window's size; and the picture
-    /// keeps its 4:3 shape.
-    #[test]
-    fn rows_and_columns_scale_evenly() {
-        // Each source pixel its own colour number, so that the output says where each is.
-        let src: Vec<u32> = (0..(OUT_W * OUT_H) as u32).collect();
-        let mut out = Vec::new();
-        for (cw, ch) in [(640, 480), (960, 720), (1440, 1080), (1000, 700), (1920, 1080), (801, 599)] {
-            fit(&src, cw, ch, &mut out);
-            let (x0, y0, w, h) = screen_rect(cw, ch);
-            assert!((w as f64 / h as f64 - 4.0 / 3.0).abs() < 0.01, "{cw}x{ch}: {w}x{h}");
-            let mut heights = vec![0usize; OUT_H];
-            for y in 0..h {
-                heights[out[(y0 + y) * cw + x0] as usize / OUT_W] += 1;
-            }
-            let mut widths = vec![0usize; OUT_W];
-            for x in 0..w {
-                widths[out[y0 * cw + x0 + x] as usize % OUT_W] += 1;
-            }
-            for (name, v) in [("rows", &heights), ("columns", &widths)] {
-                let (lo, hi) = (v.iter().min().unwrap(), v.iter().max().unwrap());
-                assert!(hi - lo <= 1 && *lo > 0, "{cw}x{ch}: {name} from {lo} to {hi} pixels");
-            }
-        }
     }
 }

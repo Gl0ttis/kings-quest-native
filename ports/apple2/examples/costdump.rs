@@ -1,4 +1,4 @@
-// costdump KEYS FROM TO: replay a key log and print the cost counters per pass.
+// costdump-apple2 KEYS FROM TO: replay a key log and print the cost counters per pass.
 use kq1_apple2::engine::{Resources, Scripted, World};
 fn main() {
     let a: Vec<String> = std::env::args().collect();

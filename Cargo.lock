@@ -437,6 +437,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "kq1-autopilot"
+version = "0.1.0"
+dependencies = [
+ "kq1-ibm",
+]
+
+[[package]]
 name = "kq1-formats"
 version = "0.2.0"
 
@@ -444,9 +451,18 @@ version = "0.2.0"
 name = "kq1-frontend"
 version = "0.1.0"
 dependencies = [
+ "cpal",
+ "kq1-ibm",
  "minifb",
  "raw-window-handle",
  "x11-dl",
+]
+
+[[package]]
+name = "kq1-ibm"
+version = "0.1.0"
+dependencies = [
+ "kq1-formats",
 ]
 
 [[package]]
@@ -456,6 +472,7 @@ dependencies = [
  "cpal",
  "kq1-formats",
  "kq1-frontend",
+ "kq1-ibm",
  "minifb",
 ]
 
@@ -463,8 +480,10 @@ dependencies = [
 name = "kq1-pc-refemu"
 version = "0.1.0"
 dependencies = [
+ "kq1-autopilot",
  "kq1-formats",
  "kq1-pc",
+ "kq1-x86",
 ]
 
 [[package]]
@@ -474,6 +493,7 @@ dependencies = [
  "cpal",
  "kq1-formats",
  "kq1-frontend",
+ "kq1-ibm",
  "minifb",
 ]
 
@@ -481,9 +501,15 @@ dependencies = [
 name = "kq1-pcjr-refemu"
 version = "0.1.0"
 dependencies = [
+ "kq1-autopilot",
  "kq1-formats",
  "kq1-pcjr",
+ "kq1-x86",
 ]
+
+[[package]]
+name = "kq1-x86"
+version = "0.1.0"
 
 [[package]]
 name = "lazy_static"

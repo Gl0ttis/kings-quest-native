@@ -66,3 +66,13 @@ required-features = ["player"]
 [[bin]]
 name = "kqroute"
 path = "src/bin/kqroute.rs"
+
+# Named apart from the other ports' examples of the same names, which share the
+# workspace's target folder.
+[[example]]
+name = "costdump-apple2"
+path = "examples/costdump.rs"
+
+[[example]]
+name = "primap-apple2"
+path = "examples/primap.rs"

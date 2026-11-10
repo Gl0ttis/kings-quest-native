@@ -4,6 +4,9 @@ resolver = "2"
 members = [
     "crates/kq1-formats",
     "crates/kq1-frontend",
+    "crates/kq1-ibm",
+    "crates/kq1-x86",
+    "crates/kq1-autopilot",
     "ports/apple2",
     "ports/apple2/refemu",
     "ports/pc",

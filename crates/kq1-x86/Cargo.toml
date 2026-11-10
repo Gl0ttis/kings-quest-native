@@ -1,0 +1,15 @@
+[package]
+name = "kq1-x86"
+version = "0.1.0"
+description = "The 8086 core (8088 cycle counts) of the reference PCjr and PC the IBM ports are measured on. Not part of any port."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "kq1_x86"
+path = "src/lib.rs"
