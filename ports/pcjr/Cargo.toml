@@ -31,7 +31,7 @@ kq1-ibm-player = { path = "../../crates/kq1-ibm-player", optional = true }
 
 # Linux: sound (cpal).
 [target.'cfg(target_os = "linux")'.dependencies]
-cpal = { version = "0.15", optional = true }
+cpal = { version = "0.18", optional = true }
 
 [features]
 default = ["player"]
